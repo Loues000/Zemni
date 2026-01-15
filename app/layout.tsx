@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Bricolage_Grotesque, IBM_Plex_Sans } from "next/font/google";
 import "./globals.css";
+import "katex/dist/katex.min.css";
 
 const display = Bricolage_Grotesque({
   subsets: ["latin"],

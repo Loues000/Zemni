@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "ai/react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
 
 type Pricing = {
   currency: string;
@@ -63,6 +65,18 @@ type OutputEntry = {
   updatedAt: number;
 };
 
+type HistoryEntry = {
+  id: string;
+  title: string;
+  fileName: string;
+  extractedText: string;
+  outputs: Record<string, OutputEntry>;
+  structureHints: string;
+  createdAt: number;
+  updatedAt: number;
+  exportedSubject?: string; // Subject title if exported to Notion
+};
+
 const statusLabels: Record<Status, string> = {
   idle: "Bereit",
   parsing: "PDF lesen",
@@ -107,6 +121,109 @@ const getModelLabel = (models: Model[], modelId: string) => {
   return model ? model.displayName : modelId;
 };
 
+// Create a simple hash from string for PDF identification
+const createPdfId = (fileName: string, extractedText: string): string => {
+  const content = `${fileName}:${extractedText.slice(0, 1000)}`; // Use first 1000 chars for hash
+  let hash = 0;
+  for (let i = 0; i < content.length; i++) {
+    const char = content.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return `pdf-${Math.abs(hash).toString(36)}`;
+};
+
+const HISTORY_STORAGE_KEY = "summary-maker-history-v1";
+
+const sortHistory = (entries: HistoryEntry[]) => {
+  return entries.slice().sort((a, b) => b.updatedAt - a.updatedAt);
+};
+
+const isHistoryEntry = (value: unknown): value is HistoryEntry => {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const entry = value as HistoryEntry;
+  return (
+    typeof entry.id === "string" &&
+    typeof entry.title === "string" &&
+    typeof entry.fileName === "string" &&
+    typeof entry.extractedText === "string" &&
+    typeof entry.structureHints === "string" &&
+    typeof entry.createdAt === "number" &&
+    typeof entry.updatedAt === "number" &&
+    typeof entry.outputs === "object" &&
+    entry.outputs !== null
+  );
+};
+
+const loadHistoryFromStorage = (): HistoryEntry[] => {
+  if (typeof window === "undefined") {
+    return [];
+  }
+  try {
+    const raw = window.localStorage.getItem(HISTORY_STORAGE_KEY);
+    if (!raw) {
+      return [];
+    }
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return sortHistory(parsed.filter(isHistoryEntry));
+  } catch (err) {
+    return [];
+  }
+};
+
+const saveHistoryToStorage = (entries: HistoryEntry[]) => {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(entries));
+  } catch (err) {
+    // Ignore storage errors
+  }
+};
+
+// Group history entries by time periods
+const groupHistoryByTime = (history: HistoryEntry[]) => {
+  const now = Date.now();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayStart = today.getTime();
+  const yesterdayStart = todayStart - 24 * 60 * 60 * 1000;
+  const weekAgo = todayStart - 7 * 24 * 60 * 60 * 1000;
+  const monthAgo = todayStart - 30 * 24 * 60 * 60 * 1000;
+
+  const groups: Record<string, HistoryEntry[]> = {
+    heute: [],
+    gestern: [],
+    "letzte 7 tage": [],
+    "letzte 30 tage": [],
+    älter: []
+  };
+
+  history.forEach((entry) => {
+    const updatedAt = entry.updatedAt;
+    if (updatedAt >= todayStart) {
+      groups.heute.push(entry);
+    } else if (updatedAt >= yesterdayStart) {
+      groups.gestern.push(entry);
+    } else if (updatedAt >= weekAgo) {
+      groups["letzte 7 tage"].push(entry);
+    } else if (updatedAt >= monthAgo) {
+      groups["letzte 30 tage"].push(entry);
+    } else {
+      groups.älter.push(entry);
+    }
+  });
+
+  // Remove empty groups
+  return Object.entries(groups).filter(([_, entries]) => entries.length > 0);
+};
+
 export default function AppClient() {
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [models, setModels] = useState<Model[]>([]);
@@ -115,12 +232,18 @@ export default function AppClient() {
   const [selectedSubject, setSelectedSubject] = useState<string>("");
   const [structureHints, setStructureHints] = useState<string>("");
   const [status, setStatus] = useState<Status>("ready");
+  const [generatingModelId, setGeneratingModelId] = useState<string | null>(null);
   const [error, setError] = useState<string>("");
   const [dragActive, setDragActive] = useState(false);
   const [fileName, setFileName] = useState<string>("");
   const [extractedText, setExtractedText] = useState<string>("");
   const [modelCosts, setModelCosts] = useState<CostRow[]>([]);
   const [outputs, setOutputs] = useState<Record<string, OutputEntry>>({});
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [currentHistoryId, setCurrentHistoryId] = useState<string | null>(null);
+  const [loadedFromHistory, setLoadedFromHistory] = useState(false);
+  const [copySuccess, setCopySuccess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const refineTargetRef = useRef<string>("");
 
@@ -217,6 +340,7 @@ export default function AppClient() {
 
     fetchModels();
     fetchSubjects();
+    setHistory(loadHistoryFromStorage());
   }, []);
 
   useEffect(() => {
@@ -256,10 +380,20 @@ export default function AppClient() {
 
   const handleModelChange = (modelId: string) => {
     setSelectedModel(modelId);
-    setError("");
-    setMessages([]);
-    setInput("");
-    setData([]);
+    // Only clear chat-related state if we're not generating (to allow viewing other models during generation)
+    if (!generatingModelId) {
+      setError("");
+      setMessages([]);
+      setInput("");
+      setData([]);
+    } else if (modelId !== generatingModelId) {
+      // If switching to a different model during generation, just clear chat state
+      // but keep the generating state for the other model
+      setError("");
+      setMessages([]);
+      setInput("");
+      setData([]);
+    }
   };
 
   const handleFile = async (file: File) => {
@@ -267,6 +401,9 @@ export default function AppClient() {
     setStatus("parsing");
     setFileName(file.name);
     setOutputs({});
+    setGeneratingModelId(null);
+    setLoadedFromHistory(false);
+    setCurrentHistoryId(null);
     setMessages([]);
     setInput("");
     setData([]);
@@ -304,6 +441,8 @@ export default function AppClient() {
     }
     setError("");
     setStatus("summarizing");
+    setGeneratingModelId(selectedModel);
+    setLoadedFromHistory(false); // Reset flag when generating, so changes will be saved
     setData([]);
     try {
       const modelLabel = getModelLabel(models, selectedModel);
@@ -333,9 +472,11 @@ export default function AppClient() {
       setMessages([]);
       setInput("");
       setStatus("ready");
+      setGeneratingModelId(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unbekannter Fehler");
       setStatus("error");
+      setGeneratingModelId(null);
     }
   };
 
@@ -367,6 +508,14 @@ export default function AppClient() {
         throw new Error("Notion Export fehlgeschlagen.");
       }
       setStatus("ready");
+      // Get subject title for history - MUST be found since we checked selectedSubject above
+      const subjectTitle = subjects.find((s) => s.id === selectedSubject)?.title;
+      // Save to history after export - explicitly update with exported subject
+      // Export counts as a change, so reset the flag
+      setLoadedFromHistory(false);
+      if (outputs && extractedText && subjectTitle) {
+        void saveToHistory(undefined, subjectTitle);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unbekannter Fehler");
       setStatus("error");
@@ -406,6 +555,7 @@ export default function AppClient() {
       return;
     }
     setStatus("refining");
+    setLoadedFromHistory(false); // Reset flag when refining, so changes will be saved
     refineTargetRef.current = selectedModel;
     setData([]);
     handleSubmit(event, {
@@ -422,13 +572,191 @@ export default function AppClient() {
       : "Letzte Zusammenfassung"
     : "Noch keine OpenRouter-Stats";
 
+  const updateHistoryState = (updater: (prev: HistoryEntry[]) => HistoryEntry[]) => {
+    setHistory((prev) => {
+      const next = sortHistory(updater(prev));
+      saveHistoryToStorage(next);
+      return next;
+    });
+  };
+
+  const saveToHistory = (outputsToSave?: Record<string, OutputEntry>, exportedSubjectTitle?: string) => {
+    const outputsData = outputsToSave || outputs;
+    if (!extractedText || Object.keys(outputsData).length === 0) {
+      return;
+    }
+
+    const firstSummary = Object.values(outputsData)[0]?.summary || "";
+    const title = getSummaryTitle(firstSummary, fileName || "Zusammenfassung");
+
+    // Create PDF-based ID to group entries from the same PDF
+    const pdfId = createPdfId(fileName || "untitled", extractedText);
+
+    // Use existing history ID if we loaded from history, otherwise use PDF ID
+    const historyId = currentHistoryId || pdfId;
+    const now = Date.now();
+
+    updateHistoryState((prev) => {
+      const existingEntry = prev.find((h) => {
+        const hPdfId = createPdfId(h.fileName, h.extractedText);
+        return hPdfId === pdfId;
+      });
+
+      // Determine exportedSubject: use new one if provided, otherwise keep existing
+      let finalExportedSubject: string | undefined;
+      if (exportedSubjectTitle !== undefined) {
+        // Explicitly provided (could be undefined if export failed or no subject selected)
+        // If it's a non-empty string, use it; if undefined/empty, clear it
+        finalExportedSubject = exportedSubjectTitle || undefined;
+      } else {
+        // Not provided in this call, keep existing
+        finalExportedSubject = existingEntry?.exportedSubject;
+      }
+
+      const entry: HistoryEntry = {
+        id: historyId,
+        title,
+        fileName,
+        extractedText,
+        outputs: outputsData,
+        structureHints,
+        createdAt: existingEntry?.createdAt || now,
+        updatedAt: now,
+        exportedSubject: finalExportedSubject
+      };
+
+      const filtered = prev.filter((item) => {
+        if (item.id === entry.id) {
+          return false;
+        }
+        if (existingEntry && item.id === existingEntry.id) {
+          return false;
+        }
+        return true;
+      });
+
+      return [entry, ...filtered];
+    });
+
+    if (!currentHistoryId) {
+      setCurrentHistoryId(historyId);
+    }
+  };
+
+  const loadFromHistory = (entry: HistoryEntry) => {
+    setFileName(entry.fileName);
+    setExtractedText(entry.extractedText);
+    setOutputs(entry.outputs);
+    setStructureHints(entry.structureHints);
+    setCurrentHistoryId(entry.id);
+    setLoadedFromHistory(true);
+    setError("");
+    setSidebarOpen(false);
+    // Set first model as selected if available
+    const firstModelId = Object.keys(entry.outputs)[0];
+    if (firstModelId) {
+      setSelectedModel(firstModelId);
+    }
+  };
+
+  const deleteHistoryEntry = (id: string, event: React.MouseEvent) => {
+    event.stopPropagation();
+    updateHistoryState((prev) => prev.filter((entry) => entry.id !== id));
+  };
+
+  const handleCopySummary = async () => {
+    if (!currentSummary) {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(currentSummary);
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    } catch (err) {
+      // Fallback for older browsers
+      const textArea = document.createElement("textarea");
+      textArea.value = currentSummary;
+      textArea.style.position = "fixed";
+      textArea.style.opacity = "0";
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand("copy");
+        setCopySuccess(true);
+        setTimeout(() => setCopySuccess(false), 2000);
+      } catch (err) {
+        // Ignore
+      }
+      document.body.removeChild(textArea);
+    }
+  };
+
+  // Save to history after generating (only if not loaded from history)
+  useEffect(() => {
+    if (status === "ready" && Object.keys(outputs).length > 0 && extractedText && !generatingModelId && !loadedFromHistory) {
+      void saveToHistory();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [outputs, status, extractedText, generatingModelId, loadedFromHistory]);
+
   return (
-    <main>
+    <main className={sidebarOpen ? "sidebar-open" : ""}>
+      <aside className="sidebar">
+        <div className="sidebar-header">
+          <h2>Historie</h2>
+        </div>
+        <div className="sidebar-content">
+          {history.length === 0 ? (
+            <div className="hint">Noch keine Historie vorhanden.</div>
+          ) : (
+            <div className="history-groups">
+              {groupHistoryByTime(history).map(([groupLabel, entries]) => (
+                <div key={groupLabel} className="history-group">
+                  <h3 className="history-group-title">{groupLabel}</h3>
+                  <ul className="history-list">
+                    {entries.map((entry) => (
+                      <li
+                        key={entry.id}
+                        className="history-item"
+                        onClick={() => void loadFromHistory(entry)}
+                      >
+                        <div className="history-item-content">
+                          <strong>{entry.title}</strong>
+                          {entry.exportedSubject && (
+                            <span className="hint">{entry.exportedSubject}</span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          className="history-delete"
+                          onClick={(e) => void deleteHistoryEntry(entry.id, e)}
+                        >
+                          ×
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </aside>
       <div className="page">
         <header className="header">
           <div className="header-title">
-            <h1>Summary Maker</h1>
-            <span>PDF rein, Zusammenfassung raus, Notion ready.</span>
+            <button
+              type="button"
+              className="sidebar-toggle"
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              style={{ padding: "6px 10px", borderRadius: "6px", border: "1px solid var(--stroke)", background: "var(--surface-muted)", fontSize: "16px", lineHeight: 1 }}
+            >
+              {sidebarOpen ? "←" : "→"}
+            </button>
+            <div>
+              <h1>Summary Maker</h1>
+              <span>PDF rein, Zusammenfassung raus, Notion ready.</span>
+            </div>
           </div>
           <div className="header-actions">
             <button
@@ -529,41 +857,6 @@ export default function AppClient() {
               <div>Gesamt: {currentCost ? formatMoney(currentCost.total, currentCost.currency) : "--"}</div>
             </div>
 
-            <div className="hint">
-              Token-Logik basiert auf der PDF-Quelle, ohne KI-Vorgaben.
-            </div>
-          </div>
-
-          <div className="panel">
-            <h2>Output & Review</h2>
-            <div className="output-tabs">
-              {outputTabs.length === 0 ? (
-                <span className="hint">Noch keine Modell-Ausgaben vorhanden.</span>
-              ) : (
-                outputTabs.map((tab) => (
-                  <button
-                    key={tab.modelId}
-                    className={`output-tab ${tab.modelId === selectedModel ? "active" : ""}`}
-                    type="button"
-                    onClick={() => handleModelChange(tab.modelId)}
-                  >
-                    {tab.label}
-                  </button>
-                ))
-              )}
-            </div>
-            <div className="preview">
-              {currentSummary ? (
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{currentSummary}</ReactMarkdown>
-              ) : (
-                <span className="hint">
-                  {selectedModel
-                    ? "Fuer dieses Modell gibt es noch keine Zusammenfassung."
-                    : "Noch keine Zusammenfassung erzeugt."}
-                </span>
-              )}
-            </div>
-
             <div className="stats">
               <div className="stats-header">
                 <strong>OpenRouter Stats</strong>
@@ -617,6 +910,83 @@ export default function AppClient() {
               </div>
             </div>
 
+            <div className="hint">
+              Token-Logik basiert auf der PDF-Quelle, ohne KI-Vorgaben.
+            </div>
+          </div>
+
+          <div className="panel">
+            <div className="panel-header">
+              <h2>Output & Review</h2>
+              <div className="panel-actions">
+                <button
+                  className="button secondary"
+                  onClick={handleGenerate}
+                  disabled={status === "parsing" || isRefining || (generatingModelId !== null && generatingModelId === selectedModel)}
+                >
+                  {generatingModelId === selectedModel ? "Wird generiert..." : "Zusammenfassung erzeugen"}
+                </button>
+                <button
+                  className="button primary"
+                  onClick={handleExport}
+                  disabled={status === "exporting" || !currentSummary}
+                >
+                  Final nach Notion exportieren
+                </button>
+              </div>
+            </div>
+            <div className="output-tabs">
+              {outputTabs.length === 0 ? (
+                <span className="hint">Noch keine Modell-Ausgaben vorhanden.</span>
+              ) : (
+                outputTabs.map((tab) => (
+                  <button
+                    key={tab.modelId}
+                    className={`output-tab ${tab.modelId === selectedModel ? "active" : ""} ${tab.modelId === generatingModelId ? "generating" : ""}`}
+                    type="button"
+                    onClick={() => handleModelChange(tab.modelId)}
+                  >
+                    {tab.label}
+                    {tab.modelId === generatingModelId && " ⏳"}
+                  </button>
+                ))
+              )}
+            </div>
+            <div className="preview">
+              <button
+                type="button"
+                className="copy-button"
+                onClick={handleCopySummary}
+                disabled={!currentSummary}
+                title="Zusammenfassung kopieren"
+              >
+                {copySuccess ? (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M20 6L9 17l-5-5" />
+                  </svg>
+                ) : (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                  </svg>
+                )}
+              </button>
+              {currentSummary ? (
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm, remarkMath]}
+                  rehypePlugins={[rehypeKatex]}
+                >
+                  {currentSummary}
+                </ReactMarkdown>
+              ) : (
+                <span className="hint">
+                  {selectedModel
+                    ? "Fuer dieses Modell gibt es noch keine Zusammenfassung."
+                    : "Noch keine Zusammenfassung erzeugt."}
+                </span>
+              )}
+            </div>
+
             <form className="chat" onSubmit={handleRefineSubmit}>
               <input
                 value={input}
@@ -639,9 +1009,9 @@ export default function AppClient() {
           <button
             className="button secondary"
             onClick={handleGenerate}
-            disabled={status === "summarizing" || status === "parsing" || isRefining}
+            disabled={status === "parsing" || isRefining || (generatingModelId !== null && generatingModelId === selectedModel)}
           >
-            Zusammenfassung erzeugen
+            {generatingModelId === selectedModel ? "Wird generiert..." : "Zusammenfassung erzeugen"}
           </button>
           <button
             className="button primary"
