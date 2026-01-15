@@ -1,0 +1,29 @@
+{
+  "name": "summary-maker",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3420",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "^1.0.10",
+    "@dqbd/tiktoken": "^1.0.20",
+    "@notionhq/client": "^2.2.15",
+    "ai": "^3.4.0",
+    "next": "^14.2.5",
+    "pdf-parse": "^1.1.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-markdown": "^9.0.1",
+    "remark-gfm": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.7",
+    "@types/pdf-parse": "^1.1.4",
+    "@types/react": "^18.2.61",
+    "@types/react-dom": "^18.2.19",
+    "typescript": "^5.4.5"
+  }
+}
