@@ -26,12 +26,27 @@ export const listSubjects = async (databaseId: string) => {
     }));
 };
 
+/**
+ * Strip the leading H1 from markdown if present.
+ * The page title is already set via the Notion page properties,
+ * so we don't want to duplicate it as a heading block.
+ */
+const stripLeadingH1 = (markdown: string): string => {
+  // Match a leading H1 at the start (with optional whitespace before)
+  const h1Match = markdown.match(/^\s*#\s+[^\n]+\n?/);
+  if (h1Match) {
+    return markdown.slice(h1Match[0].length).trimStart();
+  }
+  return markdown;
+};
+
 export const exportSummary = async (
   subjectId: string,
   title: string,
   markdown: string
 ): Promise<string> => {
-  const blocks = markdownToBlocks(markdown);
+  const cleanedMarkdown = stripLeadingH1(markdown);
+  const blocks = markdownToBlocks(cleanedMarkdown);
   const firstChunk = blocks.slice(0, 100);
 
   const page = await notion.pages.create({

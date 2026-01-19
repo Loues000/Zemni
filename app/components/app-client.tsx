@@ -58,11 +58,13 @@ type UsageStats = {
 };
 
 type OutputEntry = {
+  id: string;
   modelId: string;
   label: string;
   summary: string;
   usage: UsageStats | null;
   updatedAt: number;
+  isGenerating?: boolean;
 };
 
 type HistoryEntry = {
@@ -74,41 +76,35 @@ type HistoryEntry = {
   structureHints: string;
   createdAt: number;
   updatedAt: number;
-  exportedSubject?: string; // Subject title if exported to Notion
+  exportedSubject?: string;
 };
 
 const statusLabels: Record<Status, string> = {
   idle: "Bereit",
-  parsing: "PDF lesen",
-  summarizing: "Zusammenfassung",
-  refining: "Verfeinerung",
-  exporting: "Notion Export",
+  parsing: "PDF wird gelesen",
+  summarizing: "Generiert",
+  refining: "Ueberarbeitet",
+  exporting: "Exportiert",
   error: "Fehler",
   ready: "Bereit"
 };
 
-const formatMoney = (value: number | null, currency: string) => {
-  if (value === null || Number.isNaN(value)) {
-    return "--";
-  }
-  return `${value.toFixed(4)} ${currency}`;
+const formatMoney = (value: number | null, currency: string): string => {
+  if (value === null || Number.isNaN(value)) return "-";
+  return value.toFixed(4) + " " + currency;
 };
 
-const formatNumber = (value: number | null, digits = 0) => {
-  if (value === null || Number.isNaN(value)) {
-    return "--";
-  }
+const formatNumber = (value: number | null, digits: number = 0): string => {
+  if (value === null || Number.isNaN(value)) return "-";
   return value.toLocaleString(undefined, { maximumFractionDigits: digits });
 };
 
-const formatSeconds = (ms: number | null) => {
-  if (!ms) {
-    return "--";
-  }
-  return `${(ms / 1000).toFixed(2)}s`;
+const formatSeconds = (ms: number | null): string => {
+  if (!ms) return "-";
+  return (ms / 1000).toFixed(2) + "s";
 };
 
-const getSummaryTitle = (summary: string, fallback: string) => {
+const getSummaryTitle = (summary: string, fallback: string): string => {
   const match = summary.match(/^#\s+(.+)$/m);
   if (match && match[1]) {
     return match[1].trim();
@@ -116,33 +112,30 @@ const getSummaryTitle = (summary: string, fallback: string) => {
   return fallback;
 };
 
-const getModelLabel = (models: Model[], modelId: string) => {
+const getModelLabel = (models: Model[], modelId: string): string => {
   const model = models.find((item) => item.id === modelId);
   return model ? model.displayName : modelId;
 };
 
-// Create a simple hash from string for PDF identification
 const createPdfId = (fileName: string, extractedText: string): string => {
-  const content = `${fileName}:${extractedText.slice(0, 1000)}`; // Use first 1000 chars for hash
+  const content = fileName + ":" + extractedText.slice(0, 1000);
   let hash = 0;
   for (let i = 0; i < content.length; i++) {
     const char = content.charCodeAt(i);
     hash = (hash << 5) - hash + char;
-    hash = hash & hash; // Convert to 32bit integer
+    hash = hash & hash;
   }
-  return `pdf-${Math.abs(hash).toString(36)}`;
+  return "pdf-" + Math.abs(hash).toString(36);
 };
 
 const HISTORY_STORAGE_KEY = "summary-maker-history-v1";
 
-const sortHistory = (entries: HistoryEntry[]) => {
+const sortHistory = (entries: HistoryEntry[]): HistoryEntry[] => {
   return entries.slice().sort((a, b) => b.updatedAt - a.updatedAt);
 };
 
 const isHistoryEntry = (value: unknown): value is HistoryEntry => {
-  if (!value || typeof value !== "object") {
-    return false;
-  }
+  if (!value || typeof value !== "object") return false;
   const entry = value as HistoryEntry;
   return (
     typeof entry.id === "string" &&
@@ -158,73 +151,120 @@ const isHistoryEntry = (value: unknown): value is HistoryEntry => {
 };
 
 const loadHistoryFromStorage = (): HistoryEntry[] => {
-  if (typeof window === "undefined") {
-    return [];
-  }
+  if (typeof window === "undefined") return [];
   try {
     const raw = window.localStorage.getItem(HISTORY_STORAGE_KEY);
-    if (!raw) {
-      return [];
-    }
+    if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
+    if (!Array.isArray(parsed)) return [];
     return sortHistory(parsed.filter(isHistoryEntry));
-  } catch (err) {
+  } catch (e) {
     return [];
   }
 };
 
-const saveHistoryToStorage = (entries: HistoryEntry[]) => {
-  if (typeof window === "undefined") {
-    return;
-  }
+const saveHistoryToStorage = (entries: HistoryEntry[]): void => {
+  if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(entries));
-  } catch (err) {
+  } catch (e) {
     // Ignore storage errors
   }
 };
 
-// Group history entries by time periods
-const groupHistoryByTime = (history: HistoryEntry[]) => {
-  const now = Date.now();
+const groupHistoryByTime = (history: HistoryEntry[]): Array<[string, HistoryEntry[]]> => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const todayStart = today.getTime();
   const yesterdayStart = todayStart - 24 * 60 * 60 * 1000;
   const weekAgo = todayStart - 7 * 24 * 60 * 60 * 1000;
-  const monthAgo = todayStart - 30 * 24 * 60 * 60 * 1000;
 
   const groups: Record<string, HistoryEntry[]> = {
-    heute: [],
-    gestern: [],
-    "letzte 7 tage": [],
-    "letzte 30 tage": [],
-    älter: []
+    Heute: [],
+    Gestern: [],
+    "Letzte Woche": [],
+    Aelter: []
   };
 
   history.forEach((entry) => {
-    const updatedAt = entry.updatedAt;
-    if (updatedAt >= todayStart) {
-      groups.heute.push(entry);
-    } else if (updatedAt >= yesterdayStart) {
-      groups.gestern.push(entry);
-    } else if (updatedAt >= weekAgo) {
-      groups["letzte 7 tage"].push(entry);
-    } else if (updatedAt >= monthAgo) {
-      groups["letzte 30 tage"].push(entry);
-    } else {
-      groups.älter.push(entry);
-    }
+    const t = entry.updatedAt;
+    if (t >= todayStart) groups.Heute.push(entry);
+    else if (t >= yesterdayStart) groups.Gestern.push(entry);
+    else if (t >= weekAgo) groups["Letzte Woche"].push(entry);
+    else groups.Aelter.push(entry);
   });
 
-  // Remove empty groups
-  return Object.entries(groups).filter(([_, entries]) => entries.length > 0);
+  return Object.entries(groups).filter(([, entries]) => entries.length > 0);
 };
 
-export default function AppClient() {
+function IconMenu(): JSX.Element {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M3 12h18M3 6h18M3 18h18" />
+    </svg>
+  );
+}
+
+function IconX(): JSX.Element {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M18 6L6 18M6 6l12 12" />
+    </svg>
+  );
+}
+
+function IconSun(): JSX.Element {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="5" />
+      <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+    </svg>
+  );
+}
+
+function IconMoon(): JSX.Element {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+    </svg>
+  );
+}
+
+function IconCopy(): JSX.Element {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="9" y="9" width="13" height="13" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+}
+
+function IconCheck(): JSX.Element {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M20 6L9 17l-5-5" />
+    </svg>
+  );
+}
+
+function IconEdit(): JSX.Element {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+    </svg>
+  );
+}
+
+function IconChevron(): JSX.Element {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
+}
+
+export default function AppClient(): JSX.Element {
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [models, setModels] = useState<Model[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -232,45 +272,38 @@ export default function AppClient() {
   const [selectedSubject, setSelectedSubject] = useState<string>("");
   const [structureHints, setStructureHints] = useState<string>("");
   const [status, setStatus] = useState<Status>("ready");
-  const [generatingModelId, setGeneratingModelId] = useState<string | null>(null);
+  const [generatingTabId, setGeneratingTabId] = useState<string | null>(null);
   const [error, setError] = useState<string>("");
   const [dragActive, setDragActive] = useState(false);
   const [fileName, setFileName] = useState<string>("");
   const [extractedText, setExtractedText] = useState<string>("");
   const [modelCosts, setModelCosts] = useState<CostRow[]>([]);
   const [outputs, setOutputs] = useState<Record<string, OutputEntry>>({});
+  const [selectedTabId, setSelectedTabId] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentHistoryId, setCurrentHistoryId] = useState<string | null>(null);
   const [loadedFromHistory, setLoadedFromHistory] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
+  const [statsOpen, setStatsOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editDraft, setEditDraft] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const refineTargetRef = useRef<string>("");
 
-  const {
-    input,
-    handleInputChange,
-    handleSubmit,
-    isLoading: isRefining,
-    data: chatData,
-    setData,
-    setMessages,
-    setInput
-  } = useChat({
+  const chatConfig = useChat({
     api: "/api/refine",
     onFinish: (message: { content: string }) => {
-      const targetModelId = refineTargetRef.current || selectedModel;
-      if (targetModelId) {
-        const label = getModelLabel(models, targetModelId);
+      const targetTabId = refineTargetRef.current;
+      if (targetTabId) {
         setOutputs((prev) => {
-          const existing = prev[targetModelId];
+          const existing = prev[targetTabId];
+          if (!existing) return prev;
           return {
             ...prev,
-            [targetModelId]: {
-              modelId: targetModelId,
-              label,
+            [targetTabId]: {
+              ...existing,
               summary: message.content,
-              usage: existing?.usage ?? null,
               updatedAt: Date.now()
             }
           };
@@ -284,6 +317,15 @@ export default function AppClient() {
     }
   });
 
+  const input = chatConfig.input;
+  const handleInputChange = chatConfig.handleInputChange;
+  const handleSubmit = chatConfig.handleSubmit;
+  const isRefining = chatConfig.isLoading;
+  const chatData = chatConfig.data;
+  const setData = chatConfig.setData;
+  const setMessages = chatConfig.setMessages;
+  const setInput = chatConfig.setInput;
+
   const currentCost = useMemo(() => {
     return modelCosts.find((row) => row.id === selectedModel);
   }, [modelCosts, selectedModel]);
@@ -292,7 +334,7 @@ export default function AppClient() {
     return Object.values(outputs).sort((a, b) => b.updatedAt - a.updatedAt);
   }, [outputs]);
 
-  const currentOutput = selectedModel ? outputs[selectedModel] : undefined;
+  const currentOutput = selectedTabId ? outputs[selectedTabId] : undefined;
   const currentSummary = currentOutput?.summary ?? "";
   const currentUsage = currentOutput?.usage ?? null;
 
@@ -304,17 +346,17 @@ export default function AppClient() {
       setTheme("dark");
     }
 
+    if (window.innerWidth >= 769) {
+      setStatsOpen(true);
+    }
+
     const fetchModels = async () => {
       try {
         const res = await fetch("/api/models");
-        if (!res.ok) {
-          throw new Error("Modelle konnten nicht geladen werden.");
-        }
+        if (!res.ok) throw new Error("Modelle konnten nicht geladen werden.");
         const data = (await res.json()) as { models: Model[] };
         setModels(data.models);
-        if (data.models.length > 0) {
-          setSelectedModel(data.models[0].id);
-        }
+        if (data.models.length > 0) setSelectedModel(data.models[0].id);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Unbekannter Fehler");
         setStatus("error");
@@ -324,17 +366,12 @@ export default function AppClient() {
     const fetchSubjects = async () => {
       try {
         const res = await fetch("/api/notion/subjects");
-        if (!res.ok) {
-          return;
-        }
+        if (!res.ok) return;
         const data = (await res.json()) as { subjects: Subject[] };
         setSubjects(data.subjects);
-        if (data.subjects.length > 0) {
-          setSelectedSubject(data.subjects[0].id);
-        }
+        if (data.subjects.length > 0) setSelectedSubject(data.subjects[0].id);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Unbekannter Fehler");
-        setStatus("error");
+        // Ignore
       }
     };
 
@@ -349,46 +386,47 @@ export default function AppClient() {
   }, [theme]);
 
   useEffect(() => {
-    if (!chatData?.length) {
-      return;
-    }
+    if (!chatData?.length) return;
     const latest = [...chatData].reverse().find((item) => {
-      return typeof item === "object" && item !== null && (item as any).type === "usage";
+      return typeof item === "object" && item !== null && (item as Record<string, unknown>).type === "usage";
     }) as { payload?: UsageStats } | undefined;
 
     if (latest?.payload) {
-      const targetModelId = refineTargetRef.current || selectedModel;
-      if (!targetModelId) {
-        return;
-      }
-      const label = getModelLabel(models, targetModelId);
+      const targetTabId = refineTargetRef.current;
+      if (!targetTabId) return;
       setOutputs((prev) => {
-        const existing = prev[targetModelId];
+        const existing = prev[targetTabId];
+        if (!existing) return prev;
         return {
           ...prev,
-          [targetModelId]: {
-            modelId: targetModelId,
-            label: existing?.label ?? label,
-            summary: existing?.summary ?? "",
+          [targetTabId]: {
+            ...existing,
             usage: latest.payload ?? null,
-            updatedAt: existing?.updatedAt ?? Date.now()
+            updatedAt: Date.now()
           }
         };
       });
     }
-  }, [chatData, models, selectedModel]);
+  }, [chatData]);
 
-  const handleModelChange = (modelId: string) => {
-    setSelectedModel(modelId);
-    // Only clear chat-related state if we're not generating (to allow viewing other models during generation)
-    if (!generatingModelId) {
-      setError("");
-      setMessages([]);
-      setInput("");
-      setData([]);
-    } else if (modelId !== generatingModelId) {
-      // If switching to a different model during generation, just clear chat state
-      // but keep the generating state for the other model
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && sidebarOpen) {
+        setSidebarOpen(false);
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [sidebarOpen]);
+
+  const handleTabChange = (tabId: string): void => {
+    setSelectedTabId(tabId);
+    setIsEditing(false);
+    const tab = outputs[tabId];
+    if (tab) {
+      setSelectedModel(tab.modelId);
+    }
+    if (!generatingTabId || tabId !== generatingTabId) {
       setError("");
       setMessages([]);
       setInput("");
@@ -396,17 +434,23 @@ export default function AppClient() {
     }
   };
 
-  const handleFile = async (file: File) => {
+  const handleModelChange = (modelId: string): void => {
+    setSelectedModel(modelId);
+  };
+
+  const handleFile = async (file: File): Promise<void> => {
     setError("");
     setStatus("parsing");
     setFileName(file.name);
     setOutputs({});
-    setGeneratingModelId(null);
+    setSelectedTabId(null);
+    setGeneratingTabId(null);
     setLoadedFromHistory(false);
     setCurrentHistoryId(null);
     setMessages([]);
     setInput("");
     setData([]);
+    setIsEditing(false);
     refineTargetRef.current = "";
     try {
       const formData = new FormData();
@@ -415,9 +459,7 @@ export default function AppClient() {
         method: "POST",
         body: formData
       });
-      if (!res.ok) {
-        throw new Error("PDF konnte nicht verarbeitet werden.");
-      }
+      if (!res.ok) throw new Error("PDF konnte nicht verarbeitet werden.");
       const data = (await res.json()) as { text: string; modelCosts: CostRow[] };
       setExtractedText(data.text || "");
       setModelCosts(data.modelCosts || []);
@@ -428,24 +470,43 @@ export default function AppClient() {
     }
   };
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (): Promise<void> => {
     if (!extractedText) {
-      setError("Bitte zuerst ein PDF hochladen.");
+      setError("Zuerst PDF hochladen.");
       setStatus("error");
       return;
     }
     if (!selectedModel) {
-      setError("Bitte ein KI-Modell auswaehlen.");
+      setError("Modell auswaehlen.");
       setStatus("error");
       return;
     }
+    
+    // Create unique tab ID and show tab immediately
+    const tabId = selectedModel + "-" + Date.now();
+    const modelLabel = getModelLabel(models, selectedModel);
+    
+    setOutputs((prev) => ({
+      ...prev,
+      [tabId]: {
+        id: tabId,
+        modelId: selectedModel,
+        label: modelLabel,
+        summary: "",
+        usage: null,
+        updatedAt: Date.now(),
+        isGenerating: true
+      }
+    }));
+    setSelectedTabId(tabId);
+    setGeneratingTabId(tabId);
     setError("");
     setStatus("summarizing");
-    setGeneratingModelId(selectedModel);
-    setLoadedFromHistory(false); // Reset flag when generating, so changes will be saved
+    setLoadedFromHistory(false);
+    setIsEditing(false);
     setData([]);
+    
     try {
-      const modelLabel = getModelLabel(models, selectedModel);
       const res = await fetch("/api/summarize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -455,39 +516,46 @@ export default function AppClient() {
           structure: structureHints
         })
       });
-      if (!res.ok) {
-        throw new Error("Zusammenfassung konnte nicht erstellt werden.");
-      }
+      if (!res.ok) throw new Error("Zusammenfassung fehlgeschlagen.");
       const data = (await res.json()) as { summary: string; usage?: UsageStats | null };
       setOutputs((prev) => ({
         ...prev,
-        [selectedModel]: {
+        [tabId]: {
+          id: tabId,
           modelId: selectedModel,
           label: modelLabel,
           summary: data.summary || "",
           usage: data.usage ?? null,
-          updatedAt: Date.now()
+          updatedAt: Date.now(),
+          isGenerating: false
         }
       }));
       setMessages([]);
       setInput("");
       setStatus("ready");
-      setGeneratingModelId(null);
+      setGeneratingTabId(null);
     } catch (err) {
+      // Remove the failed tab or mark it as error
+      setOutputs((prev) => {
+        const newOutputs = { ...prev };
+        delete newOutputs[tabId];
+        return newOutputs;
+      });
+      setSelectedTabId(null);
       setError(err instanceof Error ? err.message : "Unbekannter Fehler");
       setStatus("error");
-      setGeneratingModelId(null);
+      setGeneratingTabId(null);
     }
   };
 
-  const handleExport = async () => {
+  const handleExport = async (): Promise<void> => {
     if (!currentSummary) {
-      setError("Es gibt keine Zusammenfassung zum Export.");
+      setError("Keine Zusammenfassung zum Export.");
       setStatus("error");
       return;
     }
     if (!selectedSubject) {
-      setError("Bitte ein Fach auswaehlen.");
+      setError("Fach auswaehlen.");
       setStatus("error");
       return;
     }
@@ -504,17 +572,12 @@ export default function AppClient() {
           markdown: currentSummary
         })
       });
-      if (!res.ok) {
-        throw new Error("Notion Export fehlgeschlagen.");
-      }
+      if (!res.ok) throw new Error("Notion Export fehlgeschlagen.");
       setStatus("ready");
-      // Get subject title for history - MUST be found since we checked selectedSubject above
       const subjectTitle = subjects.find((s) => s.id === selectedSubject)?.title;
-      // Save to history after export - explicitly update with exported subject
-      // Export counts as a change, so reset the flag
       setLoadedFromHistory(false);
       if (outputs && extractedText && subjectTitle) {
-        void saveToHistory(undefined, subjectTitle);
+        saveToHistory(undefined, subjectTitle);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unbekannter Fehler");
@@ -522,57 +585,48 @@ export default function AppClient() {
     }
   };
 
-  const onDrop = (event: React.DragEvent<HTMLDivElement>) => {
+  const onDrop = (event: React.DragEvent<HTMLDivElement>): void => {
     event.preventDefault();
     setDragActive(false);
     const file = event.dataTransfer.files?.[0];
-    if (file) {
-      void handleFile(file);
-    }
+    if (file) handleFile(file);
   };
 
-  const onDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+  const onDragOver = (event: React.DragEvent<HTMLDivElement>): void => {
     event.preventDefault();
     setDragActive(true);
   };
 
-  const onDragLeave = () => {
+  const onDragLeave = (): void => {
     setDragActive(false);
   };
 
-  const onSelectFile = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const onSelectFile = (event: React.ChangeEvent<HTMLInputElement>): void => {
     const file = event.target.files?.[0];
-    if (file) {
-      void handleFile(file);
-    }
+    if (file) handleFile(file);
   };
 
-  const handleRefineSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleRefineSubmit = (event: React.FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
-    if (!currentSummary || !selectedModel) {
-      setError("Keine Zusammenfassung fuer dieses Modell vorhanden.");
+    if (!currentSummary || !selectedTabId || !currentOutput) {
+      setError("Keine Zusammenfassung vorhanden.");
       setStatus("error");
       return;
     }
     setStatus("refining");
-    setLoadedFromHistory(false); // Reset flag when refining, so changes will be saved
-    refineTargetRef.current = selectedModel;
+    setLoadedFromHistory(false);
+    setIsEditing(false);
+    refineTargetRef.current = selectedTabId;
     setData([]);
     handleSubmit(event, {
       body: {
         summary: currentSummary,
-        modelId: selectedModel
+        modelId: currentOutput.modelId
       }
     });
   };
 
-  const statsLabel = currentUsage
-    ? currentUsage.source === "refine"
-      ? "Letzte Verfeinerung"
-      : "Letzte Zusammenfassung"
-    : "Noch keine OpenRouter-Stats";
-
-  const updateHistoryState = (updater: (prev: HistoryEntry[]) => HistoryEntry[]) => {
+  const updateHistoryState = (updater: (prev: HistoryEntry[]) => HistoryEntry[]): void => {
     setHistory((prev) => {
       const next = sortHistory(updater(prev));
       saveHistoryToStorage(next);
@@ -580,19 +634,13 @@ export default function AppClient() {
     });
   };
 
-  const saveToHistory = (outputsToSave?: Record<string, OutputEntry>, exportedSubjectTitle?: string) => {
+  const saveToHistory = (outputsToSave?: Record<string, OutputEntry>, exportedSubjectTitle?: string): void => {
     const outputsData = outputsToSave || outputs;
-    if (!extractedText || Object.keys(outputsData).length === 0) {
-      return;
-    }
+    if (!extractedText || Object.keys(outputsData).length === 0) return;
 
     const firstSummary = Object.values(outputsData)[0]?.summary || "";
     const title = getSummaryTitle(firstSummary, fileName || "Zusammenfassung");
-
-    // Create PDF-based ID to group entries from the same PDF
     const pdfId = createPdfId(fileName || "untitled", extractedText);
-
-    // Use existing history ID if we loaded from history, otherwise use PDF ID
     const historyId = currentHistoryId || pdfId;
     const now = Date.now();
 
@@ -602,14 +650,10 @@ export default function AppClient() {
         return hPdfId === pdfId;
       });
 
-      // Determine exportedSubject: use new one if provided, otherwise keep existing
       let finalExportedSubject: string | undefined;
       if (exportedSubjectTitle !== undefined) {
-        // Explicitly provided (could be undefined if export failed or no subject selected)
-        // If it's a non-empty string, use it; if undefined/empty, clear it
         finalExportedSubject = exportedSubjectTitle || undefined;
       } else {
-        // Not provided in this call, keep existing
         finalExportedSubject = existingEntry?.exportedSubject;
       }
 
@@ -626,24 +670,18 @@ export default function AppClient() {
       };
 
       const filtered = prev.filter((item) => {
-        if (item.id === entry.id) {
-          return false;
-        }
-        if (existingEntry && item.id === existingEntry.id) {
-          return false;
-        }
+        if (item.id === entry.id) return false;
+        if (existingEntry && item.id === existingEntry.id) return false;
         return true;
       });
 
       return [entry, ...filtered];
     });
 
-    if (!currentHistoryId) {
-      setCurrentHistoryId(historyId);
-    }
+    if (!currentHistoryId) setCurrentHistoryId(historyId);
   };
 
-  const loadFromHistory = (entry: HistoryEntry) => {
+  const loadFromHistory = (entry: HistoryEntry): void => {
     setFileName(entry.fileName);
     setExtractedText(entry.extractedText);
     setOutputs(entry.outputs);
@@ -652,28 +690,27 @@ export default function AppClient() {
     setLoadedFromHistory(true);
     setError("");
     setSidebarOpen(false);
-    // Set first model as selected if available
-    const firstModelId = Object.keys(entry.outputs)[0];
-    if (firstModelId) {
-      setSelectedModel(firstModelId);
+    setIsEditing(false);
+    const firstTabId = Object.keys(entry.outputs)[0];
+    if (firstTabId) {
+      setSelectedTabId(firstTabId);
+      const tab = entry.outputs[firstTabId];
+      if (tab) setSelectedModel(tab.modelId);
     }
   };
 
-  const deleteHistoryEntry = (id: string, event: React.MouseEvent) => {
+  const deleteHistoryEntry = (id: string, event: React.MouseEvent): void => {
     event.stopPropagation();
     updateHistoryState((prev) => prev.filter((entry) => entry.id !== id));
   };
 
-  const handleCopySummary = async () => {
-    if (!currentSummary) {
-      return;
-    }
+  const handleCopySummary = async (): Promise<void> => {
+    if (!currentSummary) return;
     try {
       await navigator.clipboard.writeText(currentSummary);
       setCopySuccess(true);
       setTimeout(() => setCopySuccess(false), 2000);
     } catch (err) {
-      // Fallback for older browsers
       const textArea = document.createElement("textarea");
       textArea.value = currentSummary;
       textArea.style.position = "fixed";
@@ -684,54 +721,94 @@ export default function AppClient() {
         document.execCommand("copy");
         setCopySuccess(true);
         setTimeout(() => setCopySuccess(false), 2000);
-      } catch (err) {
+      } catch (e) {
         // Ignore
       }
       document.body.removeChild(textArea);
     }
   };
 
-  // Save to history after generating (only if not loaded from history)
+  const handleEditStart = (): void => {
+    setEditDraft(currentSummary);
+    setIsEditing(true);
+  };
+
+  const handleEditSave = (): void => {
+    if (!selectedTabId || !currentOutput || editDraft === currentSummary) {
+      setIsEditing(false);
+      return;
+    }
+    setOutputs((prev) => ({
+      ...prev,
+      [selectedTabId]: {
+        ...currentOutput,
+        summary: editDraft,
+        updatedAt: Date.now()
+      }
+    }));
+    setLoadedFromHistory(false);
+    setIsEditing(false);
+  };
+
   useEffect(() => {
-    if (status === "ready" && Object.keys(outputs).length > 0 && extractedText && !generatingModelId && !loadedFromHistory) {
-      void saveToHistory();
+    if (status === "ready" && Object.keys(outputs).length > 0 && extractedText && !generatingTabId && !loadedFromHistory) {
+      saveToHistory();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [outputs, status, extractedText, generatingModelId, loadedFromHistory]);
+  }, [outputs, status, extractedText, generatingTabId, loadedFromHistory]);
+
+  const statusClass = status === "error" ? "error" : status === "ready" ? "ready" : "busy";
+  const isGenerating = generatingTabId === selectedTabId && generatingTabId !== null;
+  const canGenerate = status !== "parsing" && status !== "summarizing" && !isRefining;
+  const canExport = !!currentSummary && status !== "exporting";
 
   return (
-    <main className={sidebarOpen ? "sidebar-open" : ""}>
-      <aside className="sidebar">
+    <div className="app">
+      <div
+        className={"sidebar-backdrop" + (sidebarOpen ? " visible" : "")}
+        onClick={() => setSidebarOpen(false)}
+      />
+
+      <aside className={"sidebar" + (sidebarOpen ? " open" : "")}>
         <div className="sidebar-header">
           <h2>Historie</h2>
+          <button
+            type="button"
+            className="sidebar-close"
+            onClick={() => setSidebarOpen(false)}
+            aria-label="Sidebar schliessen"
+          >
+            <IconX />
+          </button>
         </div>
         <div className="sidebar-content">
           {history.length === 0 ? (
-            <div className="hint">Noch keine Historie vorhanden.</div>
+            <p className="hint">Noch keine Eintraege.</p>
           ) : (
             <div className="history-groups">
               {groupHistoryByTime(history).map(([groupLabel, entries]) => (
-                <div key={groupLabel} className="history-group">
+                <div key={groupLabel}>
                   <h3 className="history-group-title">{groupLabel}</h3>
                   <ul className="history-list">
                     {entries.map((entry) => (
                       <li
                         key={entry.id}
-                        className="history-item"
-                        onClick={() => void loadFromHistory(entry)}
+                        className={"history-item" + (entry.id === currentHistoryId ? " active" : "")}
+                        onClick={() => loadFromHistory(entry)}
                       >
                         <div className="history-item-content">
                           <strong>{entry.title}</strong>
                           {entry.exportedSubject && (
-                            <span className="hint">{entry.exportedSubject}</span>
+                            <span className="meta">{entry.exportedSubject}</span>
                           )}
                         </div>
                         <button
                           type="button"
                           className="history-delete"
-                          onClick={(e) => void deleteHistoryEntry(entry.id, e)}
+                          onClick={(e) => deleteHistoryEntry(entry.id, e)}
+                          aria-label="Eintrag loeschen"
                         >
-                          ×
+                          <IconX />
                         </button>
                       </li>
                     ))}
@@ -742,102 +819,54 @@ export default function AppClient() {
           )}
         </div>
       </aside>
-      <div className="page">
+
+      <div className="main">
         <header className="header">
-          <div className="header-title">
+          <div className="header-left">
             <button
               type="button"
               className="sidebar-toggle"
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              style={{ padding: "6px 10px", borderRadius: "6px", border: "1px solid var(--stroke)", background: "var(--surface-muted)", fontSize: "16px", lineHeight: 1 }}
+              aria-label="Historie oeffnen"
             >
-              {sidebarOpen ? "←" : "→"}
+              <IconMenu />
             </button>
-            <div>
-              <h1>Summary Maker</h1>
-              <span>PDF rein, Zusammenfassung raus, Notion ready.</span>
-            </div>
+            <h1 className="header-title">Summary Maker</h1>
           </div>
-          <div className="header-actions">
+          <div className="header-right">
             <button
-              className="theme-toggle"
               type="button"
+              className="icon-btn"
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              aria-label={theme === "dark" ? "Light Mode" : "Dark Mode"}
+              title={theme === "dark" ? "Light Mode" : "Dark Mode"}
             >
-              {theme === "dark" ? "Light Mode" : "Dark Mode"}
+              {theme === "dark" ? <IconSun /> : <IconMoon />}
             </button>
-            <div className="status">
-              <span
-                className={`status-dot ${
-                  status === "error" ? "error" : status === "ready" ? "ready" : "busy"
-                }`}
-              />
-              {statusLabels[status]}
+            <div className="status-badge">
+              <span className={"status-dot " + statusClass} />
+              <span className="status-text">{statusLabels[status]}</span>
             </div>
           </div>
         </header>
 
-        {error ? <div className="error">{error}</div> : null}
+        {error && <div className="error-banner">{error}</div>}
 
-        <section className="config">
-          <div className="field">
-            <label>Fach (Notion)</label>
-            <select
-              value={selectedSubject}
-              onChange={(event) => setSelectedSubject(event.target.value)}
-            >
-              {subjects.length === 0 ? (
-                <option value="">Keine Notion-Seiten gefunden</option>
-              ) : null}
-              {subjects.map((subject) => (
-                <option key={subject.id} value={subject.id}>
-                  {subject.title}
-                </option>
-              ))}
-            </select>
-            <span className="hint">Ziel ist eine neue Unterseite im Fach.</span>
-          </div>
-
-          <div className="field">
-            <label>KI-Modell (OpenRouter)</label>
-            <select
-              value={selectedModel}
-              onChange={(event) => handleModelChange(event.target.value)}
-            >
-              {models.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.displayName}
-                </option>
-              ))}
-            </select>
-            <span className="hint">
-              {selectedModel ? `ID: ${selectedModel}` : "Bitte Modell waehlen"}
-            </span>
-          </div>
-
-          <div className="field">
-            <label>Strukturvorgaben (optional)</label>
-            <textarea
-              rows={3}
-              placeholder="z.B. Einleitung, Begriffe, Beispiele"
-              value={structureHints}
-              onChange={(event) => setStructureHints(event.target.value)}
-            />
-          </div>
-        </section>
-
-        <section className="grid">
-          <div className="panel">
-            <h2>Input & Kosten</h2>
+        <div className="content">
+          <div className="input-panel">
             <div
-              className={`dropzone ${dragActive ? "drag" : ""}`}
+              className={"dropzone" + (dragActive ? " drag" : "")}
               onDrop={onDrop}
               onDragOver={onDragOver}
               onDragLeave={onDragLeave}
               onClick={() => fileInputRef.current?.click()}
             >
-              <strong>PDF hier ablegen</strong>
-              <span>oder klicken, um eine Datei auszuwaehlen</span>
+              <div className="dropzone-label">
+                {fileName || "PDF hochladen"}
+              </div>
+              <div className="dropzone-hint">
+                {fileName ? "Klicken fuer neue Datei" : "Ablegen oder klicken"}
+              </div>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -847,181 +876,241 @@ export default function AppClient() {
               />
             </div>
 
-            <div className="cost-box">
-              <strong>Kosten-Vorschau</strong>
-              <div>Datei: {fileName || "--"}</div>
-              <div>Input Tokens: {currentCost ? currentCost.tokensIn.toLocaleString() : "--"}</div>
-              <div>Input Kosten: {currentCost ? formatMoney(currentCost.costIn, currentCost.currency) : "--"}</div>
-              <div>Output Tokens: {currentCost ? currentCost.tokensOut.toLocaleString() : "--"}</div>
-              <div>Output Kosten: {currentCost ? formatMoney(currentCost.costOut, currentCost.currency) : "--"}</div>
-              <div>Gesamt: {currentCost ? formatMoney(currentCost.total, currentCost.currency) : "--"}</div>
+            <div className="field">
+              <label className="field-label">Fach</label>
+              <select
+                value={selectedSubject}
+                onChange={(e) => setSelectedSubject(e.target.value)}
+              >
+                {subjects.length === 0 ? (
+                  <option value="">Keine Faecher</option>
+                ) : (
+                  subjects.map((subject) => (
+                    <option key={subject.id} value={subject.id}>
+                      {subject.title}
+                    </option>
+                  ))
+                )}
+              </select>
             </div>
 
-            <div className="stats">
-              <div className="stats-header">
-                <strong>OpenRouter Stats</strong>
-                <span className="hint">{statsLabel}</span>
-              </div>
-              <div className="stats-grid">
-                <div className="stat">
-                  <span>Prompt Tokens</span>
-                  <strong>{formatNumber(currentUsage?.promptTokens ?? null)}</strong>
-                </div>
-                <div className="stat">
-                  <span>Output Tokens</span>
-                  <strong>{formatNumber(currentUsage?.completionTokens ?? null)}</strong>
-                </div>
-                <div className="stat">
-                  <span>Total Tokens</span>
-                  <strong>{formatNumber(currentUsage?.totalTokens ?? null)}</strong>
-                </div>
-                <div className="stat">
-                  <span>Tokens/sec</span>
-                  <strong>{formatNumber(currentUsage?.tokensPerSecond ?? null, 1)}</strong>
-                </div>
-                <div className="stat">
-                  <span>Dauer</span>
-                  <strong>{formatSeconds(currentUsage?.durationMs ?? null)}</strong>
-                </div>
-                <div className="stat">
-                  <span>Kosten In</span>
-                  <strong>
-                    {currentUsage?.currency
-                      ? formatMoney(currentUsage.costIn, currentUsage.currency)
-                      : "--"}
-                  </strong>
-                </div>
-                <div className="stat">
-                  <span>Kosten Out</span>
-                  <strong>
-                    {currentUsage?.currency
-                      ? formatMoney(currentUsage.costOut, currentUsage.currency)
-                      : "--"}
-                  </strong>
-                </div>
-                <div className="stat">
-                  <span>Kosten Total</span>
-                  <strong>
-                    {currentUsage?.currency
-                      ? formatMoney(currentUsage.costTotal, currentUsage.currency)
-                      : "--"}
-                  </strong>
-                </div>
-              </div>
+            <div className="field">
+              <label className="field-label">Modell</label>
+              <select
+                value={selectedModel}
+                onChange={(e) => handleModelChange(e.target.value)}
+              >
+                {models.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.displayName}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            <div className="hint">
-              Token-Logik basiert auf der PDF-Quelle, ohne KI-Vorgaben.
+            <div className="field">
+              <label className="field-label">Struktur (optional)</label>
+              <textarea
+                rows={2}
+                placeholder="z.B. Einleitung, Begriffe"
+                value={structureHints}
+                onChange={(e) => setStructureHints(e.target.value)}
+              />
             </div>
+
+            {currentCost && (
+              <div className="cost-preview">
+                <div className="cost-preview-title">Kostenvorschau</div>
+                <div className="cost-row">
+                  <span>Input</span>
+                  <strong>{formatMoney(currentCost.costIn, currentCost.currency)}</strong>
+                </div>
+                <div className="cost-row">
+                  <span>Output (geschaetzt)</span>
+                  <strong>{formatMoney(currentCost.costOut, currentCost.currency)}</strong>
+                </div>
+                <div className="cost-row">
+                  <span>Gesamt</span>
+                  <strong>{formatMoney(currentCost.total, currentCost.currency)}</strong>
+                </div>
+              </div>
+            )}
+
+            {currentUsage && (
+              <div className="stats-section">
+                <button
+                  type="button"
+                  className="stats-toggle"
+                  onClick={() => setStatsOpen(!statsOpen)}
+                >
+                  <span>OpenRouter Stats</span>
+                  <span className={"stats-toggle-icon" + (statsOpen ? " open" : "")}>
+                    <IconChevron />
+                  </span>
+                </button>
+                <div className={"stats-content" + (statsOpen ? " open" : "")}>
+                  <div className="stats-grid">
+                    <div className="stat">
+                      <div className="stat-label">Prompt</div>
+                      <div className="stat-value">{formatNumber(currentUsage.promptTokens)}</div>
+                    </div>
+                    <div className="stat">
+                      <div className="stat-label">Output</div>
+                      <div className="stat-value">{formatNumber(currentUsage.completionTokens)}</div>
+                    </div>
+                    <div className="stat">
+                      <div className="stat-label">Tok/s</div>
+                      <div className="stat-value">{formatNumber(currentUsage.tokensPerSecond, 1)}</div>
+                    </div>
+                    <div className="stat">
+                      <div className="stat-label">Dauer</div>
+                      <div className="stat-value">{formatSeconds(currentUsage.durationMs)}</div>
+                    </div>
+                    <div className="stat">
+                      <div className="stat-label">Kosten</div>
+                      <div className="stat-value">
+                        {currentUsage.currency
+                          ? formatMoney(currentUsage.costTotal, currentUsage.currency)
+                          : "-"}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="panel">
-            <div className="panel-header">
-              <h2>Output & Review</h2>
-              <div className="panel-actions">
+          <div className="output-panel">
+            <div className="output-header">
+              <div className="output-tabs">
+                {outputTabs.length === 0 ? (
+                  <span className="hint">Noch keine Ausgabe</span>
+                ) : (
+                  outputTabs.map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      className={"output-tab" + (tab.id === selectedTabId ? " active" : "") + (tab.isGenerating ? " generating" : "")}
+                      onClick={() => handleTabChange(tab.id)}
+                    >
+                      {tab.label}
+                    </button>
+                  ))
+                )}
+              </div>
+              <div className="output-actions">
                 <button
-                  className="button secondary"
+                  type="button"
+                  className="btn btn-secondary btn-sm"
                   onClick={handleGenerate}
-                  disabled={status === "parsing" || isRefining || (generatingModelId !== null && generatingModelId === selectedModel)}
+                  disabled={!canGenerate}
                 >
-                  {generatingModelId === selectedModel ? "Wird generiert..." : "Zusammenfassung erzeugen"}
+                  {generatingTabId ? "Generiert..." : "Generieren"}
                 </button>
                 <button
-                  className="button primary"
+                  type="button"
+                  className="btn btn-primary btn-sm"
                   onClick={handleExport}
-                  disabled={status === "exporting" || !currentSummary}
+                  disabled={!canExport}
                 >
-                  Final nach Notion exportieren
+                  Nach Notion
                 </button>
               </div>
             </div>
-            <div className="output-tabs">
-              {outputTabs.length === 0 ? (
-                <span className="hint">Noch keine Modell-Ausgaben vorhanden.</span>
+
+            <div className="preview-container">
+              {isEditing ? (
+                <div className="markdown-editor">
+                  <textarea
+                    value={editDraft}
+                    onChange={(e) => setEditDraft(e.target.value)}
+                    onBlur={handleEditSave}
+                    autoFocus
+                  />
+                </div>
               ) : (
-                outputTabs.map((tab) => (
-                  <button
-                    key={tab.modelId}
-                    className={`output-tab ${tab.modelId === selectedModel ? "active" : ""} ${tab.modelId === generatingModelId ? "generating" : ""}`}
-                    type="button"
-                    onClick={() => handleModelChange(tab.modelId)}
-                  >
-                    {tab.label}
-                    {tab.modelId === generatingModelId && " ⏳"}
-                  </button>
-                ))
-              )}
-            </div>
-            <div className="preview">
-              <button
-                type="button"
-                className="copy-button"
-                onClick={handleCopySummary}
-                disabled={!currentSummary}
-                title="Zusammenfassung kopieren"
-              >
-                {copySuccess ? (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M20 6L9 17l-5-5" />
-                  </svg>
-                ) : (
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                  </svg>
-                )}
-              </button>
-              {currentSummary ? (
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm, remarkMath]}
-                  rehypePlugins={[rehypeKatex]}
-                >
-                  {currentSummary}
-                </ReactMarkdown>
-              ) : (
-                <span className="hint">
-                  {selectedModel
-                    ? "Fuer dieses Modell gibt es noch keine Zusammenfassung."
-                    : "Noch keine Zusammenfassung erzeugt."}
-                </span>
+                <div className="preview">
+                  {currentSummary && (
+                    <div className="preview-toolbar">
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        onClick={handleEditStart}
+                        title="Bearbeiten"
+                        aria-label="Markdown bearbeiten"
+                      >
+                        <IconEdit />
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        onClick={handleCopySummary}
+                        title="Kopieren"
+                        aria-label="Zusammenfassung kopieren"
+                      >
+                        {copySuccess ? <IconCheck /> : <IconCopy />}
+                      </button>
+                    </div>
+                  )}
+                  {currentSummary ? (
+                    <div className="markdown-content">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm, remarkMath]}
+                        rehypePlugins={[rehypeKatex]}
+                      >
+                        {currentSummary}
+                      </ReactMarkdown>
+                    </div>
+                  ) : (
+                    <div className="preview-empty">
+                      {extractedText
+                        ? "PDF geladen. Auf Generieren klicken."
+                        : "PDF hochladen, dann Generieren."}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
 
-            <form className="chat" onSubmit={handleRefineSubmit}>
+            <form className="refine-bar" onSubmit={handleRefineSubmit}>
               <input
                 value={input}
                 onChange={handleInputChange}
-                placeholder="Aenderung anfordern, z.B. kuerzer oder genauer..."
+                placeholder="Aenderung anfordern..."
                 disabled={!currentSummary || isRefining}
               />
               <button
-                className="button secondary"
                 type="submit"
-                disabled={!currentSummary || isRefining}
+                className="btn btn-secondary"
+                disabled={!currentSummary || isRefining || !input.trim()}
               >
-                Ueberarbeiten
+                {isRefining ? "Laeuft..." : "Ueberarbeiten"}
               </button>
             </form>
-          </div>
-        </section>
 
-        <section className="actions">
-          <button
-            className="button secondary"
-            onClick={handleGenerate}
-            disabled={status === "parsing" || isRefining || (generatingModelId !== null && generatingModelId === selectedModel)}
-          >
-            {generatingModelId === selectedModel ? "Wird generiert..." : "Zusammenfassung erzeugen"}
-          </button>
-          <button
-            className="button primary"
-            onClick={handleExport}
-            disabled={status === "exporting" || !currentSummary}
-          >
-            Final nach Notion exportieren
-          </button>
-        </section>
+            <div className="bottom-actions">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleGenerate}
+                disabled={!canGenerate}
+                style={{ flex: 1 }}
+              >
+                {generatingTabId ? "Generiert..." : "Generieren"}
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleExport}
+                disabled={!canExport}
+                style={{ flex: 1 }}
+              >
+                Nach Notion
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
-    </main>
+    </div>
   );
 }

@@ -149,13 +149,42 @@ Nach der Zusammenfassung muss gelten:
 
 ---
 ## 11. Formatierung & Notion-Output
--Benuzter so viel wie möglich Stichpunkte, gelegentliche Flüssigtext sind jedoch auch erlaubt
-- Struktur: Verwende ausschließlich Markdown.
-- Hervorhebungen: Nutze ruduziert `**Fettdruck**` für zentrale Fachbegriffe.
-- Definitionen: Nutze Callouts oder Zitate, indem du den Text mit `> ` einleitest.
-- Listen:Nutze `- ` für Aufzählungen, keine Nummerierungen (wie in Punkt 2 festgelegt).
-- Code & Formeln: 
-    - Code-Blöcke mit Sprach-Tag (z.B. ```python).
-    - LaTeX-Formeln für mathematische Ausdrücke unbedingt in `$$` einschließen.
-- Tabellen: Komplexe Vergleiche in Standard-Markdown-Tabellen darstellen.
-- Keine Metadaten: Die Ausgabe beginnt direkt mit der ersten H1-Überschrift. Kein "Hier ist die Zusammenfassung".
+
+- Benutze so viel wie möglich Stichpunkte, gelegentlicher Fließtext ist jedoch auch erlaubt
+- Struktur: Verwende ausschließlich Markdown
+- Hervorhebungen: Nutze reduziert `**Fettdruck**` für zentrale Fachbegriffe
+- Definitionen: Nutze Zitate/Callouts mit `> ` am Zeilenanfang
+
+### Listen-Formatierung (wichtig für Notion-Export)
+
+- Aufzählungen mit `- ` (Bindestrich + Leerzeichen)
+- Nummerierte Listen mit `1. `, `2. ` etc. nur bei echten Abläufen/Sequenzen
+- **Verschachtelte Listen**: 4 Leerzeichen Einrückung, direkt nach dem Eltern-Element (keine Leerzeile dazwischen)
+
+```
+- Hauptpunkt
+    - Unterpunkt 1
+    - Unterpunkt 2
+- Nächster Hauptpunkt
+```
+
+- **NICHT so** (verursacht Darstellungsfehler):
+
+```
+- Hauptpunkt
+
+  - Unterpunkt mit Leerzeile davor
+```
+
+### Überschriften
+
+- Maximal H1, H2, H3 verwenden (H4 und tiefer werden nicht korrekt exportiert)
+- Für Unter-Unterpunkte stattdessen **Fettdruck** im Text verwenden
+
+### Sonstiges
+
+- Code-Blöcke mit Sprach-Tag (z.B. \`\`\`python)
+- LaTeX-Formeln in `$$` einschließen
+- Tabellen: Standard-Markdown-Tabellen für Vergleiche
+- Trennlinien: `---` für thematische Abschnitte (wird zu Notion-Divider)
+- Keine Metadaten: Ausgabe beginnt direkt mit der ersten H1-Überschrift
