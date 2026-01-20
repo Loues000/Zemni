@@ -16,9 +16,17 @@ const loadGuidelines = async (): Promise<string> => {
   return fs.readFile(filePath, "utf8");
 };
 
+const FORMAT_CONTRACT = [
+  "",
+  "WICHTIG - Formatvertrag:",
+  "- Ausgabe beginnt DIREKT mit einer H1-Ueberschrift (# Titel).",
+  "- KEINE Metadaten, KEIN Frontmatter, KEINE einleitenden Kommentare.",
+  "- Nur reines Markdown."
+].join("\n");
+
 export const buildSummaryPrompts = async (text: string, structure?: string) => {
   const guidelines = await loadGuidelines();
-  const systemPrompt = `${BASE_IDENTITY}\n\nRegelwerk (KI-Vorgaben):\n${guidelines}\n\nHalte dich strikt an das Regelwerk.`;
+  const systemPrompt = `${BASE_IDENTITY}\n\nRegelwerk (KI-Vorgaben):\n${guidelines}\n\nHalte dich strikt an das Regelwerk.${FORMAT_CONTRACT}`;
   const userPrompt = [
     "Quelle (PDF-Extrakt):",
     text,
@@ -26,7 +34,7 @@ export const buildSummaryPrompts = async (text: string, structure?: string) => {
     "Optionale Strukturvorgaben (Ueberschriften):",
     structure?.trim() ? structure.trim() : "Keine",
     "",
-    "Gib ausschliesslich die fertige Zusammenfassung in Markdown aus."
+    "Gib ausschliesslich die fertige Zusammenfassung in Markdown aus. Beginne direkt mit # Titel."
   ].join("\n");
 
   return { systemPrompt, userPrompt };
@@ -39,9 +47,11 @@ export const buildRefineSystemPrompt = async (summary: string) => {
     "",
     "Regelwerk (KI-Vorgaben):",
     guidelines,
+    FORMAT_CONTRACT,
     "",
     "Du ueberarbeitest die bestehende Zusammenfassung anhand der Nutzeranweisung.",
     "Gib ausschliesslich die vollstaendig aktualisierte Zusammenfassung in Markdown aus.",
+    "Beginne direkt mit # Titel (H1-Ueberschrift).",
     "",
     "Aktuelle Zusammenfassung:",
     summary

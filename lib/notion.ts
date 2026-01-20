@@ -4,6 +4,12 @@ import { markdownToBlocks } from "./markdown";
 
 const notion = new Client({ auth: process.env.NOTION_TOKEN });
 
+export type ExportProgress = 
+  | { type: "started"; totalBlocks: number; totalChunks: number }
+  | { type: "chunk"; index: number; totalChunks: number }
+  | { type: "done"; pageId: string }
+  | { type: "error"; message: string };
+
 const getPageTitle = (page: PageObjectResponse): string => {
   const properties = page.properties as Record<string, any>;
   const titleProp = Object.values(properties).find((prop) => prop?.type === "title");
@@ -43,32 +49,70 @@ const stripLeadingH1 = (markdown: string): string => {
 export const exportSummary = async (
   subjectId: string,
   title: string,
-  markdown: string
+  markdown: string,
+  onProgress?: (progress: ExportProgress) => void
 ): Promise<string> => {
-  const cleanedMarkdown = stripLeadingH1(markdown);
-  const blocks = markdownToBlocks(cleanedMarkdown);
-  const firstChunk = blocks.slice(0, 100);
+  try {
+    const cleanedMarkdown = stripLeadingH1(markdown);
+    const blocks = markdownToBlocks(cleanedMarkdown);
+    const totalChunks = Math.ceil(blocks.length / 100);
 
-  const page = await notion.pages.create({
-    parent: { page_id: subjectId },
-    properties: {
-      title: {
-        title: [{ text: { content: title } }]
+    onProgress?.({ type: "started", totalBlocks: blocks.length, totalChunks });
+
+    // Filter out equation blocks and convert them to code blocks
+    // Notion API may not support equation blocks in all contexts
+    const safeBlocks = blocks.map((block) => {
+      if (block.type === "equation") {
+        return {
+          object: "block",
+          type: "code",
+          code: {
+            rich_text: [{ 
+              type: "text", 
+              text: { content: (block as any).equation?.expression || "" },
+              annotations: { bold: false, italic: false, strikethrough: false, underline: false, code: false, color: "default" }
+            }],
+            language: "latex"
+          }
+        } as BlockObjectRequest;
       }
-    },
-    children: firstChunk
-  });
-
-  const pageId = page.id;
-  let index = 100;
-  while (index < blocks.length) {
-    const chunk = blocks.slice(index, index + 100) as BlockObjectRequest[];
-    await notion.blocks.children.append({
-      block_id: pageId,
-      children: chunk
+      return block;
     });
-    index += 100;
-  }
 
-  return pageId;
+    const firstChunk = safeBlocks.slice(0, 100);
+
+    const page = await notion.pages.create({
+      parent: { page_id: subjectId },
+      properties: {
+        title: {
+          title: [{ text: { content: title } }]
+        }
+      },
+      children: firstChunk
+    });
+
+    onProgress?.({ type: "chunk", index: 1, totalChunks });
+
+    const pageId = page.id;
+    let index = 100;
+    let chunkIndex = 2;
+    while (index < safeBlocks.length) {
+      const chunk = safeBlocks.slice(index, index + 100) as BlockObjectRequest[];
+      await notion.blocks.children.append({
+        block_id: pageId,
+        children: chunk
+      });
+      onProgress?.({ type: "chunk", index: chunkIndex, totalChunks });
+      index += 100;
+      chunkIndex += 1;
+    }
+
+    onProgress?.({ type: "done", pageId });
+    return pageId;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error("Notion export error:", error);
+    onProgress?.({ type: "error", message: errorMessage });
+    throw error;
+  }
 };

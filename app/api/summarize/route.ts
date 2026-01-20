@@ -4,6 +4,7 @@ import { openrouter } from "@/lib/openrouter";
 import { buildSummaryPrompts } from "@/lib/prompts";
 import { loadModels } from "@/lib/models";
 import { buildUsageStats } from "@/lib/usage";
+import { enforceOutputFormat } from "@/lib/format-output";
 
 export const runtime = "nodejs";
 
@@ -16,6 +17,7 @@ export async function POST(request: Request) {
   const text = String(body.text ?? "");
   const modelId = String(body.modelId ?? "");
   const structure = String(body.structure ?? "");
+  const titleHint = String(body.titleHint ?? "");
 
   if (!text || !modelId) {
     return NextResponse.json({ error: "Missing text or model" }, { status: 400 });
@@ -33,6 +35,9 @@ export async function POST(request: Request) {
     ]
   });
 
+  // Post-process to enforce format (no metadata, starts with H1)
+  const summary = enforceOutputFormat(result.text, titleHint || undefined);
+
   const usage = buildUsageStats(result.usage, Date.now() - start, model, "summarize");
-  return NextResponse.json({ summary: result.text, usage });
+  return NextResponse.json({ summary, usage });
 }

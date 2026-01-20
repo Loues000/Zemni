@@ -529,6 +529,15 @@ a {
   font-weight: 500;
   color: var(--text-secondary);
   margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.estimating-indicator {
+  font-weight: 400;
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 .cost-row {
@@ -540,6 +549,27 @@ a {
 
 .cost-row strong {
   color: var(--text-primary);
+}
+
+.cost-row-total {
+  border-top: 1px solid var(--stroke);
+  margin-top: 4px;
+  padding-top: 8px;
+  font-weight: 500;
+}
+
+.heuristic-hint {
+  color: var(--accent);
+  cursor: help;
+  margin-left: 2px;
+}
+
+.cost-hint {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--stroke);
+  font-size: 10px;
+  color: var(--text-muted);
 }
 
 /* ========== Output Panel (Right) ========== */
@@ -659,6 +689,44 @@ a {
 .output-actions {
   display: flex;
   gap: 8px;
+  align-items: center;
+}
+
+.export-actions-group {
+  display: flex;
+  gap: 4px;
+}
+
+.export-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  border: 1px solid var(--stroke);
+  font-size: 12px;
+}
+
+.export-progress-text {
+  white-space: nowrap;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.export-progress-bar {
+  width: 60px;
+  height: 4px;
+  background: var(--stroke);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.export-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.2s ease;
 }
 
 /* ========== Preview ========== */

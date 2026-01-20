@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import pdfParse from "pdf-parse";
-import { loadModels } from "@/lib/models";
-import { buildCostRows, countTokensByEncoding } from "@/lib/token-cost";
+import { normalizePdfText } from "@/lib/normalize-pdf-text";
 
 export const runtime = "nodejs";
 
@@ -23,10 +22,9 @@ export async function POST(request: Request) {
     text = buffer.toString("utf8");
   }
 
-  const models = await loadModels();
-  const encodings = models.map((model) => model.tokenizer);
-  const tokensByEncoding = await countTokensByEncoding(text, encodings);
-  const modelCosts = buildCostRows(models, tokensByEncoding, 0);
+  // Normalize text to improve quality and reduce tokens
+  text = normalizePdfText(text);
 
-  return NextResponse.json({ text, modelCosts });
+  // Return only extracted text - token/cost estimation is handled by /api/token-estimate
+  return NextResponse.json({ text });
 }

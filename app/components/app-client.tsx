@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "ai/react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -77,6 +77,13 @@ type HistoryEntry = {
   createdAt: number;
   updatedAt: number;
   exportedSubject?: string;
+  notionPageId?: string;
+};
+
+type CostHeuristic = {
+  outputRatio: number;
+  outputCap: number;
+  estimatedOutputTokens: number;
 };
 
 const statusLabels: Record<Status, string> = {
@@ -110,6 +117,67 @@ const getSummaryTitle = (summary: string, fallback: string): string => {
     return match[1].trim();
   }
   return fallback;
+};
+
+/**
+ * Client-side output format enforcement for streamed content.
+ * Ensures the summary starts with an H1 heading and has no leading metadata.
+ */
+const enforceClientOutputFormat = (text: string): string => {
+  let result = text.trim();
+
+  // Remove YAML frontmatter if present
+  result = result.replace(/^---[\s\S]*?---\s*/, "").trim();
+
+  // Remove common metadata patterns from the beginning
+  const metadataPatterns = [
+    /^(Zusammenfassung|Summary|Titel|Title|Datum|Date|Autor|Author|Fach|Subject):\s*[^\n]*\n*/gi,
+    /^\*\*[^*]+\*\*:\s*[^\n]*\n*/g,
+    /^-{3,}\s*\n*/g,
+  ];
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const pattern of metadataPatterns) {
+      const before = result;
+      result = result.replace(pattern, "").trim();
+      if (result !== before) changed = true;
+    }
+  }
+
+  // Check if the first non-empty line is an H1
+  const lines = result.split("\n");
+  const firstContentLineIndex = lines.findIndex((line) => line.trim().length > 0);
+
+  if (firstContentLineIndex === -1) {
+    return result;
+  }
+
+  const firstLine = lines[firstContentLineIndex].trim();
+
+  // If first line is already H1, we're good
+  if (firstLine.startsWith("# ")) {
+    return result;
+  }
+
+  // If first line is H2/H3, convert to H1
+  if (firstLine.startsWith("## ")) {
+    lines[firstContentLineIndex] = "# " + firstLine.slice(3);
+    return lines.join("\n").trim();
+  }
+  if (firstLine.startsWith("### ")) {
+    lines[firstContentLineIndex] = "# " + firstLine.slice(4);
+    return lines.join("\n").trim();
+  }
+  if (firstLine.startsWith("**") && firstLine.endsWith("**") && !firstLine.includes("\n")) {
+    const titleText = firstLine.slice(2, -2);
+    lines[firstContentLineIndex] = "# " + titleText;
+    return lines.join("\n").trim();
+  }
+
+  // No H1 found - keep as is (server should have handled this for initial summaries)
+  return result;
 };
 
 const getModelLabel = (models: Model[], modelId: string): string => {
@@ -302,7 +370,12 @@ export default function AppClient(): JSX.Element {
   const [editDraft, setEditDraft] = useState("");
   const [editDraftSecond, setEditDraftSecond] = useState("");
   const [tabToDelete, setTabToDelete] = useState<string | null>(null);
+  const [costHeuristic, setCostHeuristic] = useState<CostHeuristic | null>(null);
+  const [isEstimating, setIsEstimating] = useState(false);
+  const [exportProgress, setExportProgress] = useState<{ current: number; total: number } | null>(null);
+  const [lastExportedPageId, setLastExportedPageId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const estimateAbortRef = useRef<AbortController | null>(null);
   const refineTargetRef = useRef<string>("");
   const previewRef1 = useRef<HTMLDivElement | null>(null);
   const previewRef2 = useRef<HTMLDivElement | null>(null);
@@ -310,9 +383,12 @@ export default function AppClient(): JSX.Element {
 
   const chatConfig = useChat({
     api: "/api/refine",
-    onFinish: (message: { content: string }) => {
+    onFinish: (message) => {
       const targetTabId = refineTargetRef.current;
-      if (targetTabId) {
+      const content = message?.content || "";
+      if (targetTabId && content) {
+        // Apply client-side format enforcement for streamed content
+        const formattedContent = enforceClientOutputFormat(content);
         setOutputs((prev) => {
           const existing = prev[targetTabId];
           if (!existing) return prev;
@@ -320,7 +396,7 @@ export default function AppClient(): JSX.Element {
             ...prev,
             [targetTabId]: {
               ...existing,
-              summary: message.content,
+              summary: formattedContent,
               updatedAt: Date.now()
             }
           };
@@ -342,6 +418,15 @@ export default function AppClient(): JSX.Element {
   const setData = chatConfig.setData;
   const setMessages = chatConfig.setMessages;
   const setInput = chatConfig.setInput;
+  const chatMessages = chatConfig.messages;
+
+  // Get the latest assistant message (streaming response during refine)
+  const streamingRefineContent = useMemo(() => {
+    if (!isRefining) return null;
+    const assistantMessages = chatMessages.filter(m => m.role === "assistant");
+    const lastAssistant = assistantMessages[assistantMessages.length - 1];
+    return lastAssistant?.content || null;
+  }, [isRefining, chatMessages]);
 
   const currentCost = useMemo(() => {
     return modelCosts.find((row) => row.id === selectedModel);
@@ -352,7 +437,11 @@ export default function AppClient(): JSX.Element {
   }, [outputs]);
 
   const currentOutput = selectedTabId ? outputs[selectedTabId] : undefined;
-  const currentSummary = currentOutput?.summary ?? "";
+  // Show streaming content during refine if the current tab is being refined
+  const isCurrentTabRefining = isRefining && refineTargetRef.current === selectedTabId;
+  const currentSummary = isCurrentTabRefining && streamingRefineContent 
+    ? streamingRefineContent 
+    : (currentOutput?.summary ?? "");
   const currentUsage = currentOutput?.usage ?? null;
 
   const secondOutput = secondTabId ? outputs[secondTabId] : undefined;
@@ -439,6 +528,58 @@ export default function AppClient(): JSX.Element {
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [sidebarOpen]);
+
+  // Debounced token estimation - calls /api/token-estimate when extractedText or structureHints change
+  const fetchTokenEstimate = useCallback(async (text: string, hints: string) => {
+    if (!text) {
+      setModelCosts([]);
+      setCostHeuristic(null);
+      return;
+    }
+
+    // Abort any pending request
+    if (estimateAbortRef.current) {
+      estimateAbortRef.current.abort();
+    }
+    estimateAbortRef.current = new AbortController();
+
+    setIsEstimating(true);
+    try {
+      const res = await fetch("/api/token-estimate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ extractedText: text, structureHints: hints }),
+        signal: estimateAbortRef.current.signal
+      });
+      if (!res.ok) throw new Error("Token estimate failed");
+      const data = (await res.json()) as { modelCosts: CostRow[]; heuristic: CostHeuristic };
+      setModelCosts(data.modelCosts || []);
+      setCostHeuristic(data.heuristic || null);
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") {
+        // Ignore aborted requests
+        return;
+      }
+      // Keep existing costs on error
+    } finally {
+      setIsEstimating(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!extractedText) {
+      setModelCosts([]);
+      setCostHeuristic(null);
+      return;
+    }
+
+    // Debounce: wait 300ms after last change
+    const timer = setTimeout(() => {
+      fetchTokenEstimate(extractedText, structureHints);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [extractedText, structureHints, fetchTokenEstimate]);
 
   const handleTabChange = (tabId: string, event?: React.MouseEvent): void => {
     const isCtrlClick = event && (event.ctrlKey || event.metaKey);
@@ -576,6 +717,11 @@ export default function AppClient(): JSX.Element {
     setInput("");
     setData([]);
     setIsEditing(false);
+    setIsEditingSecond(false);
+    setModelCosts([]);
+    setCostHeuristic(null);
+    setLastExportedPageId(null);
+    setExportProgress(null);
     refineTargetRef.current = "";
     try {
       const formData = new FormData();
@@ -585,9 +731,9 @@ export default function AppClient(): JSX.Element {
         body: formData
       });
       if (!res.ok) throw new Error("PDF konnte nicht verarbeitet werden.");
-      const data = (await res.json()) as { text: string; modelCosts: CostRow[] };
+      const data = (await res.json()) as { text: string };
       setExtractedText(data.text || "");
-      setModelCosts(data.modelCosts || []);
+      // Token estimation is handled by the debounced effect
       setStatus("ready");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unbekannter Fehler");
@@ -686,6 +832,9 @@ export default function AppClient(): JSX.Element {
     }
     setError("");
     setStatus("exporting");
+    setExportProgress(null);
+    setLastExportedPageId(null);
+
     try {
       const title = getSummaryTitle(currentSummary, fileName || "Zusammenfassung");
       const res = await fetch("/api/notion/export", {
@@ -694,19 +843,65 @@ export default function AppClient(): JSX.Element {
         body: JSON.stringify({
           subjectId: selectedSubject,
           title,
-          markdown: currentSummary
+          markdown: currentSummary,
+          stream: true
         })
       });
+
       if (!res.ok) throw new Error("Notion Export fehlgeschlagen.");
+
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("Stream nicht verfuegbar.");
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let exportedPageId: string | null = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const event = JSON.parse(line) as { type: string; [key: string]: unknown };
+            if (event.type === "started") {
+              setExportProgress({ current: 0, total: event.totalChunks as number });
+            } else if (event.type === "chunk") {
+              setExportProgress({ current: event.index as number, total: event.totalChunks as number });
+            } else if (event.type === "done") {
+              exportedPageId = event.pageId as string;
+              setLastExportedPageId(exportedPageId);
+            } else if (event.type === "error") {
+              throw new Error(event.message as string || "Export fehlgeschlagen");
+            }
+          } catch (parseErr) {
+            // Ignore parse errors for incomplete lines
+            if (parseErr instanceof Error && parseErr.message !== "Export fehlgeschlagen") {
+              // Only log non-error-event parse errors
+              console.warn("Failed to parse export event:", parseErr);
+            } else {
+              throw parseErr;
+            }
+          }
+        }
+      }
+
       setStatus("ready");
+      setExportProgress(null);
       const subjectTitle = subjects.find((s) => s.id === selectedSubject)?.title;
       setLoadedFromHistory(false);
       if (outputs && extractedText && subjectTitle) {
-        saveToHistory(undefined, subjectTitle);
+        saveToHistory(undefined, subjectTitle, exportedPageId || undefined);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unbekannter Fehler");
       setStatus("error");
+      setExportProgress(null);
     }
   };
 
@@ -759,7 +954,7 @@ export default function AppClient(): JSX.Element {
     });
   };
 
-  const saveToHistory = (outputsToSave?: Record<string, OutputEntry>, exportedSubjectTitle?: string): void => {
+  const saveToHistory = (outputsToSave?: Record<string, OutputEntry>, exportedSubjectTitle?: string, notionPageId?: string): void => {
     const outputsData = outputsToSave || outputs;
     if (!extractedText || Object.keys(outputsData).length === 0) return;
 
@@ -791,7 +986,8 @@ export default function AppClient(): JSX.Element {
         structureHints,
         createdAt: existingEntry?.createdAt || now,
         updatedAt: now,
-        exportedSubject: finalExportedSubject
+        exportedSubject: finalExportedSubject,
+        notionPageId: notionPageId || existingEntry?.notionPageId
       };
 
       const filtered = prev.filter((item) => {
@@ -816,6 +1012,15 @@ export default function AppClient(): JSX.Element {
     setError("");
     setSidebarOpen(false);
     setIsEditing(false);
+    setIsEditingSecond(false);
+    setSecondTabId(null);
+    // Reset export state to match the history entry
+    setLastExportedPageId(entry.notionPageId || null);
+    setExportProgress(null);
+    // Reset refine state
+    setMessages([]);
+    setInput("");
+    setData([]);
     const firstTabId = Object.keys(entry.outputs)[0];
     if (firstTabId) {
       setSelectedTabId(firstTabId);
@@ -1091,19 +1296,34 @@ export default function AppClient(): JSX.Element {
 
             {currentCost && (
               <div className="cost-preview">
-                <div className="cost-preview-title">Kostenvorschau</div>
+                <div className="cost-preview-title">
+                  Kostenvorschau
+                  {isEstimating && <span className="estimating-indicator"> (berechnet...)</span>}
+                </div>
                 <div className="cost-row">
-                  <span>Input</span>
+                  <span>Input ({formatNumber(currentCost.tokensIn)} Tokens)</span>
                   <strong>{formatMoney(currentCost.costIn, currentCost.currency)}</strong>
                 </div>
                 <div className="cost-row">
-                  <span>Output (geschaetzt)</span>
+                  <span>
+                    Output (~{formatNumber(currentCost.tokensOut)} Tokens)
+                    {costHeuristic && (
+                      <span className="heuristic-hint" title={`min(${costHeuristic.outputCap}, Input × ${costHeuristic.outputRatio})`}>
+                        *
+                      </span>
+                    )}
+                  </span>
                   <strong>{formatMoney(currentCost.costOut, currentCost.currency)}</strong>
                 </div>
-                <div className="cost-row">
+                <div className="cost-row cost-row-total">
                   <span>Gesamt</span>
                   <strong>{formatMoney(currentCost.total, currentCost.currency)}</strong>
                 </div>
+                {costHeuristic && (
+                  <div className="cost-hint">
+                    * Output-Schaetzung: min({costHeuristic.outputCap}, Input × {costHeuristic.outputRatio})
+                  </div>
+                )}
               </div>
             )}
 
@@ -1197,14 +1417,47 @@ export default function AppClient(): JSX.Element {
                 >
                   {generatingTabId ? "Generiert..." : "Generieren"}
                 </button>
-                <button
-                  type="button"
-                  className="btn btn-primary btn-sm"
-                  onClick={handleExport}
-                  disabled={!canExport}
-                >
-                  Nach Notion
-                </button>
+                {status === "exporting" && exportProgress ? (
+                  <div className="export-progress">
+                    <span className="export-progress-text">
+                      Exportiert... {exportProgress.current}/{exportProgress.total}
+                    </span>
+                    <div className="export-progress-bar">
+                      <div
+                        className="export-progress-fill"
+                        style={{ width: `${(exportProgress.current / exportProgress.total) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                ) : lastExportedPageId ? (
+                  <div className="export-actions-group">
+                    <a
+                      href={`https://notion.so/${lastExportedPageId.replace(/-/g, "")}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn btn-primary btn-sm"
+                    >
+                      In Notion oeffnen
+                    </a>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={handleExport}
+                      disabled={!canExport}
+                    >
+                      Erneut
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={handleExport}
+                    disabled={!canExport}
+                  >
+                    Nach Notion
+                  </button>
+                )}
               </div>
             </div>
 
@@ -1410,15 +1663,39 @@ export default function AppClient(): JSX.Element {
               >
                 {generatingTabId ? "Generiert..." : "Generieren"}
               </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={handleExport}
-                disabled={!canExport}
-                style={{ flex: 1 }}
-              >
-                Nach Notion
-              </button>
+              {status === "exporting" && exportProgress ? (
+                <div className="export-progress" style={{ flex: 1 }}>
+                  <span className="export-progress-text">
+                    {exportProgress.current}/{exportProgress.total}
+                  </span>
+                  <div className="export-progress-bar">
+                    <div
+                      className="export-progress-fill"
+                      style={{ width: `${(exportProgress.current / exportProgress.total) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              ) : lastExportedPageId ? (
+                <a
+                  href={`https://notion.so/${lastExportedPageId.replace(/-/g, "")}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-primary"
+                  style={{ flex: 1 }}
+                >
+                  In Notion oeffnen
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleExport}
+                  disabled={!canExport}
+                  style={{ flex: 1 }}
+                >
+                  Nach Notion
+                </button>
+              )}
             </div>
           </div>
         </div>
