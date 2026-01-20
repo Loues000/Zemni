@@ -264,6 +264,15 @@ function IconChevron(): JSX.Element {
   );
 }
 
+function IconClose(): JSX.Element {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+      <path d="M18 6L6 18M6 6l12 12" />
+    </svg>
+  );
+}
+
+
 export default function AppClient(): JSX.Element {
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [models, setModels] = useState<Model[]>([]);
@@ -280,16 +289,24 @@ export default function AppClient(): JSX.Element {
   const [modelCosts, setModelCosts] = useState<CostRow[]>([]);
   const [outputs, setOutputs] = useState<Record<string, OutputEntry>>({});
   const [selectedTabId, setSelectedTabId] = useState<string | null>(null);
+  const [secondTabId, setSecondTabId] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentHistoryId, setCurrentHistoryId] = useState<string | null>(null);
   const [loadedFromHistory, setLoadedFromHistory] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
+  const [copySuccessSecond, setCopySuccessSecond] = useState(false);
   const [statsOpen, setStatsOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [isEditingSecond, setIsEditingSecond] = useState(false);
   const [editDraft, setEditDraft] = useState("");
+  const [editDraftSecond, setEditDraftSecond] = useState("");
+  const [tabToDelete, setTabToDelete] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const refineTargetRef = useRef<string>("");
+  const previewRef1 = useRef<HTMLDivElement | null>(null);
+  const previewRef2 = useRef<HTMLDivElement | null>(null);
+  const isScrolling = useRef<boolean>(false);
 
   const chatConfig = useChat({
     api: "/api/refine",
@@ -337,6 +354,10 @@ export default function AppClient(): JSX.Element {
   const currentOutput = selectedTabId ? outputs[selectedTabId] : undefined;
   const currentSummary = currentOutput?.summary ?? "";
   const currentUsage = currentOutput?.usage ?? null;
+
+  const secondOutput = secondTabId ? outputs[secondTabId] : undefined;
+  const secondSummary = secondOutput?.summary ?? "";
+  const isSplitView = secondTabId !== null;
 
   useEffect(() => {
     const saved = window.localStorage.getItem("theme");
@@ -419,9 +440,37 @@ export default function AppClient(): JSX.Element {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [sidebarOpen]);
 
-  const handleTabChange = (tabId: string): void => {
+  const handleTabChange = (tabId: string, event?: React.MouseEvent): void => {
+    const isCtrlClick = event && (event.ctrlKey || event.metaKey);
+    
+    // Ctrl+Click logic for split view
+    if (isCtrlClick && selectedTabId) {
+      if (tabId === selectedTabId) {
+        // Ctrl+Click on already selected tab - do nothing (can't split same tab)
+        return;
+      }
+      if (tabId === secondTabId) {
+        // Ctrl+Click on tab that's already in split - swap primary and secondary
+        setSecondTabId(selectedTabId);
+        setSelectedTabId(tabId);
+        const tab = outputs[tabId];
+        if (tab) setSelectedModel(tab.modelId);
+        return;
+      }
+      // Open new tab in split view
+      setSecondTabId(tabId);
+      return;
+    }
+    
+    // Normal click logic
+    if (tabId === secondTabId) {
+      // Clicking on secondary tab - close split and make it primary
+      setSecondTabId(null);
+    }
+    
     setSelectedTabId(tabId);
     setIsEditing(false);
+    setIsEditingSecond(false);
     const tab = outputs[tabId];
     if (tab) {
       setSelectedModel(tab.modelId);
@@ -434,6 +483,81 @@ export default function AppClient(): JSX.Element {
     }
   };
 
+  const handleCloseTabRequest = (tabId: string, event: React.MouseEvent): void => {
+    event.stopPropagation();
+    
+    // If already confirming this tab, do the actual delete
+    if (tabToDelete === tabId) {
+      handleCloseTabConfirm(tabId);
+      return;
+    }
+    
+    // First click - show confirmation
+    setTabToDelete(tabId);
+    
+    // Auto-reset after 3 seconds if not confirmed
+    setTimeout(() => {
+      setTabToDelete((current) => current === tabId ? null : current);
+    }, 3000);
+  };
+
+  const handleCloseTabConfirm = (tabId: string): void => {
+    setTabToDelete(null);
+    
+    // If closing the second tab in split view
+    if (tabId === secondTabId) {
+      setSecondTabId(null);
+      return;
+    }
+    
+    // If closing the primary tab
+    if (tabId === selectedTabId) {
+      // If in split view, promote second tab to primary
+      if (secondTabId) {
+        setSelectedTabId(secondTabId);
+        setSecondTabId(null);
+      } else {
+        // Find another tab to select
+        const remainingTabs = outputTabs.filter(t => t.id !== tabId);
+        setSelectedTabId(remainingTabs.length > 0 ? remainingTabs[0].id : null);
+      }
+    }
+    
+    // Remove the tab from outputs
+    setOutputs((prev) => {
+      const newOutputs = { ...prev };
+      delete newOutputs[tabId];
+      return newOutputs;
+    });
+    
+    setIsEditing(false);
+    setIsEditingSecond(false);
+  };
+
+  const handleSyncScroll = (source: 1 | 2) => {
+    if (isScrolling.current) return;
+    
+    const sourceRef = source === 1 ? previewRef1 : previewRef2;
+    const targetRef = source === 1 ? previewRef2 : previewRef1;
+    
+    if (!sourceRef.current || !targetRef.current) return;
+    
+    isScrolling.current = true;
+    
+    const sourceEl = sourceRef.current;
+    const targetEl = targetRef.current;
+    
+    // Calculate scroll percentage
+    const scrollPercent = sourceEl.scrollTop / (sourceEl.scrollHeight - sourceEl.clientHeight);
+    const targetScrollTop = scrollPercent * (targetEl.scrollHeight - targetEl.clientHeight);
+    
+    targetEl.scrollTop = targetScrollTop;
+    
+    setTimeout(() => {
+      isScrolling.current = false;
+    }, 50);
+  };
+
   const handleModelChange = (modelId: string): void => {
     setSelectedModel(modelId);
   };
@@ -444,6 +568,7 @@ export default function AppClient(): JSX.Element {
     setFileName(file.name);
     setOutputs({});
     setSelectedTabId(null);
+    setSecondTabId(null);
     setGeneratingTabId(null);
     setLoadedFromHistory(false);
     setCurrentHistoryId(null);
@@ -750,6 +875,52 @@ export default function AppClient(): JSX.Element {
     setIsEditing(false);
   };
 
+  const handleEditStartSecond = (): void => {
+    setEditDraftSecond(secondSummary);
+    setIsEditingSecond(true);
+  };
+
+  const handleEditSaveSecond = (): void => {
+    if (!secondTabId || !secondOutput || editDraftSecond === secondSummary) {
+      setIsEditingSecond(false);
+      return;
+    }
+    setOutputs((prev) => ({
+      ...prev,
+      [secondTabId]: {
+        ...secondOutput,
+        summary: editDraftSecond,
+        updatedAt: Date.now()
+      }
+    }));
+    setLoadedFromHistory(false);
+    setIsEditingSecond(false);
+  };
+
+  const handleCopySummarySecond = async (): Promise<void> => {
+    if (!secondSummary) return;
+    try {
+      await navigator.clipboard.writeText(secondSummary);
+      setCopySuccessSecond(true);
+      setTimeout(() => setCopySuccessSecond(false), 2000);
+    } catch (err) {
+      const textArea = document.createElement("textarea");
+      textArea.value = secondSummary;
+      textArea.style.position = "fixed";
+      textArea.style.opacity = "0";
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand("copy");
+        setCopySuccessSecond(true);
+        setTimeout(() => setCopySuccessSecond(false), 2000);
+      } catch (e) {
+        // Ignore
+      }
+      document.body.removeChild(textArea);
+    }
+  };
+
   useEffect(() => {
     if (status === "ready" && Object.keys(outputs).length > 0 && extractedText && !generatingTabId && !loadedFromHistory) {
       saveToHistory();
@@ -986,16 +1157,35 @@ export default function AppClient(): JSX.Element {
                 {outputTabs.length === 0 ? (
                   <span className="hint">Noch keine Ausgabe</span>
                 ) : (
-                  outputTabs.map((tab) => (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      className={"output-tab" + (tab.id === selectedTabId ? " active" : "") + (tab.isGenerating ? " generating" : "")}
-                      onClick={() => handleTabChange(tab.id)}
-                    >
-                      {tab.label}
-                    </button>
-                  ))
+                  outputTabs.map((tab) => {
+                    const isActive = tab.id === selectedTabId;
+                    const isSecond = tab.id === secondTabId;
+                    const isConfirming = tabToDelete === tab.id;
+                    const canSplit = outputTabs.length > 1 && !isActive;
+                    return (
+                      <div
+                        key={tab.id}
+                        className={
+                          "output-tab" + 
+                          (isActive ? " active" : "") + 
+                          (isSecond ? " split-active" : "") +
+                          (tab.isGenerating ? " generating" : "")
+                        }
+                        onClick={(e) => handleTabChange(tab.id, e)}
+                        title={canSplit ? "Ctrl+Klick für Split-View" : undefined}
+                      >
+                        <span className="output-tab-label">{tab.label}</span>
+                        <button
+                          type="button"
+                          className={"output-tab-close" + (isConfirming ? " confirming" : "")}
+                          onClick={(e) => handleCloseTabRequest(tab.id, e)}
+                          title={isConfirming ? "Nochmal klicken zum Löschen" : "Tab schliessen"}
+                        >
+                          <IconClose />
+                        </button>
+                      </div>
+                    );
+                  })
                 )}
               </div>
               <div className="output-actions">
@@ -1018,7 +1208,7 @@ export default function AppClient(): JSX.Element {
               </div>
             </div>
 
-            <div className="preview-container">
+            <div className={"preview-container" + (isSplitView ? " split-view" : "")}>
               {isEditing ? (
                 <div className="markdown-editor">
                   <textarea
@@ -1028,47 +1218,169 @@ export default function AppClient(): JSX.Element {
                     autoFocus
                   />
                 </div>
+              ) : isEditingSecond && isSplitView ? (
+                <>
+                  <div 
+                    className="preview"
+                    ref={previewRef1}
+                  >
+                    {currentOutput && (
+                      <span className="preview-model-label">{currentOutput.label}</span>
+                    )}
+                    {currentSummary && (
+                      <div className="preview-toolbar">
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          onClick={handleEditStart}
+                          title="Bearbeiten"
+                          aria-label="Markdown bearbeiten"
+                        >
+                          <IconEdit />
+                        </button>
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          onClick={handleCopySummary}
+                          title="Kopieren"
+                          aria-label="Zusammenfassung kopieren"
+                        >
+                          {copySuccess ? <IconCheck /> : <IconCopy />}
+                        </button>
+                      </div>
+                    )}
+                    {currentSummary ? (
+                      <div className="markdown-content">
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm, remarkMath]}
+                          rehypePlugins={[rehypeKatex]}
+                        >
+                          {currentSummary}
+                        </ReactMarkdown>
+                      </div>
+                    ) : (
+                      <div className="preview-empty">
+                        {extractedText
+                          ? "PDF geladen. Auf Generieren klicken."
+                          : "PDF hochladen, dann Generieren."}
+                      </div>
+                    )}
+                  </div>
+                  <div className="markdown-editor">
+                    {secondOutput && (
+                      <span className="preview-model-label">{secondOutput.label}</span>
+                    )}
+                    <textarea
+                      value={editDraftSecond}
+                      onChange={(e) => setEditDraftSecond(e.target.value)}
+                      onBlur={handleEditSaveSecond}
+                      autoFocus
+                    />
+                  </div>
+                </>
               ) : (
-                <div className="preview">
-                  {currentSummary && (
-                    <div className="preview-toolbar">
-                      <button
-                        type="button"
-                        className="icon-btn"
-                        onClick={handleEditStart}
-                        title="Bearbeiten"
-                        aria-label="Markdown bearbeiten"
-                      >
-                        <IconEdit />
-                      </button>
-                      <button
-                        type="button"
-                        className="icon-btn"
-                        onClick={handleCopySummary}
-                        title="Kopieren"
-                        aria-label="Zusammenfassung kopieren"
-                      >
-                        {copySuccess ? <IconCheck /> : <IconCopy />}
-                      </button>
+                <>
+                  <div 
+                    className="preview"
+                    ref={previewRef1}
+                    onScroll={isSplitView ? () => handleSyncScroll(1) : undefined}
+                  >
+                    {isSplitView && currentOutput && (
+                      <span className="preview-model-label">{currentOutput.label}</span>
+                    )}
+                    {currentSummary && (
+                      <div className="preview-toolbar">
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          onClick={handleEditStart}
+                          title="Bearbeiten"
+                          aria-label="Markdown bearbeiten"
+                        >
+                          <IconEdit />
+                        </button>
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          onClick={handleCopySummary}
+                          title="Kopieren"
+                          aria-label="Zusammenfassung kopieren"
+                        >
+                          {copySuccess ? <IconCheck /> : <IconCopy />}
+                        </button>
+                      </div>
+                    )}
+                    {currentSummary ? (
+                      <div className="markdown-content">
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm, remarkMath]}
+                          rehypePlugins={[rehypeKatex]}
+                        >
+                          {currentSummary}
+                        </ReactMarkdown>
+                      </div>
+                    ) : (
+                      <div className="preview-empty">
+                        {extractedText
+                          ? "PDF geladen. Auf Generieren klicken."
+                          : "PDF hochladen, dann Generieren."}
+                      </div>
+                    )}
+                  </div>
+                  
+                  {isSplitView && (
+                    <div 
+                      className="preview preview-second"
+                      ref={previewRef2}
+                      onScroll={() => handleSyncScroll(2)}
+                    >
+                      {secondOutput && (
+                        <span className="preview-model-label">{secondOutput.label}</span>
+                      )}
+                      <div className="preview-toolbar">
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          onClick={handleEditStartSecond}
+                          title="Bearbeiten"
+                          aria-label="Markdown bearbeiten"
+                        >
+                          <IconEdit />
+                        </button>
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          onClick={handleCopySummarySecond}
+                          title="Kopieren"
+                          aria-label="Zusammenfassung kopieren"
+                        >
+                          {copySuccessSecond ? <IconCheck /> : <IconCopy />}
+                        </button>
+                        <button
+                          type="button"
+                          className="icon-btn icon-btn-close"
+                          onClick={() => setSecondTabId(null)}
+                          title="Split schliessen"
+                          aria-label="Split-View schliessen"
+                        >
+                          <IconClose />
+                        </button>
+                      </div>
+                      {secondSummary ? (
+                        <div className="markdown-content">
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm, remarkMath]}
+                            rehypePlugins={[rehypeKatex]}
+                          >
+                            {secondSummary}
+                          </ReactMarkdown>
+                        </div>
+                      ) : (
+                        <div className="preview-empty">Keine Zusammenfassung</div>
+                      )}
                     </div>
                   )}
-                  {currentSummary ? (
-                    <div className="markdown-content">
-                      <ReactMarkdown
-                        remarkPlugins={[remarkGfm, remarkMath]}
-                        rehypePlugins={[rehypeKatex]}
-                      >
-                        {currentSummary}
-                      </ReactMarkdown>
-                    </div>
-                  ) : (
-                    <div className="preview-empty">
-                      {extractedText
-                        ? "PDF geladen. Auf Generieren klicken."
-                        : "PDF hochladen, dann Generieren."}
-                    </div>
-                  )}
-                </div>
+                </>
               )}
             </div>
 

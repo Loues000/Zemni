@@ -12,7 +12,7 @@ const BASE_IDENTITY = [
 ].join("\n");
 
 const loadGuidelines = async (): Promise<string> => {
-  const filePath = path.join(process.cwd(), "KI-Vorgaben.md");
+  const filePath = path.join(process.cwd(), "KI-Vorgaben-kurz.md");
   return fs.readFile(filePath, "utf8");
 };
 

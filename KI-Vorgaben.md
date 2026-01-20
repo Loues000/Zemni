@@ -184,7 +184,7 @@ Nach der Zusammenfassung muss gelten:
 ### Sonstiges
 
 - Code-Blöcke mit Sprach-Tag (z.B. \`\`\`python)
-- LaTeX-Formeln in `$$` einschließen
+- LaTeX-Formeln nicht in `$$` oder `\[...\]` einschließen
 - Tabellen: Standard-Markdown-Tabellen für Vergleiche
 - Trennlinien: `---` für thematische Abschnitte (wird zu Notion-Divider)
 - Keine Metadaten: Ausgabe beginnt direkt mit der ersten H1-Überschrift
