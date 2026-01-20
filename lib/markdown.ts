@@ -1,15 +1,17 @@
 import type { BlockObjectRequest } from "@notionhq/client/build/src/api-endpoints";
 
-type RichTextItem = {
+type RichTextColor = "default" | "gray" | "brown" | "orange" | "yellow" | "green" | "blue" | "purple" | "pink" | "red" | "default_background" | "gray_background" | "brown_background" | "orange_background" | "yellow_background" | "green_background" | "blue_background" | "purple_background" | "pink_background" | "red_background";
+
+type RichTextItemRequest = {
   type: "text";
   text: { content: string; link?: { url: string } | null };
-  annotations: {
-    bold: boolean;
-    italic: boolean;
-    strikethrough: boolean;
-    underline: boolean;
-    code: boolean;
-    color: string;
+  annotations?: {
+    bold?: boolean;
+    italic?: boolean;
+    strikethrough?: boolean;
+    underline?: boolean;
+    code?: boolean;
+    color?: RichTextColor;
   };
 };
 
@@ -19,15 +21,15 @@ const defaultAnnotations = {
   strikethrough: false,
   underline: false,
   code: false,
-  color: "default"
+  color: "default" as RichTextColor
 };
 
-const buildRichText = (text: string): RichTextItem[] => {
+const buildRichText = (text: string): RichTextItemRequest[] => {
   if (!text) {
     return [];
   }
 
-  const parts: RichTextItem[] = [];
+  const parts: RichTextItemRequest[] = [];
   let remaining = text;
 
   while (remaining.length > 0) {
