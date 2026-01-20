@@ -137,8 +137,24 @@ def _parse_models_json(data: Any) -> list[ModelSpec]:
     for i, raw in enumerate(data):
         if not isinstance(raw, dict):
             raise ValueError(f"models[{i}] must be an object")
-        name = str(raw.get("name", "")).strip()
-        provider = str(raw.get("provider", "")).strip() or "unknown"
+        
+        # Support combined id field (provider/name) or separate fields
+        combined_id = str(raw.get("id", "")).strip()
+        if combined_id:
+            # Extract provider and name from combined id (e.g., "openai/gpt-4o")
+            parts = combined_id.split("/")
+            if len(parts) != 2:
+                raise ValueError(f"models[{i}].id must be in format 'provider/name'")
+            provider = parts[0].strip()
+            name = parts[1].strip()
+        else:
+            # Fall back to separate name and provider fields
+            name = str(raw.get("name", "")).strip()
+            provider = str(raw.get("provider", "")).strip() or "unknown"
+        
+        if not name:
+            raise ValueError(f"models[{i}] must have either 'id' (provider/name) or 'name' field")
+        
         tokenizer = raw.get("tokenizer", {})
         if not isinstance(tokenizer, dict):
             raise ValueError(f"models[{i}].tokenizer must be an object")
@@ -161,8 +177,6 @@ def _parse_models_json(data: Any) -> list[ModelSpec]:
             input_per_1m=_maybe_float(pricing_raw.get("input_per_1m")),
             output_per_1m=_maybe_float(pricing_raw.get("output_per_1m")),
         )
-        if not name:
-            raise ValueError(f"models[{i}].name is required")
         models.append(
             ModelSpec(name=name, provider=provider, tokenizer_encoding=tokenizer_encoding, pricing=pricing)
         )

@@ -28,10 +28,30 @@ In `models.example.json` sind die Preise als **USD pro 1M Tokens** hinterlegt:
 - `pricing.input_per_1m`: Input-Kosten pro 1.000.000 Tokens
 - `pricing.output_per_1m`: Output-Kosten pro 1.000.000 Tokens
 
-Beispiel:
+Das JSON-Format unterstützt zwei Varianten:
 
+**Variante 1: Mit `id` (empfohlen, kompatibel mit OpenRouter):**
 ```json
-{ "pricing": { "currency": "USD", "input_per_1m": 3.0, "output_per_1m": 15.0 } }
+[
+  {
+    "id": "openai/gpt-4o",
+    "display_name": "GPT-4o",
+    "tokenizer": { "tiktoken_encoding": "o200k_base" },
+    "pricing": { "currency": "USD", "input_per_1m": 3.0, "output_per_1m": 15.0 }
+  }
+]
+```
+
+**Variante 2: Mit separaten `name` und `provider` Feldern:**
+```json
+[
+  {
+    "name": "gpt-4o",
+    "provider": "openai",
+    "tokenizer": { "tiktoken_encoding": "o200k_base" },
+    "pricing": { "currency": "USD", "input_per_1m": 3.0, "output_per_1m": 15.0 }
+  }
+]
 ```
 
 ## One-liner
