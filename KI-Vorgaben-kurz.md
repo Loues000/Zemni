@@ -107,6 +107,6 @@ Die Zusammenfassung muss:
 
 ### Sonstiges
 - Code-Blöcke mit Sprach-Tag (z.B.)
-- LaTeX-Formeln **nicht** in `$$` oder `\[...\]` einschließen
+- LaTeX-Formeln **nur standalone** (ohne `$$`, `\[...\]` oder andere Delimiter) - einfach die Formel direkt als eigene Zeile
 - Tabellen: Standard-Markdown-Tabellen für Vergleiche
 - Trennlinien: `---` für thematische Abschnitte (Notion Divider)

@@ -415,48 +415,7 @@ export const markdownToBlocks = (markdown: string): BlockObjectRequest[] => {
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i];
 
-    // Block equation ($$...$$)
-    if (line.trim().startsWith("$$")) {
-      flushParagraph();
-      // Check if it's a single-line equation $$...$$ on one line
-      const singleLineMatch = line.match(/^\s*\$\$(.+)\$\$\s*$/);
-      if (singleLineMatch) {
-        blocks.push(equationBlock(singleLineMatch[1].trim()));
-        continue;
-      }
-      // Multi-line equation
-      const equationLines: string[] = [];
-      i += 1;
-      while (i < lines.length && !lines[i].trim().startsWith("$$")) {
-        equationLines.push(lines[i]);
-        i += 1;
-      }
-      blocks.push(equationBlock(equationLines.join("\n").trim()));
-      continue;
-    }
 
-    // LaTeX display math \[...\] (single or multi-line)
-    if (line.trim().startsWith("\\[")) {
-      flushParagraph();
-      // Check if it's a single-line \[...\]
-      const singleLineLatex = line.match(/^\s*\\\[(.+)\\\]\s*$/);
-      if (singleLineLatex) {
-        blocks.push(equationBlock(singleLineLatex[1].trim()));
-        continue;
-      }
-      // Multi-line - collect until \]
-      const latexLines: string[] = [line.replace(/^\s*\\\[\s*/, "")];
-      i += 1;
-      while (i < lines.length && !lines[i].includes("\\]")) {
-        latexLines.push(lines[i]);
-        i += 1;
-      }
-      if (i < lines.length) {
-        latexLines.push(lines[i].replace(/\\\]\s*$/, ""));
-      }
-      blocks.push(equationBlock(latexLines.join("\n").trim()));
-      continue;
-    }
 
     // Code fence (```language or just ```)
     const fenceMatch = line.match(/^```(\w*)\s*$/);
