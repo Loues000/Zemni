@@ -8,13 +8,11 @@ export async function extractTextFromPdf(file: File): Promise<string> {
     // Dynamically import the legacy build to avoid ESM/worker interop issues in Next.js
     const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
 
-    // Resolve worker from local package via import.meta.url (avoids CORS/ESM fetch issues)
+    // Use a CDN worker to avoid bundling issues in Next.js production builds
     if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
-      const workerUrl = new URL(
-        "pdfjs-dist/legacy/build/pdf.worker.min.mjs",
-        import.meta.url
-      ).toString();
-      pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
+      const version = pdfjsLib.version || "5.4.530";
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        `https://cdn.jsdelivr.net/npm/pdfjs-dist@${version}/legacy/build/pdf.worker.min.mjs`;
     }
 
     const arrayBuffer = await file.arrayBuffer();
