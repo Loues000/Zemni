@@ -706,13 +706,11 @@ export default function AppClient(): JSX.Element {
   const handleFile = async (file: File): Promise<void> => {
     setError("");
     
-    // Check file size (4.5MB limit for Vercel serverless functions)
-    const maxSize = 4.5 * 1024 * 1024; // 4.5MB in bytes
-    if (file.size > maxSize) {
-      const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
-      setError(`Datei zu groß (${fileSizeMB} MB). Maximum: 4.5 MB für Vercel-Deployments.`);
-      setStatus("error");
-      return;
+    // Warn for very large files (but don't block - client-side parsing can handle them)
+    const largeFileThreshold = 50 * 1024 * 1024; // 50MB
+    if (file.size > largeFileThreshold) {
+      const fileSizeMB = (file.size / (1024 * 1024)).toFixed(1);
+      console.warn(`Große Datei erkannt (${fileSizeMB} MB). Das Parsing kann etwas länger dauern.`);
     }
     
     setStatus("parsing");
@@ -734,18 +732,29 @@ export default function AppClient(): JSX.Element {
     setExportProgress(null);
     refineTargetRef.current = "";
     try {
-      const formData = new FormData();
-      formData.append("file", file);
+      let extractedText = "";
+
+      // Parse PDF client-side to avoid Vercel's 4.5MB body size limit
+      // This allows handling files of any size (limited only by browser memory)
+      if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
+        const { extractTextFromPdf } = await import("@/lib/parse-pdf-client");
+        extractedText = await extractTextFromPdf(file);
+      } else {
+        // For non-PDF files, read as text
+        extractedText = await file.text();
+      }
+
+      // Normalize the extracted text
       const res = await fetch("/api/parse-pdf", {
         method: "POST",
-        body: formData
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: extractedText })
       });
+
       if (!res.ok) {
-        if (res.status === 413) {
-          throw new Error("Datei zu groß (max. 4.5 MB auf Vercel). Bitte eine kleinere Datei verwenden.");
-        }
-        throw new Error("PDF konnte nicht verarbeitet werden.");
+        throw new Error("Text konnte nicht normalisiert werden.");
       }
+
       const data = (await res.json()) as { text: string };
       setExtractedText(data.text || "");
       // Token estimation is handled by the debounced effect
