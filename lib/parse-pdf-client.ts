@@ -5,12 +5,16 @@
 
 export async function extractTextFromPdf(file: File): Promise<string> {
   try {
-    // Dynamically import pdfjs-dist to avoid SSR issues
-    const pdfjsLib = await import("pdfjs-dist");
-    
-    // Set worker source for pdfjs (use CDN for worker)
+    // Dynamically import the legacy build to avoid ESM/worker interop issues in Next.js
+    const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+
+    // Resolve worker from local package via import.meta.url (avoids CORS/ESM fetch issues)
     if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+      const workerUrl = new URL(
+        "pdfjs-dist/legacy/build/pdf.worker.min.mjs",
+        import.meta.url
+      ).toString();
+      pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
     }
 
     const arrayBuffer = await file.arrayBuffer();

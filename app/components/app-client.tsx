@@ -733,32 +733,56 @@ export default function AppClient(): JSX.Element {
     refineTargetRef.current = "";
     try {
       let extractedText = "";
+      let normalizedText: string | null = null;
 
       // Parse PDF client-side to avoid Vercel's 4.5MB body size limit
       // This allows handling files of any size (limited only by browser memory)
       if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
-        // Dynamic import with @ alias and explicit extension for nodenext resolution
-        // @ts-expect-error - Next.js resolves @/ alias with .ts extension at build time
-        const { extractTextFromPdf } = await import("@/lib/parse-pdf-client.ts");
-        extractedText = await extractTextFromPdf(file);
+        try {
+          // Dynamic import with @ alias and explicit extension for nodenext resolution
+          // @ts-expect-error - Next.js resolves @/ alias with .ts extension at build time
+          const { extractTextFromPdf } = await import("@/lib/parse-pdf-client.ts");
+          extractedText = await extractTextFromPdf(file);
+        } catch (parseError) {
+          // Fallback to server-side parsing for compatibility
+          const formData = new FormData();
+          formData.append("file", file);
+          const res = await fetch("/api/parse-pdf", {
+            method: "POST",
+            body: formData
+          });
+          if (!res.ok) {
+            const clientMessage =
+              parseError instanceof Error ? parseError.message : "Unbekannter Fehler";
+            throw new Error(
+              `Client-Parsing fehlgeschlagen. Server-Fallback fehlgeschlagen. (${clientMessage})`
+            );
+          }
+          const data = (await res.json()) as { text: string };
+          normalizedText = data.text ?? "";
+        }
       } else {
         // For non-PDF files, read as text
         extractedText = await file.text();
       }
 
-      // Normalize the extracted text
-      const res = await fetch("/api/parse-pdf", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: extractedText })
-      });
+      if (normalizedText === null) {
+        // Normalize the extracted text
+        const res = await fetch("/api/parse-pdf", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: extractedText })
+        });
 
-      if (!res.ok) {
-        throw new Error("Text konnte nicht normalisiert werden.");
+        if (!res.ok) {
+          throw new Error("Text konnte nicht normalisiert werden.");
+        }
+
+        const data = (await res.json()) as { text: string };
+        normalizedText = data.text ?? "";
       }
 
-      const data = (await res.json()) as { text: string };
-      setExtractedText(data.text || "");
+      setExtractedText(normalizedText);
       // Token estimation is handled by the debounced effect
       setStatus("ready");
     } catch (err) {
