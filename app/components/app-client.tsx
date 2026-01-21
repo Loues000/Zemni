@@ -705,6 +705,16 @@ export default function AppClient(): JSX.Element {
 
   const handleFile = async (file: File): Promise<void> => {
     setError("");
+    
+    // Check file size (4.5MB limit for Vercel serverless functions)
+    const maxSize = 4.5 * 1024 * 1024; // 4.5MB in bytes
+    if (file.size > maxSize) {
+      const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+      setError(`Datei zu groß (${fileSizeMB} MB). Maximum: 4.5 MB für Vercel-Deployments.`);
+      setStatus("error");
+      return;
+    }
+    
     setStatus("parsing");
     setFileName(file.name);
     setOutputs({});
@@ -730,7 +740,12 @@ export default function AppClient(): JSX.Element {
         method: "POST",
         body: formData
       });
-      if (!res.ok) throw new Error("PDF konnte nicht verarbeitet werden.");
+      if (!res.ok) {
+        if (res.status === 413) {
+          throw new Error("Datei zu groß (max. 4.5 MB auf Vercel). Bitte eine kleinere Datei verwenden.");
+        }
+        throw new Error("PDF konnte nicht verarbeitet werden.");
+      }
       const data = (await res.json()) as { text: string };
       setExtractedText(data.text || "");
       // Token estimation is handled by the debounced effect

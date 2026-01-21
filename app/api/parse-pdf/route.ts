@@ -3,6 +3,7 @@ import pdfParse from "pdf-parse";
 import { normalizePdfText } from "@/lib/normalize-pdf-text";
 
 export const runtime = "nodejs";
+export const maxDuration = 30;
 
 export async function POST(request: Request) {
   const formData = await request.formData();
