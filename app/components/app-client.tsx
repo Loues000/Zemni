@@ -737,8 +737,9 @@ export default function AppClient(): JSX.Element {
       // Parse PDF client-side to avoid Vercel's 4.5MB body size limit
       // This allows handling files of any size (limited only by browser memory)
       if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
-        // Use relative path to ensure bundler resolves the module in all environments
-        const { extractTextFromPdf } = await import("../../lib/parse-pdf-client.js");
+        // Dynamic import with @ alias and explicit extension for nodenext resolution
+        // @ts-expect-error - Next.js resolves @/ alias with .ts extension at build time
+        const { extractTextFromPdf } = await import("@/lib/parse-pdf-client.ts");
         extractedText = await extractTextFromPdf(file);
       } else {
         // For non-PDF files, read as text
