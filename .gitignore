@@ -2,7 +2,6 @@ __pycache__/
 *.py[cod]
 
 .venv/
-Token Analyser/.venv/
 
 node_modules/
 .next/
@@ -37,6 +36,10 @@ out/
 .mypy_cache/
 .ruff_cache/
 
+# Local model config overrides (keep example committed)
+config/openrouter-models.json
+config/openrouter-models.prices.json
+
 # IDE/OS
 .idea/
 .vscode/
@@ -45,6 +48,5 @@ out/
 .DS_Store
 Thumbs.db
 
-# Consider whether you really want these ignored:
-docs/
+# Local-only scratch/data (keep ignored)
 data/

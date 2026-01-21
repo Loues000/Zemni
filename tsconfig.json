@@ -14,6 +14,7 @@
     "esModuleInterop": true,
     "module": "nodenext",
     "moduleResolution": "nodenext",
+    "allowImportingTsExtensions": true,
     "baseUrl": ".",
     "paths": {
       "@/*": [

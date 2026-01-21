@@ -27,8 +27,15 @@ const DEFAULT_MODELS: ModelSpec[] = [
   }
 ];
 
-const MODELS_DIR = path.join(process.cwd(), "Token Analyser");
-const MODEL_FILES = ["models.json", "models.prices.json", "models.example.json"];
+const MODELS_DIR = path.join(process.cwd(), "config");
+const MODEL_FILES = [
+  "openrouter-models.json",
+  "openrouter-models.prices.json",
+  "openrouter-models.example.json",
+  "models.json",
+  "models.prices.json",
+  "models.example.json"
+];
 
 const toNumber = (value: unknown): number | null => {
   if (value === null || value === undefined || value === "") {
