@@ -7,6 +7,7 @@ interface OutputTabsProps {
   secondTabId: string | null;
   generatingTabId: string | null;
   tabToDelete: string | null;
+  showSplitHint?: boolean;
   onTabChange: (tabId: string, event?: React.MouseEvent) => void;
   onCloseTab: (tabId: string, event: React.MouseEvent) => void;
 }
@@ -17,6 +18,7 @@ export function OutputTabs({
   secondTabId,
   generatingTabId,
   tabToDelete,
+  showSplitHint = true,
   onTabChange,
   onCloseTab
 }: OutputTabsProps) {
@@ -42,7 +44,7 @@ export function OutputTabs({
                 (tab.isGenerating ? " generating" : "")
               }
               onClick={(e) => onTabChange(tab.id, e)}
-              title={canSplit ? "Ctrl+Click for split view" : undefined}
+              title={showSplitHint && canSplit ? "Ctrl+Click for split view" : undefined}
             >
               <span className="output-tab-label">{tab.label}</span>
               <button

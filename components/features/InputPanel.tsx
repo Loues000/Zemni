@@ -1,9 +1,7 @@
-import type { Model, Subject } from "@/types";
+import type { Model } from "@/types";
 
 interface InputPanelProps {
   fileName: string;
-  selectedSubject: string;
-  subjects: Subject[];
   selectedModel: string;
   models: Model[];
   structureHints: string;
@@ -15,7 +13,6 @@ interface InputPanelProps {
   onDragOver: (event: React.DragEvent<HTMLDivElement>) => void;
   onDragLeave: () => void;
   onSelectFile: (event: React.ChangeEvent<HTMLInputElement>) => void;
-  onSubjectChange: (value: string) => void;
   onModelChange: (value: string) => void;
   onStructureChange: (value: string) => void;
   children?: React.ReactNode;
@@ -23,8 +20,6 @@ interface InputPanelProps {
 
 export function InputPanel({
   fileName,
-  selectedSubject,
-  subjects,
   selectedModel,
   models,
   structureHints,
@@ -36,7 +31,6 @@ export function InputPanel({
   onDragOver,
   onDragLeave,
   onSelectFile,
-  onSubjectChange,
   onModelChange,
   onStructureChange,
   children
@@ -68,24 +62,6 @@ export function InputPanel({
           onChange={onSelectFile}
           hidden
         />
-      </div>
-
-      <div className="field">
-        <label className="field-label">Subject</label>
-        <select
-          value={selectedSubject}
-          onChange={(e) => onSubjectChange(e.target.value)}
-        >
-          {subjects.length === 0 ? (
-            <option value="">No subjects</option>
-          ) : (
-            subjects.map((subject) => (
-              <option key={subject.id} value={subject.id}>
-                {subject.title}
-              </option>
-            ))
-          )}
-        </select>
       </div>
 
       <div className="field">

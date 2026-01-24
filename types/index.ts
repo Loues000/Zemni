@@ -89,6 +89,7 @@ export type OutputEntry = {
   usage: UsageStats | null;
   updatedAt: number;
   isGenerating?: boolean;
+  error?: string;
   kind?: OutputKind;
   sectionIds?: string[];
   flashcards?: Flashcard[];

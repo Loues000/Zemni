@@ -27,6 +27,7 @@ type QuizModeProps = {
   onReveal: () => void;
   onNext: () => void | Promise<void>;
   onSelectOption: (index: number) => void;
+  showKeyboardHints?: boolean;
 };
 
 const baseNameFor = (fileName: string): string => {
@@ -35,7 +36,16 @@ const baseNameFor = (fileName: string): string => {
   return trimmed.replace(/\.[^.]+$/, "");
 };
 
-export function QuizMode({ extractedText, fileName, output, status, onReveal, onNext, onSelectOption }: QuizModeProps) {
+export function QuizMode({
+  extractedText,
+  fileName,
+  output,
+  status,
+  onReveal,
+  onNext,
+  onSelectOption,
+  showKeyboardHints = true
+}: QuizModeProps) {
   const quiz = output?.quiz ?? [];
   const state = output?.quizState;
 
@@ -122,6 +132,10 @@ export function QuizMode({ extractedText, fileName, output, status, onReveal, on
     return <div className="mode-empty">No quiz yet. Click Generate.</div>;
   }
 
+  if (output.error) {
+    return <div className="mode-empty error">{output.error}</div>;
+  }
+
   if (output.isGenerating && !currentQuestion) {
     return <div className="mode-empty">Generating questions...</div>;
   }
@@ -146,7 +160,15 @@ export function QuizMode({ extractedText, fileName, output, status, onReveal, on
         <span>Question {cursor + 1} / {Math.max(1, quiz.length)}</span>
         <div className="quiz-actions">
           <button type="button" className="btn btn-secondary btn-sm" onClick={onReveal}>
-            {reveal ? "Hide" : "Reveal"} (R)
+            {reveal ? "Hide" : "Reveal"}{showKeyboardHints ? " (R)" : ""}
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => void onNext()}
+            disabled={isBusy}
+          >
+            {showKeyboardHints ? "Next (→)" : "Next"}
           </button>
           <ExportMenu
             disabled={!quiz.length}
@@ -155,14 +177,6 @@ export function QuizMode({ extractedText, fileName, output, status, onReveal, on
               { id: "json", label: "JSON (.json)", onSelect: handleExportJson }
             ]}
           />
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={() => void onNext()}
-            disabled={isBusy}
-          >
-            Next (→)
-          </button>
         </div>
       </div>
 

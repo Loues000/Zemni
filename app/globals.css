@@ -70,6 +70,18 @@ body {
   line-height: 1.5;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 h1, h2, h3, h4 {
   font-family: var(--font-display), "Bricolage Grotesque", system-ui, sans-serif;
   margin: 0;
@@ -404,6 +416,26 @@ a {
   font-weight: 600;
 }
 
+.mode-select {
+  border: 1px solid var(--stroke);
+  border-radius: 999px;
+  padding: 8px 36px 8px 12px;
+  background: var(--surface);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' fill='none' stroke='%2371717a' stroke-width='2' viewBox='0 0 24 24'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+}
+
+.mode-select:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-muted);
+}
+
 .header-right {
   display: flex;
   align-items: center;
@@ -461,6 +493,7 @@ a {
   display: grid;
   grid-template-columns: 340px 1fr;
   gap: 0;
+  min-height: 0;
 }
 
 /* ========== Input Panel (Left) ========== */
@@ -479,6 +512,10 @@ a {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 20;
 }
 
 .input-panel-topbar-left,
@@ -653,6 +690,13 @@ a {
   padding: 18px;
   color: var(--text-muted);
   background: var(--surface);
+}
+
+.mode-empty.error {
+  border-style: solid;
+  border-color: rgba(185, 28, 28, 0.25);
+  background: var(--error-bg);
+  color: var(--error-text);
 }
 
 .flashcards-meta {
@@ -1107,6 +1151,44 @@ body.flashcard-player-open {
   gap: 4px;
 }
 
+.cost-preview-toggle {
+  width: 100%;
+  justify-content: space-between;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+
+.cost-preview-toggle:hover {
+  color: var(--text-primary);
+}
+
+.cost-preview-toggle:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-muted);
+  border-radius: 10px;
+}
+
+.cost-preview-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s ease;
+  color: var(--text-muted);
+}
+
+.cost-preview-chevron.collapsed {
+  transform: rotate(-90deg);
+}
+
+.cost-preview.collapsed {
+  padding-bottom: 10px;
+}
+
+.cost-preview.collapsed .cost-preview-title {
+  margin-bottom: 0;
+}
+
 .estimating-indicator {
   font-weight: 400;
   color: var(--text-muted);
@@ -1143,6 +1225,11 @@ body.flashcard-player-open {
   border-top: 1px dashed var(--stroke);
   font-size: 10px;
   color: var(--text-muted);
+}
+
+.cost-row-tokens {
+  color: var(--text-muted);
+  font-weight: 450;
 }
 
 /* ========== Output Panel (Right) ========== */
@@ -1263,11 +1350,115 @@ body.flashcard-player-open {
   display: flex;
   gap: 8px;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .export-actions-group {
   display: flex;
   gap: 4px;
+}
+
+.subject-btn {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.subject-picker-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 220;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.subject-picker-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.subject-picker {
+  position: relative;
+  width: min(520px, 100%);
+  height: min(720px, calc(100vh - 32px));
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px;
+  border: 1px solid var(--stroke);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.subject-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 14px 10px;
+  border-bottom: 1px solid var(--stroke);
+}
+
+.subject-picker-title {
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.subject-picker-search {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--stroke);
+  background: var(--surface);
+}
+
+.subject-picker-search input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--stroke);
+  background: var(--input-bg);
+}
+
+.subject-picker-search input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.subject-picker-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.subject-picker-item {
+  width: 100%;
+  text-align: left;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--stroke);
+  background: var(--surface);
+  color: var(--text-primary);
+}
+
+.subject-picker-item:hover {
+  background: var(--surface-muted);
+}
+
+.subject-picker-item.active {
+  border-color: rgba(0, 0, 0, 0.06);
+  background: var(--accent-muted);
+}
+
+.subject-picker-empty {
+  padding: 16px;
+  color: var(--text-muted);
+  font-size: 13px;
 }
 
 .export-progress {
@@ -1401,6 +1592,10 @@ body.flashcard-player-open {
 .markdown-content h2 { font-size: 18px; }
 .markdown-content h3 { font-size: 15px; }
 
+.markdown-content {
+  overflow-wrap: anywhere;
+}
+
 .markdown-content p {
   margin: 8px 0;
   line-height: 1.6;
@@ -1438,6 +1633,7 @@ body.flashcard-player-open {
   border-radius: var(--radius-sm);
   overflow-x: auto;
   margin: 12px 0;
+  -webkit-overflow-scrolling: touch;
 }
 
 .markdown-content pre code {
@@ -1450,6 +1646,9 @@ body.flashcard-player-open {
   border-collapse: collapse;
   margin: 12px 0;
   font-size: 13px;
+  display: block;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .markdown-content th,
@@ -1652,17 +1851,23 @@ body.flashcard-player-open {
 }
 
 @media (max-width: 768px) {
+  .header-left {
+    flex-wrap: wrap;
+  }
+  
+  .mode-select {
+    width: 100%;
+  }
+
   .content {
     grid-template-columns: 1fr;
+    grid-template-rows: minmax(260px, 42vh) 1fr;
   }
   
   .input-panel {
     border-right: none;
     border-bottom: 1px solid var(--stroke);
-  }
-  
-  .output-actions {
-    display: none;
+    height: 100%;
   }
   
   .sidebar {
@@ -1681,11 +1886,19 @@ body.flashcard-player-open {
     border-left: none;
     border-top: 1px solid var(--stroke);
   }
+
+  .markdown-editor textarea {
+    min-height: 55vh;
+  }
 }
 
 @media (max-width: 480px) {
   .header {
     padding: 10px 16px;
+  }
+  
+  .mode-select {
+    padding: 8px 34px 8px 12px;
   }
   
   .input-panel {
@@ -1699,6 +1912,44 @@ body.flashcard-player-open {
   .refine-bar,
   .bottom-actions {
     padding: 10px 16px;
+  }
+
+  .cost-preview {
+    padding: 10px;
+    font-size: 11px;
+  }
+
+  .cost-preview-title {
+    margin-bottom: 6px;
+  }
+
+  .cost-row {
+    padding: 2px 0;
+  }
+
+  .cost-row-tokens {
+    display: none;
+  }
+
+  .markdown-editor textarea {
+    min-height: 60vh;
+  }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .history-delete {
+    opacity: 1;
+    width: 32px;
+    height: 32px;
+  }
+
+  .output-tab-close {
+    opacity: 1;
+    transform: scale(1);
+    width: 22px;
+    height: 22px;
+    top: -8px;
+    right: -8px;
   }
 }
 

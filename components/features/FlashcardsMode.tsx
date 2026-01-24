@@ -24,6 +24,7 @@ type FlashcardsModeProps = {
   extractedText: string;
   fileName: string;
   output?: OutputEntry;
+  showKeyboardHints?: boolean;
 };
 
 const baseNameFor = (fileName: string): string => {
@@ -32,7 +33,7 @@ const baseNameFor = (fileName: string): string => {
   return trimmed.replace(/\.[^.]+$/, "");
 };
 
-export function FlashcardsMode({ extractedText, fileName, output }: FlashcardsModeProps) {
+export function FlashcardsMode({ extractedText, fileName, output, showKeyboardHints = true }: FlashcardsModeProps) {
   const cards = output?.flashcards ?? [];
 
   const [playerOpen, setPlayerOpen] = useState(false);
@@ -103,6 +104,10 @@ export function FlashcardsMode({ extractedText, fileName, output }: FlashcardsMo
 
   if (!output) {
     return <div className="mode-empty">No flashcards yet. Click Generate.</div>;
+  }
+
+  if (output.error) {
+    return <div className="mode-empty error">{output.error}</div>;
   }
 
   if (output.isGenerating) {
@@ -181,7 +186,7 @@ export function FlashcardsMode({ extractedText, fileName, output }: FlashcardsMo
                 {current.page ? <span className="flashcard-player-page">Page {current.page}</span> : null}
               </div>
               <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPlayerOpen(false)}>
-                Close (Esc)
+                {showKeyboardHints ? "Close (Esc)" : "Close"}
               </button>
             </div>
 
@@ -195,7 +200,9 @@ export function FlashcardsMode({ extractedText, fileName, output }: FlashcardsMo
                 <div className="flashcard-face flashcard-face-front">
                   <div className="flashcard-player-title">Front</div>
                   <div className="flashcard-player-content">{current.front}</div>
-                  <div className="flashcard-player-hint">Click / Space / Enter / arrows / F to flip</div>
+                  {showKeyboardHints ? (
+                    <div className="flashcard-player-hint">Click / Space / Enter / arrows / F to flip</div>
+                  ) : null}
                 </div>
                 <div className="flashcard-face flashcard-face-back">
                   <div className="flashcard-player-title">Back</div>
@@ -215,14 +222,14 @@ export function FlashcardsMode({ extractedText, fileName, output }: FlashcardsMo
                 }}
                 disabled={cursor <= 0}
               >
-                Back (Left)
+                {showKeyboardHints ? "Back (Left)" : "Back"}
               </button>
               <button
                 type="button"
                 className="btn btn-secondary"
                 onClick={() => setFlipped((v) => !v)}
               >
-                Flip (Space)
+                {showKeyboardHints ? "Flip (Space)" : "Flip"}
               </button>
               <button
                 type="button"
@@ -233,7 +240,7 @@ export function FlashcardsMode({ extractedText, fileName, output }: FlashcardsMo
                 }}
                 disabled={cursor >= cards.length - 1}
               >
-                Next (Right)
+                {showKeyboardHints ? "Next (Right)" : "Next"}
               </button>
             </div>
           </div>

@@ -9,15 +9,15 @@ type FlashcardsDensityControlProps = {
 };
 
 const labelFor = (value: FlashcardsDensity): string => {
-  if (value === 1) return "1";
-  if (value === 2) return "2";
-  return "3";
+  if (value === 1) return "Low";
+  if (value === 2) return "Medium";
+  return "High";
 };
 
 const titleFor = (value: FlashcardsDensity): string => {
-  if (value === 1) return "Low (approx. 35%)";
-  if (value === 2) return "Normal (approx. 60%)";
-  return "High (approx. 90%)";
+  if (value === 1) return "Low coverage (fewer cards)";
+  if (value === 2) return "Medium coverage";
+  return "High coverage (more cards)";
 };
 
 export function FlashcardsDensityControl({ value, onChange, disabled }: FlashcardsDensityControlProps) {
