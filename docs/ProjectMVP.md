@@ -1,54 +1,75 @@
+# Project MVP
+
 ## 1. Kernziel
 
-Eine Next.js Webapp, die Vorlesungsfolien (PDF) einliest, basierend auf einem strikten Anforderungskatalog zusammenfasst und das Ergebnis formatiert direkt in eine Notion-Datenbank/Seite exportiert.
+Eine Next.js Webapp, die PDFs oder Markdown-Dateien (z.B. Vorlesungsfolien/Skripte) einliest, den Inhalt in Sections aufteilt und daraus mit klaren, kostensparenden Worksteps eine Zusammenfassung sowie Lernmaterial (Flashcards/Quiz) erzeugt.
 
-## 2. Tech-Stack
+## 2. MVP Scope (explizit, klein)
+
+### 2.1 User Flow (clean Worksteps)
+
+1. Upload (PDF/MD) -> Text extrahieren/normalisieren
+2. Output-Modus im Header waehlen: Summary / Flashcards / Quiz
+3. Modell waehlen
+4. Generieren + Preview
+
+### 2.2 Outputs (MVP)
+
+- Summary (MVP: whole document; keine Page/Section-Auswahl im UI):
+  - 5-10 Bullet Points + Key Definitions
+- Flashcards (systemseitig bestimmt; User waehlt nur grob "Menge" 1-3):
+  - Q/A Cards + Cloze Cards
+  - Fullscreen Study-View (Flip + Keyboard)
+  - Export:
+    - Markdown (lesbar)
+    - TSV (Anki/Spreadsheet Import)
+  - Jede Card speichert Provenance:
+    - `sectionId`
+    - `sourceSnippet` (kurzes Zitat, 1-3 Saetze aus dem Section-Text)
+    - optional `page` (falls beim PDF-Parsing verfuegbar)
+- Quiz (MCQ v0):
+  - Generierung in Batches (system `N`)
+  - UI zeigt jeweils 1 Frage; Antworten sind klickbar + Feedback; "Next" zeigt die naechste und laedt neue Fragen nach Bedarf nach
+  - Quelle ist im UI einklappbar (Details)
+  - Export:
+    - Markdown (gesamtes Quiz)
+    - JSON (raw, fuer spaetere Formate)
+
+### 2.3 Kosten-/Token-Strategie (MVP)
+
+- Keine Page/Section-Selection im UI (keep it simple).
+- Quiz/Flashcards nur batch-weise generieren (kein "alles upfront").
+- Caching: `(docHash, mode, model, params)` -> wiederverwenden.
+
+## 3. Tech-Stack
 
 - Framework: Next.js (App Router), TypeScript
 - KI-Integration: Vercel AI SDK
-- KI-Provider: OpenRouter (Flexibilität bei der Modellauswahl)
+- KI-Provider: OpenRouter (Flexibilitaet bei der Modellauswahl)
 - Modelle/Preise: `config/openrouter-models.example.json` (optional: `config/openrouter-models.json`)
-- Notion: `@notionhq/client` (Notion SDK für JavaScript)
 - PDF-Parsing: `pdf-parse` oder `pdfjs-dist`
 - Kosten-Analyse: Token-/Kosten-Logik in `lib/token-cost.ts` und `lib/usage.ts`
+- Optional (wenn schon vorhanden/gewuenscht): Notion Export via `@notionhq/client`
 
-## 3. UI-Komponenten (Single-Page)
+## 4. KI-Konfiguration (Leitplanken)
 
-- Header: Titel & Status-Anzeige
-- Config-Bar:
-  - Dropdown: Fach-Auswahl (lädt Seiten aus Notion)
-  - Dropdown: KI-Modell (OpenRouter IDs, z.B. `anthropic/claude-3.5-sonnet`, `openai/gpt-4o`)
-- Input-Zone:
-  - File-Dropzone für PDF-Upload
-  - Kosten-Vorschau: Tokens & geschätzte Kosten direkt nach Upload
-  - Input für optionale Strukturvorgaben (Überschriften)
-- Output- & Edit-Zone:
-  - Preview-Fenster für die generierte Zusammenfassung (Markdown)
-  - Chat-Leiste zur Verfeinerung (z.B. „Erkläre Thema X genauer“, „Fasse kürzer“)
-- Action-Button: „Final nach Notion exportieren“
+- System/Regelwerk bleibt "oberstes Gesetz".
+- Base Guidelines:
+  - General: `guidelines/general.en.md` 
+  - Summary add-on: `guidelines/summary.en.md` 
+- Mode-spezifische Add-ons:
+  - Flashcards: `guidelines/flashcards.en.md` 
+  - Quiz: `guidelines/quiz.en.md` 
+- Prompts sind kurz, section-basiert, und erzwingen:
+  - kein Halluzinieren
+  - Output-Format stabil (Markdown/JSON)
+  - Provenance-Felder (`sourceSnippet`, `sectionId`, optional `page`)
 
-## 4. KI-Konfiguration (System-Prompt)
+## 5. Out of scope (nicht MVP)
 
-Identität:
-
-Du bist ein spezialisierter KI-Assistent für akademische Aufbereitung. Deine Aufgabe ist es, komplexe Vorlesungsskripte in hocheffiziente, prüfungsorientierte Zusammenfassungen zu transformieren.
-
-Arbeitsumgebung & Materialien:
-
-1. Regelwerk: `KI-Vorgaben.md` (oberstes Gesetz)
-2. Quelle: Text-Extrakt aus Uni-Folien (60–100 Seiten)
-3. Kontext: Export nach Notion für langfristige Klausurvorbereitung
-
-## 5. Workflow & Notion-Logik
-
-1. Upload: PDF → Text extrahieren → Kosten-Check anzeigen
-2. Generierung: Text + Regeln → OpenRouter über Vercel AI SDK
-3. Refinement: Änderungen über Chat-Leiste (State via SDK)
-4. Export:
-   - Ziel: Unterseite (Child-Page) innerhalb der gewählten Fach-Seite in Notion
-   - Markdown-Struktur wird in Notion-Blocks übersetzt
-
-## 6. Referenzierte Dateien
-
-- Regeln: `KI-Vorgaben.md` / `KI-Vorgaben-kurz.md` (müssen bei jeder Zusammenfassung vorliegen)
-- Modelle/Preise: `config/openrouter-models.example.json`
+- User Login / Accounts
+- Subscription-Tiers nach Modellen
+- Bring-your-own AI keys (OpenRouter/Claude/OpenAI/Gemini/...)
+- User-Dashboards / "grosse Overviews" ueber viele Dokumente
+- Concept Maps / Prerequisite Graphs
+- Full lecture / exam-like quizzes

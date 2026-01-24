@@ -1,4 +1,4 @@
-# Summary Maker
+# Zemni
 
 Eine Next.js Webapp, die Vorlesungsfolien (PDF) einliest, anhand eines Regelwerks zusammenfasst und das Ergebnis direkt nach Notion exportiert.
 
@@ -6,6 +6,8 @@ Eine Next.js Webapp, die Vorlesungsfolien (PDF) einliest, anhand eines Regelwerk
 
 - PDF-Upload mit Textextraktion
 - Prüfungsorientierte Zusammenfassungen über OpenRouter (mehrere Modelle)
+- Flashcards (Fullscreen Study-View) + Export (MD/TSV)
+- Quiz (MCQ) + Feedback + Export (MD/JSON)
 - Token-/Kosten-Schätzung vor der Generierung
 - Iterative Verfeinerung per Chat
 - Export nach Notion (Unterseite innerhalb eines Fachs)
@@ -67,8 +69,13 @@ lib/                      # Shared Libraries (OpenRouter, Notion, Prompts, ...)
   parse-pdf-client.ts     # Client-side PDF Parsing (pdfjs)
 config/                   # Konfiguration (Modelle/Preise)
 docs/                     # Projekt-Doku (MVP, TODOs, ...)
-KI-Vorgaben.md
-KI-Vorgaben-kurz.md
+guidelines/               # KI-Regelwerke (General + mode add-ons)
+  general.en.md
+  summary.en.md
+  flashcards.en.md
+  quiz.en.md
+  base.de.md              # legacy DE (kept for reference)
+  base.full.de.md         # legacy DE (kept for reference)
 ```
 
 ## Modell-Konfiguration

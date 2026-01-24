@@ -1,58 +1,15 @@
-- eingeruckte codeblocke ueberarbeiten
+# TODOs (MVP-first)
 
-app/
-├── api/                    # Keep as is (already well-organized)
-├── components/
-│   ├── app-client.tsx      # Main orchestrator (~200 lines)
-│   ├── ui/                 # Presentational components
-│   │   ├── Button.tsx
-│   │   ├── StatusBadge.tsx
-│   │   ├── Icon.tsx
-│   │   └── ...
-│   ├── features/           # Feature-specific components
-│   │   ├── HistorySidebar.tsx
-│   │   ├── OutputTabs.tsx
-│   │   ├── CostPreview.tsx
-│   │   ├── SummaryPreview.tsx
-│   │   ├── RefineBar.tsx
-│   │   └── InputPanel.tsx
-│   └── layout/
-│       ├── Header.tsx
-│       └── Sidebar.tsx
-├── globals.css
-├── layout.tsx
-└── page.tsx
+- clean up code, split files for better overview
+- heavy usage improvment, ui/ux makeover with logik about paths between buttons etc.
+- much mre to come...
 
-lib/
-├── api/                   # API route logic handlers
-│   ├── handlers/
-│   │   ├── models-handler.ts
-│   │   ├── pdf-handler.ts
-│   │   ├── token-estimate-handler.ts
-│   │   ├── summarize-handler.ts
-│   │   ├── refine-handler.ts
+# Out of scope right now
 
-
-│   │   └── notion-handler.ts
-│   ├── models.ts
-│   ├── notion.ts
-│   ├── openrouter.ts
-│   ├── prompts.ts
-│   ├── token-cost.ts
-│   ├── usage.ts
-│   ├── markdown.ts
-│   ├── normalize-pdf-text.ts
-│   ├── parse-pdf-client.ts
-│   └── format-output.ts
-
-hooks/
-├── useHistory.ts
-├── useTokenEstimate.ts
-├── usePDFParser.ts
-└── useSummaryState.ts
-
-types/
-├── index.ts
-├── models.ts
-├── summary.ts
-└── history.ts
+- User login / accounts
+- User settings (language choice, customs default prompts)
+- Subscription tiers based on models
+- Bring-your-own AI keys (OpenRouter/Claude/OpenAI/Gemini/...)
+- User-level "large overview" dashboards across many documents
+- Concept maps / prerequisite graphs
+- Full lecture / exam-like quizzes
