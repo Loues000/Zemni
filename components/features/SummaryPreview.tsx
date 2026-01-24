@@ -113,8 +113,8 @@ export function SummaryPreview({
                   type="button"
                   className="icon-btn"
                   onClick={onEditStart}
-                  title="Bearbeiten"
-                  aria-label="Markdown bearbeiten"
+                  title="Edit"
+                  aria-label="Edit Markdown"
                 >
                   <IconEdit />
                 </button>
@@ -122,8 +122,8 @@ export function SummaryPreview({
                   type="button"
                   className="icon-btn"
                   onClick={onCopySummary}
-                  title="Kopieren"
-                  aria-label="Zusammenfassung kopieren"
+                  title="Copy"
+                  aria-label="Copy summary"
                 >
                   {copySuccess ? <IconCheck /> : <IconCopy />}
                 </button>
@@ -141,8 +141,8 @@ export function SummaryPreview({
             ) : (
               <div className="preview-empty">
                 {extractedText
-                  ? "PDF geladen. Auf Generieren klicken."
-                  : "PDF hochladen, dann Generieren."}
+                  ? "PDF loaded. Click Generate."
+                  : "Upload a PDF to generate."}
               </div>
             )}
           </div>
@@ -174,8 +174,8 @@ export function SummaryPreview({
                   type="button"
                   className="icon-btn"
                   onClick={onEditStart}
-                  title="Bearbeiten"
-                  aria-label="Markdown bearbeiten"
+                  title="Edit"
+                  aria-label="Edit Markdown"
                 >
                   <IconEdit />
                 </button>
@@ -183,8 +183,8 @@ export function SummaryPreview({
                   type="button"
                   className="icon-btn"
                   onClick={onCopySummary}
-                  title="Kopieren"
-                  aria-label="Zusammenfassung kopieren"
+                  title="Copy"
+                  aria-label="Copy summary"
                 >
                   {copySuccess ? <IconCheck /> : <IconCopy />}
                 </button>
@@ -202,8 +202,8 @@ export function SummaryPreview({
             ) : (
               <div className="preview-empty">
                 {extractedText
-                  ? "PDF geladen. Auf Generieren klicken."
-                  : "PDF hochladen, dann Generieren."}
+                  ? "PDF loaded. Click Generate."
+                  : "Upload a PDF to generate."}
               </div>
             )}
           </div>
@@ -222,8 +222,8 @@ export function SummaryPreview({
                   type="button"
                   className="icon-btn"
                   onClick={onEditStartSecond}
-                  title="Bearbeiten"
-                  aria-label="Markdown bearbeiten"
+                  title="Edit"
+                  aria-label="Edit Markdown"
                 >
                   <IconEdit />
                 </button>
@@ -231,8 +231,8 @@ export function SummaryPreview({
                   type="button"
                   className="icon-btn"
                   onClick={onCopySummarySecond}
-                  title="Kopieren"
-                  aria-label="Zusammenfassung kopieren"
+                  title="Copy"
+                  aria-label="Copy summary"
                 >
                   {copySuccessSecond ? <IconCheck /> : <IconCopy />}
                 </button>
@@ -240,8 +240,8 @@ export function SummaryPreview({
                   type="button"
                   className="icon-btn icon-btn-close"
                   onClick={onCloseSplit}
-                  title="Split schliessen"
-                  aria-label="Split-View schliessen"
+                  title="Close split view"
+                  aria-label="Close split view"
                 >
                   <IconClose />
                 </button>
@@ -256,7 +256,7 @@ export function SummaryPreview({
                   </ReactMarkdown>
                 </div>
               ) : (
-                <div className="preview-empty">Keine Zusammenfassung</div>
+                <div className="preview-empty">No summary</div>
               )}
             </div>
           )}

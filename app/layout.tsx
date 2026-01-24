@@ -15,13 +15,13 @@ const body = IBM_Plex_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Summary Maker",
-  description: "PDF Zusammenfassungen mit Notion Export"
+  title: "Zemni",
+  description: "Summaries, flashcards and quizzes from PDFs/Markdown"
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="de" className={`${display.variable} ${body.variable}`}>
+    <html lang="en" className={`${display.variable} ${body.variable}`}>
       <body>{children}</body>
     </html>
   );

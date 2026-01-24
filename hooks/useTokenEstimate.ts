@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import type { Model, CostRow, CostHeuristic } from "@/types";
+import type { CostRow, CostHeuristic, OutputKind } from "@/types";
 
 export function useTokenEstimate() {
   const [modelCosts, setModelCosts] = useState<CostRow[]>([]);
@@ -7,7 +7,11 @@ export function useTokenEstimate() {
   const [isEstimating, setIsEstimating] = useState(false);
   const estimateAbortRef = useRef<AbortController | null>(null);
 
-  const fetchTokenEstimate = useCallback(async (text: string, hints: string) => {
+  const fetchTokenEstimate = useCallback(async (
+    text: string,
+    hints: string,
+    options?: { mode?: OutputKind; n?: number; sectionsCount?: number }
+  ) => {
     if (!text) {
       setModelCosts([]);
       setCostHeuristic(null);
@@ -24,7 +28,13 @@ export function useTokenEstimate() {
       const res = await fetch("/api/token-estimate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ extractedText: text, structureHints: hints }),
+        body: JSON.stringify({
+          extractedText: text,
+          structureHints: hints,
+          mode: options?.mode ?? "summary",
+          n: options?.n ?? null,
+          sectionsCount: options?.sectionsCount ?? null
+        }),
         signal: estimateAbortRef.current.signal
       });
       if (!res.ok) throw new Error("Token estimate failed");

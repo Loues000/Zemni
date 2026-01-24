@@ -7,9 +7,13 @@ import {
   InputPanel, 
   OutputTabs, 
   SummaryPreview, 
-  RefineBar 
+  RefineBar,
+  FlashcardsMode,
+  QuizMode,
+  FlashcardsDensityControl,
+  type FlashcardsDensity
 } from "@/components/features";
-import { StatusBadge, CostPreview, StatsSection, IconMenu, IconSun, IconMoon } from "@/components/ui";
+import { StatusBadge, CostPreview, StatsSection, IconMenu, IconSun, IconMoon, Footer } from "@/components/ui";
 import type { 
   Model, 
   Subject, 
@@ -17,29 +21,18 @@ import type {
   UsageStats, 
   OutputEntry, 
   HistoryEntry,
-  CostRow 
+  CostRow,
+  OutputKind,
+  DocumentSection,
+  Flashcard,
+  QuizQuestion
 } from "@/types";
 import { useHistory, useTokenEstimate } from "@/hooks";
 import { enforceOutputFormat } from "@/lib/format-output";
+import { createPdfId, flashcardsToMarkdown, getSummaryTitle, renderQuizPreview } from "@/lib/output-previews";
+import { estimateFlashcardsPerSection } from "@/lib/study-heuristics";
 
-const getSummaryTitle = (summary: string, fallback: string): string => {
-  const match = summary.match(/^#\s+(.+)$/m);
-  if (match && match[1]) {
-    return match[1].trim();
-  }
-  return fallback;
-};
-
-const createPdfId = (fileName: string, extractedText: string): string => {
-  const content = fileName + ":" + extractedText.slice(0, 1000);
-  let hash = 0;
-  for (let i = 0; i < content.length; i++) {
-    const char = content.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash;
-  }
-  return "pdf-" + Math.abs(hash).toString(36);
-};
+const QUIZ_BATCH_SIZE = 6;
 
 export default function AppClient() {
   const [theme, setTheme] = useState<"light" | "dark">("light");
@@ -54,6 +47,7 @@ export default function AppClient() {
   const [dragActive, setDragActive] = useState(false);
   const [fileName, setFileName] = useState<string>("");
   const [extractedText, setExtractedText] = useState<string>("");
+  const [outputKind, setOutputKind] = useState<OutputKind>("summary");
   const [outputs, setOutputs] = useState<Record<string, OutputEntry>>({});
   const [selectedTabId, setSelectedTabId] = useState<string | null>(null);
   const [secondTabId, setSecondTabId] = useState<string | null>(null);
@@ -70,6 +64,7 @@ export default function AppClient() {
   const [tabToDelete, setTabToDelete] = useState<string | null>(null);
   const [exportProgress, setExportProgress] = useState<{ current: number; total: number } | null>(null);
   const [lastExportedPageId, setLastExportedPageId] = useState<string | null>(null);
+  const [flashcardsDensity, setFlashcardsDensity] = useState<FlashcardsDensity>(2);
   
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const previewRef1 = useRef<HTMLDivElement | null>(null);
@@ -141,7 +136,29 @@ export default function AppClient() {
     return Object.values(outputs).sort((a, b) => b.updatedAt - a.updatedAt);
   }, [outputs]);
 
+  const outputsForMode = useMemo(() => {
+    return outputTabs.filter((tab) => (tab.kind ?? "summary") === outputKind);
+  }, [outputTabs, outputKind]);
+
+  const outputsForModeRecord = useMemo(() => {
+    return outputsForMode.reduce<Record<string, OutputEntry>>((acc, item) => {
+      acc[item.id] = item;
+      return acc;
+    }, {});
+  }, [outputsForMode]);
+
+  const selectedTextForEstimate = extractedText;
+
+  const docSection: DocumentSection = useMemo(() => {
+    return {
+      id: "doc",
+      title: fileName ? fileName : "Document",
+      text: extractedText
+    };
+  }, [fileName, extractedText]);
+
   const currentOutput = selectedTabId ? outputs[selectedTabId] : undefined;
+  const currentKind: OutputKind = (currentOutput?.kind as OutputKind) || "summary";
   const isCurrentTabRefining = isRefining && refineTargetRef.current === selectedTabId;
   const currentSummary = isCurrentTabRefining && streamingRefineContent 
     ? streamingRefineContent 
@@ -167,12 +184,12 @@ export default function AppClient() {
     const fetchModels = async () => {
       try {
         const res = await fetch("/api/models");
-        if (!res.ok) throw new Error("Modelle konnten nicht geladen werden.");
+        if (!res.ok) throw new Error("Could not load models.");
         const data = await res.json() as { models: Model[] };
         setModels(data.models);
         if (data.models.length > 0) setSelectedModel(data.models[0].id);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Unbekannter Fehler");
+        setError(err instanceof Error ? err.message : "Unknown error");
         setStatus("error");
       }
     };
@@ -197,6 +214,22 @@ export default function AppClient() {
     document.documentElement.dataset.theme = theme;
     window.localStorage.setItem("theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    if (outputsForMode.length === 0) {
+      setSelectedTabId(null);
+      setSecondTabId(null);
+      return;
+    }
+
+    if (!selectedTabId || !outputsForMode.some((t) => t.id === selectedTabId)) {
+      setSelectedTabId(outputsForMode[0].id);
+    }
+
+    setSecondTabId(null);
+    setIsEditing(false);
+    setIsEditingSecond(false);
+  }, [outputKind, outputsForMode, selectedTabId]);
 
   useEffect(() => {
     if (!chatData?.length) return;
@@ -233,18 +266,32 @@ export default function AppClient() {
   }, [sidebarOpen]);
 
   useEffect(() => {
-    if (!extractedText) {
+    if (!selectedTextForEstimate) {
       setModelCosts([]);
       setCostHeuristic(null);
       return;
     }
 
     const timer = setTimeout(() => {
-      fetchTokenEstimate(extractedText, structureHints);
+      const n = outputKind === "flashcards"
+        ? estimateFlashcardsPerSection(selectedTextForEstimate.length, flashcardsDensity)
+        : outputKind === "quiz"
+          ? QUIZ_BATCH_SIZE
+          : undefined;
+      fetchTokenEstimate(selectedTextForEstimate, structureHints, {
+        mode: outputKind,
+        n
+      });
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [extractedText, structureHints, fetchTokenEstimate]);
+  }, [
+    selectedTextForEstimate,
+    structureHints,
+    outputKind,
+    flashcardsDensity,
+    fetchTokenEstimate
+  ]);
 
   useEffect(() => {
     if (status === "ready" && Object.keys(outputs).length > 0 && extractedText && !generatingTabId && !loadedFromHistory) {
@@ -253,7 +300,7 @@ export default function AppClient() {
   }, [outputs, status, extractedText, generatingTabId, loadedFromHistory]);
 
   const handleTabChange = (tabId: string, event?: React.MouseEvent): void => {
-    const isCtrlClick = event && (event.ctrlKey || event.metaKey);
+    const isCtrlClick = outputKind === "summary" && event && (event.ctrlKey || event.metaKey);
     
     if (isCtrlClick && selectedTabId) {
       if (tabId === selectedTabId) return;
@@ -338,7 +385,7 @@ export default function AppClient() {
     const largeFileThreshold = 50 * 1024 * 1024;
     if (file.size > largeFileThreshold) {
       const fileSizeMB = (file.size / (1024 * 1024)).toFixed(1);
-      console.warn(`Große Datei erkannt (${fileSizeMB} MB). Das Parsing kann etwas länger dauern.`);
+      console.warn(`Large file detected (${fileSizeMB} MB). Parsing may take a bit longer.`);
     }
     
     setStatus("parsing");
@@ -374,12 +421,15 @@ export default function AppClient() {
             body: formData
           });
           if (!res.ok) {
-            const clientMessage = parseError instanceof Error ? parseError.message : "Unbekannter Fehler";
-            throw new Error(`Client-Parsing fehlgeschlagen. Server-Fallback fehlgeschlagen. (${clientMessage})`);
+            const clientMessage = parseError instanceof Error ? parseError.message : "Unknown error";
+            throw new Error(`Client parsing failed. Server fallback failed. (${clientMessage})`);
           }
           const data = await res.json() as { text: string };
           normalizedText = data.text ?? "";
         }
+      } else if (file.type === "text/markdown" || file.name.toLowerCase().endsWith(".md")) {
+        extractedText = await file.text();
+        normalizedText = extractedText;
       } else {
         extractedText = await file.text();
       }
@@ -387,11 +437,11 @@ export default function AppClient() {
       if (normalizedText === null) {
         const res = await fetch("/api/parse-pdf", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: extractedText })
-        });
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: extractedText })
+      });
 
-        if (!res.ok) throw new Error("Text konnte nicht normalisiert werden.");
+        if (!res.ok) throw new Error("Could not normalize text.");
 
         const data = await res.json() as { text: string };
         normalizedText = data.text ?? "";
@@ -400,26 +450,26 @@ export default function AppClient() {
       setExtractedText(normalizedText);
       setStatus("ready");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unbekannter Fehler");
+      setError(err instanceof Error ? err.message : "Unknown error");
       setStatus("error");
     }
   };
 
   const handleGenerate = async (): Promise<void> => {
     if (!extractedText) {
-      setError("Zuerst PDF hochladen.");
+      setError("Upload a PDF/MD file first.");
       setStatus("error");
       return;
     }
     if (!selectedModel) {
-      setError("Modell auswaehlen.");
+      setError("Select a model.");
       setStatus("error");
       return;
     }
-    
+
     const tabId = selectedModel + "-" + Date.now();
-    const modelLabel = models.find(m => m.id === selectedModel)?.displayName || selectedModel;
-    
+    const modelLabel = models.find((m) => m.id === selectedModel)?.displayName || selectedModel;
+
     setOutputs((prev) => ({
       ...prev,
       [tabId]: {
@@ -429,9 +479,21 @@ export default function AppClient() {
         summary: "",
         usage: null,
         updatedAt: Date.now(),
-        isGenerating: true
+        isGenerating: true,
+        kind: outputKind,
+        sectionIds: ["doc"],
+        flashcards: outputKind === "flashcards" ? [] : undefined,
+        quiz: outputKind === "quiz" ? [] : undefined,
+        quizState:
+          outputKind === "quiz"
+            ? {
+                questionCursor: 0,
+                revealAnswer: false
+              }
+            : undefined
       }
     }));
+
     setSelectedTabId(tabId);
     setGeneratingTabId(tabId);
     setError("");
@@ -439,31 +501,88 @@ export default function AppClient() {
     setLoadedFromHistory(false);
     setIsEditing(false);
     setData([]);
-    
+
     try {
-      const res = await fetch("/api/summarize", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: extractedText,
-          modelId: selectedModel,
-          structure: structureHints
-        })
-      });
-      if (!res.ok) throw new Error("Zusammenfassung fehlgeschlagen.");
-      const data = await res.json() as { summary: string; usage?: UsageStats | null };
-      setOutputs((prev) => ({
-        ...prev,
-        [tabId]: {
-          id: tabId,
-          modelId: selectedModel,
-          label: modelLabel,
-          summary: data.summary || "",
-          usage: data.usage ?? null,
-          updatedAt: Date.now(),
-          isGenerating: false
-        }
-      }));
+      if (outputKind === "summary") {
+        const res = await fetch("/api/section-summary", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sections: [docSection],
+            modelId: selectedModel,
+            structure: structureHints,
+            titleHint: fileName
+          })
+        });
+        if (!res.ok) throw new Error("Summary generation failed.");
+        const data = await res.json() as { summary: string; usage?: UsageStats | null };
+
+        setOutputs((prev) => ({
+          ...prev,
+          [tabId]: {
+            ...prev[tabId],
+            summary: data.summary || "",
+            usage: data.usage ?? null,
+            updatedAt: Date.now(),
+            isGenerating: false,
+            kind: "summary"
+          }
+        }));
+      } else if (outputKind === "flashcards") {
+        const res = await fetch("/api/flashcards", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sections: [docSection],
+            modelId: selectedModel,
+            coverageLevel: flashcardsDensity
+          })
+        });
+        if (!res.ok) throw new Error("Flashcards generation failed.");
+        const data = await res.json() as { flashcards: Flashcard[]; usage?: UsageStats | null };
+        const markdown = flashcardsToMarkdown(data.flashcards ?? [], fileName);
+
+        setOutputs((prev) => ({
+          ...prev,
+          [tabId]: {
+            ...prev[tabId],
+            summary: markdown,
+            usage: data.usage ?? null,
+            updatedAt: Date.now(),
+            isGenerating: false,
+            kind: "flashcards",
+            flashcards: data.flashcards ?? []
+          }
+        }));
+      } else if (outputKind === "quiz") {
+        const res = await fetch("/api/quiz", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            section: docSection,
+            modelId: selectedModel,
+            avoidQuestions: []
+          })
+        });
+        if (!res.ok) throw new Error("Quiz generation failed.");
+        const data = await res.json() as { questions: QuizQuestion[]; usage?: UsageStats | null };
+
+        setOutputs((prev) => {
+          const existing = prev[tabId];
+          if (!existing) return prev;
+          const next: OutputEntry = {
+            ...existing,
+            quiz: data.questions ?? [],
+            usage: data.usage ?? null,
+            updatedAt: Date.now(),
+            isGenerating: false,
+            kind: "quiz"
+          };
+          next.summary = renderQuizPreview(next, fileName);
+          return { ...prev, [tabId]: next };
+        });
+      }
+
       setMessages([]);
       setInput("");
       setStatus("ready");
@@ -475,20 +594,161 @@ export default function AppClient() {
         return newOutputs;
       });
       setSelectedTabId(null);
-      setError(err instanceof Error ? err.message : "Unbekannter Fehler");
+      setError(err instanceof Error ? err.message : "Unknown error");
       setStatus("error");
       setGeneratingTabId(null);
     }
   };
 
+  const handleQuizReveal = () => {
+    if (!selectedTabId) return;
+    setOutputs((prev) => {
+      const existing = prev[selectedTabId];
+      if (!existing || existing.kind !== "quiz" || !existing.quizState) return prev;
+      const next: OutputEntry = {
+        ...existing,
+        quizState: {
+          ...existing.quizState,
+          revealAnswer: !existing.quizState.revealAnswer
+        },
+        updatedAt: Date.now()
+      };
+      next.summary = renderQuizPreview(next, fileName);
+      return { ...prev, [selectedTabId]: next };
+    });
+  };
+
+  const handleQuizSelectOption = (selectedOptionIndex: number) => {
+    if (!selectedTabId) return;
+    setOutputs((prev) => {
+      const existing = prev[selectedTabId];
+      if (!existing || existing.kind !== "quiz" || !existing.quizState) return prev;
+      const next: OutputEntry = {
+        ...existing,
+        quizState: {
+          ...existing.quizState,
+          selectedOptionIndex,
+          revealAnswer: true
+        },
+        updatedAt: Date.now()
+      };
+      next.summary = renderQuizPreview(next, fileName);
+      return { ...prev, [selectedTabId]: next };
+    });
+  };
+
+  const handleQuizNext = async () => {
+    if (!selectedTabId) return;
+    const output = outputs[selectedTabId];
+    if (!output || output.kind !== "quiz" || !output.quizState) return;
+
+    const state = output.quizState;
+    const nextCursor = state.questionCursor + 1;
+    const questions = output.quiz ?? [];
+
+    if (nextCursor < questions.length) {
+      setOutputs((prev) => {
+        const existing = prev[selectedTabId];
+        if (!existing || existing.kind !== "quiz" || !existing.quizState) return prev;
+        const next: OutputEntry = {
+          ...existing,
+          quizState: {
+            ...existing.quizState,
+            questionCursor: nextCursor,
+            revealAnswer: false,
+            selectedOptionIndex: undefined
+          },
+          updatedAt: Date.now()
+        };
+        next.summary = renderQuizPreview(next, fileName);
+        return { ...prev, [selectedTabId]: next };
+      });
+      return;
+    }
+
+    setError("");
+    setStatus("summarizing");
+    setGeneratingTabId(selectedTabId);
+    setOutputs((prev) => {
+      const existing = prev[selectedTabId];
+      if (!existing) return prev;
+      return {
+        ...prev,
+        [selectedTabId]: {
+          ...existing,
+          isGenerating: true,
+          summary: "# Quiz\n\nGenerating questions...\n",
+          updatedAt: Date.now()
+        }
+      };
+    });
+
+    try {
+      const avoid = (output.quiz ?? []).map((q) => q.question).filter(Boolean);
+
+      const res = await fetch("/api/quiz", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          section: docSection,
+          modelId: output.modelId,
+          questionsCount: QUIZ_BATCH_SIZE,
+          avoidQuestions: avoid
+        })
+      });
+
+      if (!res.ok) throw new Error("Quiz generation failed.");
+      const data = await res.json() as { questions: QuizQuestion[]; usage?: UsageStats | null };
+
+      setOutputs((prev) => {
+        const existing = prev[selectedTabId];
+        if (!existing || existing.kind !== "quiz" || !existing.quizState) return prev;
+        const appended = data.questions ?? [];
+        const cursor = (existing.quiz ?? []).length;
+        const next: OutputEntry = {
+          ...existing,
+          isGenerating: false,
+          quiz: [...(existing.quiz ?? []), ...appended],
+          usage: data.usage ?? existing.usage,
+          quizState: {
+            ...existing.quizState,
+            questionCursor: cursor,
+            revealAnswer: false,
+            selectedOptionIndex: undefined
+          },
+          updatedAt: Date.now()
+        };
+        next.summary = renderQuizPreview(next, fileName);
+        return { ...prev, [selectedTabId]: next };
+      });
+
+      setStatus("ready");
+      setGeneratingTabId(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unknown error");
+      setStatus("error");
+      setGeneratingTabId(null);
+      setOutputs((prev) => {
+        const existing = prev[selectedTabId];
+        if (!existing) return prev;
+        return { ...prev, [selectedTabId]: { ...existing, isGenerating: false, updatedAt: Date.now() } };
+      });
+    }
+  };
+
   const handleExport = async (): Promise<void> => {
+    if (currentKind !== "summary") {
+      setError("Only summaries can be exported to Notion.");
+      setStatus("error");
+      return;
+    }
     if (!currentSummary) {
-      setError("Keine Zusammenfassung zum Export.");
+      setError("No summary to export.");
       setStatus("error");
       return;
     }
     if (!selectedSubject) {
-      setError("Fach auswaehlen.");
+      setError("Select a subject.");
       setStatus("error");
       return;
     }
@@ -498,7 +758,7 @@ export default function AppClient() {
     setLastExportedPageId(null);
 
     try {
-      const title = getSummaryTitle(currentSummary, fileName || "Zusammenfassung");
+      const title = getSummaryTitle(currentSummary, fileName || "Summary");
       const res = await fetch("/api/notion/export", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -510,10 +770,10 @@ export default function AppClient() {
         })
       });
 
-      if (!res.ok) throw new Error("Notion Export fehlgeschlagen.");
+      if (!res.ok) throw new Error("Notion export failed.");
 
       const reader = res.body?.getReader();
-      if (!reader) throw new Error("Stream nicht verfuegbar.");
+      if (!reader) throw new Error("Stream not available.");
 
       const decoder = new TextDecoder();
       let buffer = "";
@@ -539,10 +799,10 @@ export default function AppClient() {
               exportedPageId = event.pageId as string;
               setLastExportedPageId(exportedPageId);
             } else if (event.type === "error") {
-              throw new Error(event.message as string || "Export fehlgeschlagen");
+              throw new Error(event.message as string || "Export failed");
             }
           } catch (parseErr) {
-            if (parseErr instanceof Error && parseErr.message !== "Export fehlgeschlagen") {
+            if (parseErr instanceof Error && parseErr.message !== "Export failed") {
               console.warn("Failed to parse export event:", parseErr);
             } else {
               throw parseErr;
@@ -559,7 +819,7 @@ export default function AppClient() {
         saveToHistory(undefined, subjectTitle, exportedPageId || undefined);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unbekannter Fehler");
+      setError(err instanceof Error ? err.message : "Unknown error");
       setStatus("error");
       setExportProgress(null);
     }
@@ -588,8 +848,8 @@ export default function AppClient() {
 
   const handleRefineSubmit = (event: React.FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
-    if (!currentSummary || !selectedTabId || !currentOutput) {
-      setError("Keine Zusammenfassung vorhanden.");
+    if (currentKind !== "summary" || !currentSummary || !selectedTabId || !currentOutput) {
+      setError("No summary available.");
       setStatus("error");
       return;
     }
@@ -610,8 +870,9 @@ export default function AppClient() {
     const outputsData = outputsToSave || outputs;
     if (!extractedText || Object.keys(outputsData).length === 0) return;
 
-    const firstSummary = Object.values(outputsData)[0]?.summary || "";
-    const title = getSummaryTitle(firstSummary, fileName || "Zusammenfassung");
+    const fileTitleFallback = (fileName || "Dokument").replace(/\.[^.]+$/, "");
+    const summaryTab = Object.values(outputsData).find((o) => (o.kind ?? "summary") === "summary" && (o.summary ?? "").trim().length > 0);
+    const title = summaryTab ? getSummaryTitle(summaryTab.summary ?? "", fileTitleFallback) : fileTitleFallback;
     const pdfId = createPdfId(fileName || "untitled", extractedText);
     const historyId = currentHistoryId || pdfId;
     const now = Date.now();
@@ -778,8 +1039,13 @@ export default function AppClient() {
 
   const statusClass = status === "error" ? "error" : status === "ready" ? "ready" : "busy";
   const isGenerating = generatingTabId === selectedTabId && generatingTabId !== null;
-  const canGenerate = status !== "parsing" && status !== "summarizing" && !isRefining;
-  const canExport = !!currentSummary && status !== "exporting";
+  const canGenerate =
+    status !== "parsing" &&
+    status !== "summarizing" &&
+    !isRefining &&
+    Boolean(extractedText) &&
+    Boolean(selectedModel);
+  const canExport = outputKind === "summary" && !!currentSummary && status !== "exporting";
 
   return (
     <div className="app">
@@ -795,15 +1061,33 @@ export default function AppClient() {
       <div className="main">
         <header className="header">
           <div className="header-left">
-            <button
-              type="button"
-              className="sidebar-toggle"
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              aria-label="Historie oeffnen"
-            >
-              <IconMenu />
-            </button>
-            <h1 className="header-title">Summary Maker</h1>
+            <h1 className="header-title">Zemni</h1>
+            <div className="mode-switch" role="tablist" aria-label="Output mode">
+              <button
+                type="button"
+                className={`mode-btn${outputKind === "summary" ? " active" : ""}`}
+                onClick={() => setOutputKind("summary")}
+                aria-pressed={outputKind === "summary"}
+              >
+                Summary
+              </button>
+              <button
+                type="button"
+                className={`mode-btn${outputKind === "flashcards" ? " active" : ""}`}
+                onClick={() => setOutputKind("flashcards")}
+                aria-pressed={outputKind === "flashcards"}
+              >
+                Flashcards
+              </button>
+              <button
+                type="button"
+                className={`mode-btn${outputKind === "quiz" ? " active" : ""}`}
+                onClick={() => setOutputKind("quiz")}
+                aria-pressed={outputKind === "quiz"}
+              >
+                Quiz
+              </button>
+            </div>
           </div>
           <div className="header-right">
             <button
@@ -815,7 +1099,6 @@ export default function AppClient() {
             >
               {theme === "dark" ? <IconSun /> : <IconMoon />}
             </button>
-            <StatusBadge status={status} />
           </div>
         </header>
 
@@ -829,7 +1112,20 @@ export default function AppClient() {
             selectedModel={selectedModel}
             models={models}
             structureHints={structureHints}
+            showStructureHints={outputKind === "summary"}
             dragActive={dragActive}
+            topBarLeft={
+              <button
+                type="button"
+                className="sidebar-toggle"
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                aria-label="Open history"
+                title="History"
+              >
+                <IconMenu />
+              </button>
+            }
+            topBarRight={<StatusBadge status={status} />}
             onDrop={onDrop}
             onDragOver={onDragOver}
             onDragLeave={onDragLeave}
@@ -838,6 +1134,18 @@ export default function AppClient() {
             onModelChange={handleModelChange}
             onStructureChange={setStructureHints}
           >
+            {outputKind === "flashcards" && (
+              <div className="field">
+                <label className="field-label">Flashcards amount</label>
+                <div className="field-inline">
+                  <FlashcardsDensityControl
+                    value={flashcardsDensity}
+                    onChange={setFlashcardsDensity}
+                    disabled={!extractedText || status === "parsing" || status === "summarizing"}
+                  />
+                </div>
+              </div>
+            )}
             <CostPreview
               currentCost={currentCost}
               isEstimating={isEstimating}
@@ -853,7 +1161,7 @@ export default function AppClient() {
           <div className="output-panel">
             <div className="output-header">
               <OutputTabs
-                outputs={outputs}
+                outputs={outputsForModeRecord}
                 selectedTabId={selectedTabId}
                 secondTabId={secondTabId}
                 generatingTabId={generatingTabId}
@@ -868,82 +1176,105 @@ export default function AppClient() {
                   onClick={handleGenerate}
                   disabled={!canGenerate}
                 >
-                  {generatingTabId ? "Generiert..." : "Generieren"}
+                  {generatingTabId ? "Generating..." : "Generate"}
                 </button>
-                {status === "exporting" && exportProgress ? (
-                  <div className="export-progress">
-                    <span className="export-progress-text">
-                      Exportiert... {exportProgress.current}/{exportProgress.total}
-                    </span>
-                    <div className="export-progress-bar">
-                      <div
-                        className="export-progress-fill"
-                        style={{ width: `${(exportProgress.current / exportProgress.total) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                ) : lastExportedPageId ? (
-                  <div className="export-actions-group">
-                    <a
-                      href={`https://notion.so/${lastExportedPageId.replace(/-/g, "")}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn btn-primary btn-sm"
-                    >
-                      In Notion oeffnen
-                    </a>
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      onClick={handleExport}
-                      disabled={!canExport}
-                    >
-                      Erneut
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    className="btn btn-primary btn-sm"
-                    onClick={handleExport}
-                    disabled={!canExport}
-                  >
-                    Nach Notion
-                  </button>
+                {outputKind === "summary" && (
+                  <>
+                    {status === "exporting" && exportProgress ? (
+                      <div className="export-progress">
+                        <span className="export-progress-text">
+                          Exporting... {exportProgress.current}/{exportProgress.total}
+                        </span>
+                        <div className="export-progress-bar">
+                          <div
+                            className="export-progress-fill"
+                            style={{ width: `${(exportProgress.current / exportProgress.total) * 100}%` }}
+                          />
+                        </div>
+                      </div>
+                    ) : lastExportedPageId ? (
+                      <div className="export-actions-group">
+                        <a
+                          href={`https://notion.so/${lastExportedPageId.replace(/-/g, "")}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn btn-primary btn-sm"
+                        >
+                          Open in Notion
+                        </a>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={handleExport}
+                          disabled={!canExport}
+                        >
+                          Retry
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        onClick={handleExport}
+                        disabled={!canExport}
+                      >
+                        Export to Notion
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             </div>
 
-            <SummaryPreview
-              isSplitView={isSplitView}
-              selectedTabId={selectedTabId}
-              secondTabId={secondTabId}
-              currentOutput={currentOutput}
-              secondOutput={secondOutput}
-              currentSummary={currentSummary}
-              secondSummary={secondSummary}
-              isEditing={isEditing}
-              isEditingSecond={isEditingSecond}
-              editDraft={editDraft}
-              editDraftSecond={editDraftSecond}
-              previewRef1={previewRef1}
-              previewRef2={previewRef2}
-              isScrolling={isScrolling}
-              copySuccess={copySuccess}
-              copySuccessSecond={copySuccessSecond}
-              onEditStart={handleEditStart}
-              onEditSave={handleEditSave}
-              onEditStartSecond={handleEditStartSecond}
-              onEditSaveSecond={handleEditSaveSecond}
-              onEditDraftChange={setEditDraft}
-              onEditDraftChangeSecond={setEditDraftSecond}
-              onCopySummary={handleCopySummary}
-              onCopySummarySecond={handleCopySummarySecond}
-              onSyncScroll={() => {}}
-              onCloseSplit={() => setSecondTabId(null)}
-              extractedText={extractedText}
-            />
+            {outputKind === "summary" ? (
+              <SummaryPreview
+                isSplitView={isSplitView}
+                selectedTabId={selectedTabId}
+                secondTabId={secondTabId}
+                currentOutput={currentOutput}
+                secondOutput={secondOutput}
+                currentSummary={currentSummary}
+                secondSummary={secondSummary}
+                isEditing={isEditing}
+                isEditingSecond={isEditingSecond}
+                editDraft={editDraft}
+                editDraftSecond={editDraftSecond}
+                previewRef1={previewRef1}
+                previewRef2={previewRef2}
+                isScrolling={isScrolling}
+                copySuccess={copySuccess}
+                copySuccessSecond={copySuccessSecond}
+                onEditStart={handleEditStart}
+                onEditSave={handleEditSave}
+                onEditStartSecond={handleEditStartSecond}
+                onEditSaveSecond={handleEditSaveSecond}
+                onEditDraftChange={setEditDraft}
+                onEditDraftChangeSecond={setEditDraftSecond}
+                onCopySummary={handleCopySummary}
+                onCopySummarySecond={handleCopySummarySecond}
+                onSyncScroll={() => {}}
+                onCloseSplit={() => setSecondTabId(null)}
+                extractedText={extractedText}
+              />
+            ) : outputKind === "flashcards" ? (
+              <div className="mode-panel">
+                <FlashcardsMode extractedText={extractedText} fileName={fileName} output={currentOutput} />
+              </div>
+            ) : (
+              <div className="mode-panel">
+                <QuizMode
+                  extractedText={extractedText}
+                  fileName={fileName}
+                  output={currentOutput}
+                  status={status}
+                  onReveal={handleQuizReveal}
+                  onNext={handleQuizNext}
+                  onSelectOption={handleQuizSelectOption}
+                />
+              </div>
+            )}
 
+            {outputKind === "summary" && (
               <RefineBar
                 input={input}
                 isRefining={isRefining}
@@ -951,6 +1282,7 @@ export default function AppClient() {
                 onInputChange={handleInputChange}
                 onSubmit={handleRefineSubmit}
               />
+            )}
 
             <div className="bottom-actions">
               <button
@@ -960,44 +1292,50 @@ export default function AppClient() {
                 disabled={!canGenerate}
                 style={{ flex: 1 }}
               >
-                {generatingTabId ? "Generiert..." : "Generieren"}
+                {generatingTabId ? "Generating..." : "Generate"}
               </button>
-              {status === "exporting" && exportProgress ? (
-                <div className="export-progress" style={{ flex: 1 }}>
-                  <span className="export-progress-text">
-                    {exportProgress.current}/{exportProgress.total}
-                  </span>
-                  <div className="export-progress-bar">
-                    <div
-                      className="export-progress-fill"
-                      style={{ width: `${(exportProgress.current / exportProgress.total) * 100}%` }}
-                    />
-                  </div>
-                </div>
-              ) : lastExportedPageId ? (
-                <a
-                  href={`https://notion.so/${lastExportedPageId.replace(/-/g, "")}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn btn-primary"
-                  style={{ flex: 1 }}
-                >
-                  In Notion oeffnen
-                </a>
-              ) : (
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={handleExport}
-                  disabled={!canExport}
-                  style={{ flex: 1 }}
-                >
-                  Nach Notion
-                </button>
+              {outputKind === "summary" && (
+                <>
+                  {status === "exporting" && exportProgress ? (
+                    <div className="export-progress" style={{ flex: 1 }}>
+                      <span className="export-progress-text">
+                        {exportProgress.current}/{exportProgress.total}
+                      </span>
+                      <div className="export-progress-bar">
+                        <div
+                          className="export-progress-fill"
+                          style={{ width: `${(exportProgress.current / exportProgress.total) * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                  ) : lastExportedPageId ? (
+                    <a
+                      href={`https://notion.so/${lastExportedPageId.replace(/-/g, "")}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn btn-primary"
+                      style={{ flex: 1 }}
+                    >
+                      Open in Notion
+                    </a>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={handleExport}
+                      disabled={!canExport}
+                      style={{ flex: 1 }}
+                    >
+                      Export to Notion
+                    </button>
+                  )}
+                </>
               )}
             </div>
           </div>
         </div>
+
+        <Footer />
       </div>
     </div>
   );

@@ -12,8 +12,18 @@ const BASE_IDENTITY = [
 ].join("\n");
 
 const loadGuidelines = async (): Promise<string> => {
-  const filePath = path.join(process.cwd(), "KI-Vorgaben-kurz.md");
-  return fs.readFile(filePath, "utf8");
+  const files = ["guidelines/general.en.md", "guidelines/summary.en.md"];
+  const parts = await Promise.all(
+    files.map(async (file) => {
+      const filePath = path.join(process.cwd(), file);
+      try {
+        return await fs.readFile(filePath, "utf8");
+      } catch {
+        return "";
+      }
+    })
+  );
+  return parts.filter((p) => p.trim().length > 0).join("\n\n---\n\n");
 };
 
 const FORMAT_CONTRACT = [

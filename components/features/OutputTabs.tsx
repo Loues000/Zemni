@@ -25,7 +25,7 @@ export function OutputTabs({
   return (
     <div className="output-tabs">
       {outputTabs.length === 0 ? (
-        <span className="hint">Noch keine Ausgabe</span>
+        <span className="hint">No output yet</span>
       ) : (
         outputTabs.map((tab) => {
           const isActive = tab.id === selectedTabId;
@@ -42,14 +42,14 @@ export function OutputTabs({
                 (tab.isGenerating ? " generating" : "")
               }
               onClick={(e) => onTabChange(tab.id, e)}
-              title={canSplit ? "Ctrl+Klick für Split-View" : undefined}
+              title={canSplit ? "Ctrl+Click for split view" : undefined}
             >
               <span className="output-tab-label">{tab.label}</span>
               <button
                 type="button"
                 className={`output-tab-close${isConfirming ? " confirming" : ""}`}
                 onClick={(e) => onCloseTab(tab.id, e)}
-                title={isConfirming ? "Nochmal klicken zum Löschen" : "Tab schliessen"}
+                title={isConfirming ? "Click again to delete" : "Close tab"}
               >
                 <IconClose />
               </button>

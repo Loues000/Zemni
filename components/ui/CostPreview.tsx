@@ -1,12 +1,12 @@
 import type { CostRow, CostHeuristic } from "@/types";
 
-export function CostPreview({ 
-  currentCost, 
-  isEstimating, 
-  costHeuristic 
-}: { 
-  currentCost?: CostRow; 
-  isEstimating: boolean; 
+export function CostPreview({
+  currentCost,
+  isEstimating,
+  costHeuristic
+}: {
+  currentCost?: CostRow;
+  isEstimating: boolean;
   costHeuristic?: CostHeuristic | null;
 }) {
   if (!currentCost) return null;
@@ -21,11 +21,13 @@ export function CostPreview({
     return value.toLocaleString(undefined, { maximumFractionDigits: digits });
   };
 
+  const note = costHeuristic?.note ?? (costHeuristic ? `Output estimate (cap ${costHeuristic.outputCap})` : null);
+
   return (
     <div className="cost-preview">
       <div className="cost-preview-title">
-        Kostenvorschau
-        {isEstimating && <span className="estimating-indicator"> (berechnet...)</span>}
+        Cost estimate
+        {isEstimating && <span className="estimating-indicator"> (calculating...)</span>}
       </div>
       <div className="cost-row">
         <span>Input ({formatNumber(currentCost.tokensIn)} Tokens)</span>
@@ -34,8 +36,8 @@ export function CostPreview({
       <div className="cost-row">
         <span>
           Output (~{formatNumber(currentCost.tokensOut)} Tokens)
-          {costHeuristic && (
-            <span className="heuristic-hint" title={`min(${costHeuristic.outputCap}, Input × ${costHeuristic.outputRatio})`}>
+          {note && (
+            <span className="heuristic-hint" title={note}>
               *
             </span>
           )}
@@ -43,14 +45,10 @@ export function CostPreview({
         <strong>{formatMoney(currentCost.costOut, currentCost.currency)}</strong>
       </div>
       <div className="cost-row cost-row-total">
-        <span>Gesamt</span>
+        <span>Total</span>
         <strong>{formatMoney(currentCost.total, currentCost.currency)}</strong>
       </div>
-      {costHeuristic && (
-        <div className="cost-hint">
-          * Output-Schaetzung: min({costHeuristic.outputCap}, Input × {costHeuristic.outputRatio})
-        </div>
-      )}
+      {note && <div className="cost-hint">* {note}</div>}
     </div>
   );
 }

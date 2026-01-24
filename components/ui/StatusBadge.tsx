@@ -1,13 +1,13 @@
 import type { Status } from "@/types";
 
 const statusLabels: Record<Status, string> = {
-  idle: "Bereit",
-  parsing: "PDF wird gelesen",
-  summarizing: "Generiert",
-  refining: "Ueberarbeitet",
-  exporting: "Exportiert",
-  error: "Fehler",
-  ready: "Bereit"
+  idle: "Ready",
+  parsing: "Parsing PDF",
+  summarizing: "Generating",
+  refining: "Refining",
+  exporting: "Exporting",
+  error: "Error",
+  ready: "Ready"
 };
 
 export function StatusBadge({ status }: { status: Status }) {

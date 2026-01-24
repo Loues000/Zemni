@@ -54,11 +54,11 @@ export function StatsSection({
             <div className="stat-value">{formatNumber(currentUsage.tokensPerSecond, 1)}</div>
           </div>
           <div className="stat">
-            <div className="stat-label">Dauer</div>
+            <div className="stat-label">Duration</div>
             <div className="stat-value">{formatSeconds(currentUsage.durationMs)}</div>
           </div>
           <div className="stat">
-            <div className="stat-label">Kosten</div>
+            <div className="stat-label">Cost</div>
             <div className="stat-value">
               {currentUsage.currency
                 ? formatMoney(currentUsage.costTotal, currentUsage.currency)

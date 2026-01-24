@@ -26,18 +26,18 @@ export function HistorySidebar({
     const weekAgo = todayStart - 7 * 24 * 60 * 60 * 1000;
 
     const groups: Record<string, HistoryEntry[]> = {
-      Heute: [],
-      Gestern: [],
-      "Letzte Woche": [],
-      Aelter: []
+      Today: [],
+      Yesterday: [],
+      "Last week": [],
+      Older: []
     };
 
     history.forEach((entry) => {
       const t = entry.updatedAt;
-      if (t >= todayStart) groups.Heute.push(entry);
-      else if (t >= yesterdayStart) groups.Gestern.push(entry);
-      else if (t >= weekAgo) groups["Letzte Woche"].push(entry);
-      else groups.Aelter.push(entry);
+      if (t >= todayStart) groups.Today.push(entry);
+      else if (t >= yesterdayStart) groups.Yesterday.push(entry);
+      else if (t >= weekAgo) groups["Last week"].push(entry);
+      else groups.Older.push(entry);
     });
 
     return Object.entries(groups).filter(([, entries]) => entries.length > 0);
@@ -48,19 +48,19 @@ export function HistorySidebar({
       <div className={`sidebar-backdrop${isOpen ? " visible" : ""}`} onClick={onClose} />
       <aside className={`sidebar${isOpen ? " open" : ""}`}>
         <div className="sidebar-header">
-          <h2>Historie</h2>
+          <h2>History</h2>
           <button
             type="button"
             className="sidebar-close"
             onClick={onClose}
-            aria-label="Sidebar schliessen"
+            aria-label="Close sidebar"
           >
             <IconX />
           </button>
         </div>
         <div className="sidebar-content">
           {history.length === 0 ? (
-            <p className="hint">Noch keine Eintraege.</p>
+            <p className="hint">No history yet.</p>
           ) : (
             <div className="history-groups">
               {groupHistoryByTime(history).map(([groupLabel, entries]) => (
@@ -83,7 +83,7 @@ export function HistorySidebar({
                           type="button"
                           className="history-delete"
                           onClick={(e) => onDeleteEntry(entry.id, e)}
-                          aria-label="Eintrag loeschen"
+                          aria-label="Delete entry"
                         >
                           <IconX />
                         </button>

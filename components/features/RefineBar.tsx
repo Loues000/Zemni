@@ -18,7 +18,7 @@ export function RefineBar({
       <input
         value={input}
         onChange={onInputChange}
-        placeholder="Aenderung anfordern..."
+        placeholder="Request changes..."
         disabled={!hasCurrentSummary || isRefining}
       />
       <button
@@ -26,7 +26,7 @@ export function RefineBar({
         className="btn btn-secondary"
         disabled={!hasCurrentSummary || isRefining || !input.trim()}
       >
-        {isRefining ? "Laeuft..." : "Ueberarbeiten"}
+        {isRefining ? "Working..." : "Refine"}
       </button>
     </form>
   );

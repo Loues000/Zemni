@@ -35,6 +35,39 @@ export type Subject = {
 
 export type Status = "idle" | "parsing" | "summarizing" | "refining" | "exporting" | "error" | "ready";
 
+export type OutputKind = "summary" | "flashcards" | "quiz";
+
+export type DocumentSection = {
+  id: string;
+  title: string;
+  text: string;
+  page?: number;
+  preview?: string;
+};
+
+export type Flashcard = {
+  id: string;
+  sectionId: string;
+  sectionTitle: string;
+  type: "qa" | "cloze";
+  front: string;
+  back: string;
+  sourceSnippet: string;
+  page?: number;
+};
+
+export type QuizQuestion = {
+  id: string;
+  sectionId: string;
+  sectionTitle: string;
+  question: string;
+  options: string[];
+  correctIndex: number;
+  explanation?: string;
+  sourceSnippet: string;
+  page?: number;
+};
+
 export type UsageStats = {
   promptTokens: number | null;
   completionTokens: number | null;
@@ -45,7 +78,7 @@ export type UsageStats = {
   costOut: number | null;
   costTotal: number | null;
   currency: string | null;
-  source: "summarize" | "refine";
+  source: "summarize" | "refine" | "section-summary" | "flashcards" | "quiz";
 };
 
 export type OutputEntry = {
@@ -56,6 +89,15 @@ export type OutputEntry = {
   usage: UsageStats | null;
   updatedAt: number;
   isGenerating?: boolean;
+  kind?: OutputKind;
+  sectionIds?: string[];
+  flashcards?: Flashcard[];
+  quiz?: QuizQuestion[];
+  quizState?: {
+    questionCursor: number;
+    revealAnswer?: boolean;
+    selectedOptionIndex?: number;
+  };
 };
 
 export type HistoryEntry = {
@@ -75,4 +117,5 @@ export type CostHeuristic = {
   outputRatio: number;
   outputCap: number;
   estimatedOutputTokens: number;
+  note?: string;
 };

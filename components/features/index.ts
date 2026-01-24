@@ -3,3 +3,6 @@ export * from "./InputPanel";
 export * from "./OutputTabs";
 export * from "./SummaryPreview";
 export * from "./RefineBar";
+export * from "./FlashcardsMode";
+export * from "./QuizMode";
+export * from "./FlashcardsDensityControl";

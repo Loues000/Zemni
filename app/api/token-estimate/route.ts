@@ -1,29 +1,98 @@
 import { NextResponse } from "next/server";
 import { loadModels } from "@/lib/models";
 import { buildCostRows, countTokensByEncoding } from "@/lib/token-cost";
-import { buildSummaryPrompts } from "@/lib/prompts";
+import { buildFlashcardsPrompts, buildQuizPrompts, buildSectionSummaryPrompts } from "@/lib/study-prompts";
+import type { DocumentSection, OutputKind } from "@/types";
 
 export const runtime = "nodejs";
 
-// Heuristic: output tokens = min(cap, round(inputTokens * ratio))
-const OUTPUT_RATIO = 0.25;
-const OUTPUT_CAP = 3000;
+const clampInt = (value: unknown, min: number, max: number, fallback: number): number => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, Math.floor(n)));
+};
 
-const estimateOutputTokens = (inputTokens: number): number => {
-  return Math.min(OUTPUT_CAP, Math.round(inputTokens * OUTPUT_RATIO));
+const estimateOutputTokens = (
+  avgInputTokens: number,
+  mode: OutputKind,
+  n: number | null,
+  sectionsCount: number | null
+): { outputRatio: number; outputCap: number; estimatedOutputTokens: number; note: string } => {
+  if (mode === "summary") {
+    const outputRatio = 0.25;
+    const outputCap = 3000;
+    const estimatedOutputTokens = Math.min(outputCap, Math.round(avgInputTokens * outputRatio));
+    return {
+      outputRatio,
+      outputCap,
+      estimatedOutputTokens,
+      note: `Output estimate: min(${outputCap}, inputTokens x ${outputRatio})`
+    };
+  }
+
+  const count = sectionsCount && sectionsCount > 0 ? sectionsCount : 1;
+  const perSection = n && n > 0 ? n : 6;
+
+  if (mode === "flashcards") {
+    const outputRatio = 0.6;
+    const outputCap = 9000;
+    const minTokens = 300;
+    const heuristic = count * perSection * 180;
+    const estimatedOutputTokens = Math.min(outputCap, Math.max(minTokens, heuristic));
+    return {
+      outputRatio,
+      outputCap,
+      estimatedOutputTokens,
+      note: `Output estimate: min(${outputCap}, max(${minTokens}, sections(${count}) x cardsPerSection(${perSection}) x 180))`
+    };
+  }
+
+  if (mode === "quiz") {
+    const outputRatio = 0.7;
+    const outputCap = 9000;
+    const minTokens = 400;
+    const heuristic = count * perSection * 240;
+    const estimatedOutputTokens = Math.min(outputCap, Math.max(minTokens, heuristic));
+    return {
+      outputRatio,
+      outputCap,
+      estimatedOutputTokens,
+      note: `Output estimate: min(${outputCap}, max(${minTokens}, sections(${count}) x questions(${perSection}) x 240))`
+    };
+  }
+
+  const outputRatio = 0.25;
+  const outputCap = 3000;
+  const estimatedOutputTokens = Math.min(outputCap, Math.round(avgInputTokens * outputRatio));
+  return { outputRatio, outputCap, estimatedOutputTokens, note: `Output estimate: min(${outputCap}, inputTokens x ${outputRatio})` };
 };
 
 export async function POST(request: Request) {
   const body = await request.json();
   const extractedText = String(body.extractedText ?? "");
   const structureHints = String(body.structureHints ?? "");
+  const modeRaw = String(body.mode ?? "summary");
+  const mode: OutputKind =
+    modeRaw === "flashcards" || modeRaw === "quiz" || modeRaw === "summary" ? (modeRaw as OutputKind) : "summary";
+  const n = body.n === null || body.n === undefined ? null : clampInt(body.n, 1, 30, 6);
+  const sectionsCount = body.sectionsCount === null || body.sectionsCount === undefined ? null : clampInt(body.sectionsCount, 1, 500, 1);
 
   if (!extractedText) {
     return NextResponse.json({ error: "Missing extractedText" }, { status: 400 });
   }
 
-  // Build the exact prompts used during generation (includes KI-Vorgaben guidelines)
-  const { systemPrompt, userPrompt } = await buildSummaryPrompts(extractedText, structureHints);
+  const section: DocumentSection = { id: "doc", title: "Selected", text: extractedText };
+  let systemPrompt = "";
+  let userPrompt = "";
+
+  if (mode === "summary") {
+    ({ systemPrompt, userPrompt } = await buildSectionSummaryPrompts([section], structureHints));
+  } else if (mode === "flashcards") {
+    ({ systemPrompt, userPrompt } = await buildFlashcardsPrompts([section], n ?? 6));
+  } else {
+    ({ systemPrompt, userPrompt } = await buildQuizPrompts(section, n ?? 6, []));
+  }
+
   const fullPrompt = systemPrompt + "\n" + userPrompt;
 
   const models = await loadModels();
@@ -32,16 +101,12 @@ export async function POST(request: Request) {
 
   // Calculate heuristic output tokens based on the average input tokens
   const avgInputTokens = Object.values(tokensByEncoding).reduce((a, b) => a + b, 0) / Object.keys(tokensByEncoding).length;
-  const estimatedOutputTokens = estimateOutputTokens(avgInputTokens);
+  const heuristic = estimateOutputTokens(avgInputTokens, mode, n, sectionsCount);
 
-  const modelCosts = buildCostRows(models, tokensByEncoding, estimatedOutputTokens);
+  const modelCosts = buildCostRows(models, tokensByEncoding, heuristic.estimatedOutputTokens);
 
   return NextResponse.json({
     modelCosts,
-    heuristic: {
-      outputRatio: OUTPUT_RATIO,
-      outputCap: OUTPUT_CAP,
-      estimatedOutputTokens
-    }
+    heuristic
   });
 }

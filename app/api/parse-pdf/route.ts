@@ -9,15 +9,28 @@ export async function POST(request: Request) {
   const contentType = request.headers.get("content-type") || "";
 
   let text = "";
+  let pages: string[] | null = null;
 
   // Check if request contains JSON (client-side parsed text) or FormData (file upload fallback)
   if (contentType.includes("application/json")) {
     // Client-side parsing: text is already extracted
     const body = await request.json();
-    text = String(body.text ?? "");
-    
-    if (!text) {
-      return NextResponse.json({ error: "Missing text" }, { status: 400 });
+
+    if (Array.isArray(body.pages)) {
+      const rawPages: string[] = body.pages
+        .map((p: unknown) => String(p ?? ""))
+        .filter((p: string) => p.trim().length > 0);
+      if (rawPages.length === 0) {
+        return NextResponse.json({ error: "Missing pages" }, { status: 400 });
+      }
+      pages = rawPages.map((p: string) => normalizePdfText(p));
+      text = normalizePdfText(rawPages.join("\n\n"));
+    } else {
+      text = String(body.text ?? "");
+      if (!text) {
+        return NextResponse.json({ error: "Missing text" }, { status: 400 });
+      }
+      text = normalizePdfText(text);
     }
   } else {
     // Server-side parsing fallback (for compatibility or if client-side parsing fails)
@@ -36,11 +49,11 @@ export async function POST(request: Request) {
     } else {
       text = buffer.toString("utf8");
     }
+
+    // Normalize text to improve quality and reduce tokens
+    text = normalizePdfText(text);
   }
 
-  // Normalize text to improve quality and reduce tokens
-  text = normalizePdfText(text);
-
   // Return only extracted text - token/cost estimation is handled by /api/token-estimate
-  return NextResponse.json({ text });
+  return NextResponse.json(pages ? { text, pages } : { text });
 }

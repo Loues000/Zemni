@@ -7,7 +7,10 @@ interface InputPanelProps {
   selectedModel: string;
   models: Model[];
   structureHints: string;
+  showStructureHints?: boolean;
   dragActive: boolean;
+  topBarLeft?: React.ReactNode;
+  topBarRight?: React.ReactNode;
   onDrop: (event: React.DragEvent<HTMLDivElement>) => void;
   onDragOver: (event: React.DragEvent<HTMLDivElement>) => void;
   onDragLeave: () => void;
@@ -25,7 +28,10 @@ export function InputPanel({
   selectedModel,
   models,
   structureHints,
+  showStructureHints = true,
   dragActive,
+  topBarLeft,
+  topBarRight,
   onDrop,
   onDragOver,
   onDragLeave,
@@ -37,6 +43,12 @@ export function InputPanel({
 }: InputPanelProps) {
   return (
     <div className="input-panel">
+      {(topBarLeft || topBarRight) && (
+        <div className="input-panel-topbar">
+          <div className="input-panel-topbar-left">{topBarLeft}</div>
+          <div className="input-panel-topbar-right">{topBarRight}</div>
+        </div>
+      )}
       <div
         className={`dropzone${dragActive ? " drag" : ""}`}
         onDrop={onDrop}
@@ -45,27 +57,27 @@ export function InputPanel({
         onClick={() => (document.querySelector('input[type="file"]') as HTMLInputElement)?.click()}
       >
         <div className="dropzone-label">
-          {fileName || "PDF hochladen"}
+          {fileName || "Upload PDF/MD"}
         </div>
         <div className="dropzone-hint">
-          {fileName ? "Klicken fuer neue Datei" : "Ablegen oder klicken"}
+          {fileName ? "Click to upload a new file" : "Drop here or click"}
         </div>
         <input
           type="file"
-          accept="application/pdf"
+          accept="application/pdf,text/markdown,.md"
           onChange={onSelectFile}
           hidden
         />
       </div>
 
       <div className="field">
-        <label className="field-label">Fach</label>
+        <label className="field-label">Subject</label>
         <select
           value={selectedSubject}
           onChange={(e) => onSubjectChange(e.target.value)}
         >
           {subjects.length === 0 ? (
-            <option value="">Keine Faecher</option>
+            <option value="">No subjects</option>
           ) : (
             subjects.map((subject) => (
               <option key={subject.id} value={subject.id}>
@@ -77,7 +89,7 @@ export function InputPanel({
       </div>
 
       <div className="field">
-        <label className="field-label">Modell</label>
+        <label className="field-label">Model</label>
         <select
           value={selectedModel}
           onChange={(e) => onModelChange(e.target.value)}
@@ -90,15 +102,17 @@ export function InputPanel({
         </select>
       </div>
 
-      <div className="field">
-        <label className="field-label">Struktur (optional)</label>
-        <textarea
-          rows={2}
-          placeholder="z.B. Einleitung, Begriffe"
-          value={structureHints}
-          onChange={(e) => onStructureChange(e.target.value)}
-        />
-      </div>
+      {showStructureHints && (
+        <div className="field">
+          <label className="field-label">Structure (optional)</label>
+          <textarea
+            rows={2}
+            placeholder="e.g. Introduction, Key terms"
+            value={structureHints}
+            onChange={(e) => onStructureChange(e.target.value)}
+          />
+        </div>
+      )}
 
       {children}
     </div>

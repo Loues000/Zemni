@@ -3,7 +3,12 @@
  * This allows parsing large PDFs without hitting Vercel's 4.5MB body size limit
  */
 
-export async function extractTextFromPdf(file: File): Promise<string> {
+export type PdfPageText = {
+  page: number;
+  text: string;
+};
+
+export async function extractPagesFromPdf(file: File): Promise<PdfPageText[]> {
   try {
     // Dynamically import the legacy build to avoid ESM/worker interop issues in Next.js
     const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
@@ -25,8 +30,7 @@ export async function extractTextFromPdf(file: File): Promise<string> {
     });
     
     const pdf = await loadingTask.promise;
-    
-    let fullText = "";
+    const pages: PdfPageText[] = [];
 
     // Extract text from all pages
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
@@ -43,12 +47,17 @@ export async function extractTextFromPdf(file: File): Promise<string> {
           return "";
         })
         .join(" ");
-      
-      fullText += pageText + "\n\n";
+
+      pages.push({ page: pageNum, text: pageText.trim() });
     }
 
-    return fullText.trim();
+    return pages;
   } catch (error) {
-    throw new Error(`PDF-Parsing fehlgeschlagen: ${error instanceof Error ? error.message : "Unbekannter Fehler"}`);
+    throw new Error(`PDF parsing failed: ${error instanceof Error ? error.message : "Unknown error"}`);
   }
+}
+
+export async function extractTextFromPdf(file: File): Promise<string> {
+  const pages = await extractPagesFromPdf(file);
+  return pages.map((p) => p.text).join("\n\n").trim();
 }

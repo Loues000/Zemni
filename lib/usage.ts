@@ -11,7 +11,7 @@ export type UsageStats = {
   costOut: number | null;
   costTotal: number | null;
   currency: string | null;
-  source: "summarize" | "refine";
+  source: "summarize" | "refine" | "section-summary" | "flashcards" | "quiz";
 };
 
 export const buildUsageStats = (
