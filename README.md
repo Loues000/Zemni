@@ -1,32 +1,32 @@
 # Zemni
 
-Eine Next.js Webapp, die Vorlesungsfolien (PDF) einliest, anhand eines Regelwerks zusammenfasst und das Ergebnis direkt nach Notion exportiert.
+A Next.js web app that ingests lecture slides (PDF), summarizes them based on a rule set, and exports the result directly to Notion.
 
 ## Features
 
-- PDF-Upload mit Textextraktion
-- Prüfungsorientierte Zusammenfassungen über OpenRouter (mehrere Modelle)
-- Flashcards (Fullscreen Study-View) + Export (MD/TSV)
-- Quiz (MCQ) + Feedback + Export (MD/JSON)
-- Token-/Kosten-Schätzung vor der Generierung
-- Iterative Verfeinerung per Chat
-- Export nach Notion (Unterseite innerhalb eines Fachs)
-- Markdown-Preview inkl. LaTeX (KaTeX)
+- PDF upload with text extraction
+- Exam-focused summaries via OpenRouter (multiple models)
+- Flashcards (fullscreen study view) + export (MD/TSV)
+- Quiz (MCQ) + feedback + export (MD/JSON)
+- Token/cost estimation before generation
+- Iterative refinement via chat
+- Export to Notion (subpage within a subject)
+- Markdown preview incl. LaTeX (KaTeX)
 
-## Tech-Stack
+## Tech stack
 
 - Next.js 14 (App Router), TypeScript
 - Vercel AI SDK (`ai`)
-- OpenRouter als Provider
+- OpenRouter as provider
 - Notion SDK (`@notionhq/client`)
-- PDF: client-side `pdfjs-dist` + Server-Fallback
-- Token Counting: `@dqbd/tiktoken`
+- PDF: client-side `pdfjs-dist` + server fallback
+- Token counting: `@dqbd/tiktoken`
 
-## Voraussetzungen
+## Prerequisites
 
-- Node.js 18+ und npm
+- Node.js 18+ and npm
 - OpenRouter API Key: https://openrouter.ai
-- Notion API Token + Datenbank-ID: https://notion.so/my-integrations
+- Notion API token + database ID: https://notion.so/my-integrations
 
 ## Setup
 
@@ -34,7 +34,7 @@ Eine Next.js Webapp, die Vorlesungsfolien (PDF) einliest, anhand eines Regelwerk
 npm install
 ```
 
-Erstelle `.env.local` im Repo-Root:
+Create `.env.local` in the repo root:
 
 ```env
 OPENROUTER_API_KEY=sk-or-v1-...
@@ -49,9 +49,9 @@ NOTION_SUBJECTS_DATABASE_ID=...
 npm run dev
 ```
 
-App läuft auf http://localhost:3420
+App runs on http://localhost:3420
 
-## Projektstruktur (Kurz)
+## Project structure (short)
 
 ```
 app/                      # Next.js Routes (App Router)
@@ -60,16 +60,16 @@ app/                      # Next.js Routes (App Router)
   layout.tsx
   page.tsx
 
-components/               # UI/Feature-Komponenten (shared)
+components/               # UI/feature components (shared)
   features/
   ui/
 hooks/                    # Custom React Hooks
 types/                    # Shared TypeScript Types
 lib/                      # Shared Libraries (OpenRouter, Notion, Prompts, ...)
   parse-pdf-client.ts     # Client-side PDF Parsing (pdfjs)
-config/                   # Konfiguration (Modelle/Preise)
-docs/                     # Projekt-Doku (MVP, TODOs, ...)
-guidelines/               # KI-Regelwerke (General + mode add-ons)
+config/                   # Configuration (models/prices)
+docs/                     # Project docs (MVP, TODOs, ...)
+guidelines/               # AI rule sets (general + mode add-ons)
   general.en.md
   summary.en.md
   flashcards.en.md
@@ -78,11 +78,11 @@ guidelines/               # KI-Regelwerke (General + mode add-ons)
   base.full.de.md         # legacy DE (kept for reference)
 ```
 
-## Modell-Konfiguration
+## Model configuration
 
-Die Modell-Liste/Preise liegen in `config/`. Standardmäßig wird `config/openrouter-models.example.json` verwendet.
+Model lists/prices live in `config/`. By default, `config/openrouter-models.example.json` is used.
 
-Für eigene Modelle/Preise kannst du `config/openrouter-models.json` (und optional `config/openrouter-models.prices.json`) anlegen.
+For your own models/prices, create `config/openrouter-models.json` (and optionally `config/openrouter-models.prices.json`).
 
 ## Development
 
