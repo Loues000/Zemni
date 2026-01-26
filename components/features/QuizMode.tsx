@@ -26,6 +26,7 @@ type QuizModeProps = {
   status: Status;
   onReveal: () => void;
   onNext: () => void | Promise<void>;
+  onPrev: () => void;
   onSelectOption: (index: number) => void;
   showKeyboardHints?: boolean;
 };
@@ -43,6 +44,7 @@ export function QuizMode({
   status,
   onReveal,
   onNext,
+  onPrev,
   onSelectOption,
   showKeyboardHints = true
 }: QuizModeProps) {
@@ -55,68 +57,96 @@ export function QuizMode({
   const selectedIndex = state?.selectedOptionIndex;
 
   const [focusIndex, setFocusIndex] = useState(0);
+  const optionCount = currentQuestion?.options.length ?? 0;
 
   useEffect(() => {
     setFocusIndex(0);
-  }, [cursor, output?.id]);
+  }, [cursor, output?.id, optionCount]);
 
-  const optionCount = currentQuestion?.options.length ?? 0;
   const isBusy = status === "summarizing" || status === "parsing";
 
   useEffect(() => {
     if (!currentQuestion) return;
 
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (isEditableTarget(e.target)) return;
+    const clampFocusIndex = (value: number): number => {
+      if (!optionCount) return 0;
+      const normalized = value % optionCount;
+      return normalized < 0 ? normalized + optionCount : normalized;
+    };
 
-      const key = e.key;
-      if (key === "ArrowUp") {
+    const moveFocus = (delta: number) => {
+      if (!optionCount) return;
+      setFocusIndex((prev) => clampFocusIndex(prev + delta));
+    };
+
+    const selectIndex = (index: number) => {
+      if (!optionCount) return;
+      const safeIndex = clampFocusIndex(index);
+      setFocusIndex(safeIndex);
+      onSelectOption(safeIndex);
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (isEditableTarget(e.target)) return;
+      if (!optionCount) return;
+
+      const { key } = e;
+      const lower = key.toLowerCase();
+      const upper = key.toUpperCase();
+
+      if (key === "ArrowUp" || lower === "k") {
         e.preventDefault();
-        setFocusIndex((prev) => (optionCount ? (prev - 1 + optionCount) % optionCount : 0));
+        moveFocus(-1);
         return;
       }
-      if (key === "ArrowDown") {
+
+      if (key === "ArrowDown" || lower === "j") {
         e.preventDefault();
-        setFocusIndex((prev) => (optionCount ? (prev + 1) % optionCount : 0));
+        moveFocus(1);
+        return;
+      }
+
+      if (key === "ArrowLeft") {
+        e.preventDefault();
+        onPrev();
+        return;
+      }
+
+      if (key === "ArrowRight" || lower === "n") {
+        e.preventDefault();
+        if (!isBusy) void onNext();
         return;
       }
 
       const number = Number(key);
       if (!Number.isNaN(number) && number >= 1 && number <= optionCount) {
         e.preventDefault();
-        onSelectOption(number - 1);
+        selectIndex(number - 1);
         return;
       }
 
-      const upper = key.toUpperCase();
       const idxFromLetter = upper.charCodeAt(0) - 65;
       if (idxFromLetter >= 0 && idxFromLetter < optionCount) {
         e.preventDefault();
-        onSelectOption(idxFromLetter);
+        selectIndex(idxFromLetter);
         return;
       }
 
       if (key === "Enter" || key === " ") {
         e.preventDefault();
-        onSelectOption(focusIndex);
+        selectIndex(focusIndex);
         return;
       }
 
       if (upper === "R") {
         e.preventDefault();
         onReveal();
-        return;
-      }
-
-      if (key === "ArrowRight" || upper === "N") {
-        e.preventDefault();
-        if (!isBusy) void onNext();
       }
     };
 
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [currentQuestion, focusIndex, isBusy, onNext, onReveal, onSelectOption, optionCount]);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [currentQuestion, focusIndex, isBusy, onNext, onPrev, onReveal, onSelectOption, optionCount]);
 
   const selectedIsCorrect = useMemo(() => {
     if (!currentQuestion) return null;
@@ -194,7 +224,10 @@ export function QuizMode({
               key={idx}
               type="button"
               className={`quiz-option${selectedClass}${revealClass}${focusClass}`}
-              onClick={() => onSelectOption(idx)}
+              onClick={() => {
+                setFocusIndex(idx);
+                onSelectOption(idx);
+              }}
               aria-pressed={isSelected}
             >
               <span className="quiz-option-letter">{String.fromCharCode(65 + idx)}.</span>

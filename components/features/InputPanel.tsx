@@ -7,6 +7,7 @@ interface InputPanelProps {
   structureHints: string;
   showStructureHints?: boolean;
   dragActive: boolean;
+  dropzoneCorner?: React.ReactNode;
   topBarLeft?: React.ReactNode;
   topBarRight?: React.ReactNode;
   onDrop: (event: React.DragEvent<HTMLDivElement>) => void;
@@ -25,6 +26,7 @@ export function InputPanel({
   structureHints,
   showStructureHints = true,
   dragActive,
+  dropzoneCorner,
   topBarLeft,
   topBarRight,
   onDrop,
@@ -50,6 +52,7 @@ export function InputPanel({
         onDragLeave={onDragLeave}
         onClick={() => (document.querySelector('input[type="file"]') as HTMLInputElement)?.click()}
       >
+        {dropzoneCorner && <div className="dropzone-corner">{dropzoneCorner}</div>}
         <div className="dropzone-label">
           {fileName || "Upload PDF/MD"}
         </div>

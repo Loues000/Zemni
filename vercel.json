@@ -1,7 +1,19 @@
 {
   "functions": {
     "app/api/parse-pdf/route.ts": {
-      "maxDuration": 45
+      "maxDuration": 60
+    },
+    "app/api/section-summary/route.ts": {
+      "maxDuration": 120
+    },
+    "app/api/flashcards/route.ts": {
+      "maxDuration": 120
+    },
+    "app/api/quiz/route.ts": {
+      "maxDuration": 120
+    },
+    "app/api/summarize/route.ts": {
+      "maxDuration": 120
     }
   }
 }

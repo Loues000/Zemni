@@ -483,8 +483,59 @@ a {
 }
 
 .header-title {
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.top-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--stroke);
+  background: var(--surface);
+  flex-wrap: wrap;
+}
+
+.top-toolbar-left,
+.top-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.top-toolbar .mode-switch {
+  display: inline-flex;
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid var(--stroke);
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+.top-toolbar .mode-btn {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.top-toolbar .mode-btn:hover {
+  background: var(--surface-muted);
+  color: var(--text-primary);
+}
+
+.top-toolbar .mode-btn.active {
+  background: var(--accent-muted);
+  color: var(--text-primary);
+  border-color: rgba(0, 0, 0, 0.06);
 }
 
 .mode-select {
@@ -582,6 +633,10 @@ a {
   background: var(--text-muted);
 }
 
+.status-dot.status-dot-corner {
+  box-shadow: 0 0 0 4px var(--status-dot-ring, var(--surface-muted));
+}
+
 .status-dot.ready { background: var(--success); }
 .status-dot.busy { background: var(--warning); }
 .status-dot.error { background: var(--error-text); }
@@ -595,19 +650,53 @@ a {
   flex: 1;
   display: grid;
   grid-template-columns: 340px 1fr;
+  grid-template-rows: minmax(0, 1fr);
+  align-items: stretch;
+  align-content: stretch;
   gap: 0;
   min-height: 0;
 }
 
 /* ========== Input Panel (Left) ========== */
-.input-panel {
-  padding: 20px;
-  border-right: 1px solid var(--stroke);
+.input-column {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   background: var(--surface);
+  border-right: 1px solid var(--stroke);
+}
+
+.input-panel {
+  --panel-padding: 20px;
+  padding: var(--panel-padding);
   display: flex;
   flex-direction: column;
   gap: 20px;
   overflow-y: auto;
+}
+
+.input-panel-modebar {
+  padding: 0;
+  border-bottom: 1px solid var(--stroke);
+  background: var(--surface);
+}
+
+.input-column .input-panel {
+  flex: 1;
+  min-height: 0;
+  border-right: none;
+  background: transparent;
+}
+
+.input-panel-modebar .mode-switch {
+  width: 100%;
+  display: flex;
+}
+
+.input-panel-modebar .mode-btn {
+  flex: 1;
+  text-align: center;
+  justify-content: center;
 }
 
 .input-panel-topbar {
@@ -634,14 +723,24 @@ a {
   padding: 24px 16px;
   text-align: center;
   background: var(--surface-muted);
+  --status-dot-ring: var(--surface-muted);
   cursor: pointer;
   transition: border-color 0.15s ease, background 0.15s ease;
+  position: relative;
+}
+
+.dropzone-corner {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  pointer-events: none;
 }
 
 .dropzone:hover,
 .dropzone.drag {
   border-color: var(--accent);
   background: var(--accent-muted);
+  --status-dot-ring: var(--accent-muted);
 }
 
 .dropzone-label {
@@ -711,10 +810,7 @@ a {
 .mode-switch {
   display: inline-flex;
   gap: 6px;
-  padding: 6px;
-  margin-left: 12px;
-  border: 1px solid var(--stroke);
-  border-radius: 999px;
+  padding: 12px;
   background: var(--surface);
 }
 
@@ -725,7 +821,7 @@ a {
   font-size: 12px;
   font-weight: 600;
   padding: 6px 10px;
-  border-radius: 999px;
+  border-radius: 12px;
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
@@ -742,35 +838,59 @@ a {
 }
 
 .density-switch {
-  display: inline-flex;
+  display: flex;
+  width: 100%;
   gap: 6px;
-  padding: 4px;
+  padding: 6px;
   border: 1px solid var(--stroke);
-  border-radius: 999px;
-  background: var(--surface);
+  border-radius: 16px;
+  background: var(--surface-muted);
 }
 
 .density-btn {
+  flex: 1;
   border: 1px solid transparent;
   background: transparent;
   color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 700;
-  padding: 6px 10px;
-  border-radius: 999px;
+  padding: 10px 10px;
+  border-radius: 12px;
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 44px;
+}
+
+.density-label {
+  font-size: 12px;
+  font-weight: 750;
+  letter-spacing: 0.01em;
+}
+
+.density-meta {
+  font-size: 10px;
+  font-weight: 650;
+  color: var(--text-muted);
 }
 
 .density-btn:hover:not(:disabled) {
-  background: var(--surface-muted);
+  background: var(--surface);
   color: var(--text-primary);
 }
 
 .density-btn.active {
-  background: var(--accent-muted);
+  background: var(--surface);
   color: var(--text-primary);
-  border-color: rgba(0, 0, 0, 0.06);
+  border-color: var(--stroke);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.06);
+}
+
+.density-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-muted);
 }
 
 .density-btn:disabled {
@@ -1407,8 +1527,9 @@ body.flashcard-player-open {
   position: absolute;
   top: -6px;
   right: -6px;
-  width: 16px;
-  height: 16px;
+  --tab-close-size: clamp(18px, 2.2vw, 24px);
+  width: var(--tab-close-size);
+  height: var(--tab-close-size);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1423,8 +1544,8 @@ body.flashcard-player-open {
 }
 
 .output-tab-close svg {
-  width: 8px;
-  height: 8px;
+  width: calc(var(--tab-close-size) * 0.6);
+  height: calc(var(--tab-close-size) * 0.6);
 }
 
 .output-tab:hover .output-tab-close {
@@ -1437,16 +1558,11 @@ body.flashcard-player-open {
   transform: scale(1.1) !important;
 }
 
-.output-tab-close.confirming {
-  opacity: 1;
-  transform: scale(1);
-  background: #b91c1c;
-  animation: pulse-confirm 0.5s ease-in-out infinite;
-}
-
-@keyframes pulse-confirm {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.5); }
-  50% { box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.2); }
+@media (hover: none) and (pointer: coarse) {
+  .output-tab-close {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .output-actions {
@@ -1562,6 +1678,52 @@ body.flashcard-player-open {
   padding: 16px;
   color: var(--text-muted);
   font-size: 13px;
+}
+
+/* ========== Confirm Modal ========== */
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 230;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.confirm-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.confirm-modal {
+  position: relative;
+  width: min(520px, 100%);
+  border-radius: 16px;
+  border: 1px solid var(--stroke);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  padding: 16px;
+}
+
+.confirm-title {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.confirm-body {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 14px;
 }
 
 .export-progress {
@@ -1871,6 +2033,16 @@ body.flashcard-player-open {
   border-color: var(--stroke-strong);
 }
 
+.btn-danger {
+  background: var(--error-text);
+  color: #fff;
+  border: 1px solid var(--error-text);
+}
+
+.btn-danger:hover:not(:disabled) {
+  filter: brightness(0.95);
+}
+
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -1954,12 +2126,13 @@ body.flashcard-player-open {
 }
 
 @media (max-width: 768px) {
-  .header-left {
-    flex-wrap: wrap;
-  }
-  
   .mode-select {
     width: 100%;
+    border-radius: 999px;
+  }
+
+  .top-toolbar {
+    padding: 10px 16px;
   }
 
   .content {
@@ -2028,7 +2201,7 @@ body.flashcard-player-open {
   }
   
   .header-title {
-    font-size: 14px;
+    font-size: 18px;
   }
   
   .preview-container.split-view {
@@ -2061,6 +2234,10 @@ body.flashcard-player-open {
   .header {
     padding: 10px 16px;
   }
+
+  .header-title {
+    font-size: 20px;
+  }
   
   .activity-bar {
     padding: 8px 16px;
@@ -2073,9 +2250,14 @@ body.flashcard-player-open {
   .mode-select {
     padding: 8px 34px 8px 12px;
   }
+
+  .mode-switch {
+    width: 100%;
+    border-radius: 999px;
+  }
   
   .input-panel {
-    padding: 16px;
+    --panel-padding: 16px;
   }
   
   .preview {
@@ -2146,10 +2328,10 @@ body.flashcard-player-open {
   .output-tab-close {
     opacity: 1;
     transform: scale(1);
-    width: 22px;
-    height: 22px;
-    top: -8px;
-    right: -8px;
+    width: 24px;
+    height: 24px;
+    top: -6px;
+    right: -6px;
   }
 }
 

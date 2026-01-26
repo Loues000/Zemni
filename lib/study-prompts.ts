@@ -98,6 +98,11 @@ export const buildFlashcardsPrompts = async (
     "- Ausgabe ist NUR gueltiges JSON (kein Markdown, keine Codefences).",
     "- Top-Level: {\"flashcards\": Flashcard[]}.",
     "",
+    "Kuerze (wichtig fuer Geschwindigkeit):",
+    "- front: max 140 Zeichen, keine Schachtelsaetze.",
+    "- back: max 280 Zeichen, nur die minimale korrekte Antwort (optional 1 kurzer Zusatzsatz).",
+    "- Keine Newlines in Strings (nutze Leerzeichen).",
+    "",
     "Flashcard Schema:",
     "- sectionId: string",
     "- sectionTitle: string",
@@ -122,8 +127,9 @@ export const buildFlashcardsPrompts = async (
     .join("\n");
 
   const userPrompt = [
-    `Erzeuge exakt ${cardsPerSection} Flashcards pro Section.`,
+    `Erzeuge bis zu ${cardsPerSection} Flashcards pro Section (Ziel: ${cardsPerSection}).`,
     "Mische Q/A und Cloze sinnvoll (mindestens 1 Cloze pro Section, wenn moeglich).",
+    "Wenn du die Zielanzahl nicht sauber/ohne Erfindungen erreichst: lieber weniger, aber hochwertig.",
     "",
     "Quelle (Sections):",
     serializedSections,
@@ -133,6 +139,44 @@ export const buildFlashcardsPrompts = async (
     "- Keine doppelten Karten pro Section.",
     "",
     "Gib nur das JSON aus."
+  ].join("\n");
+
+  return { systemPrompt, userPrompt };
+};
+
+export const buildChunkNotesPrompts = async (
+  section: DocumentSection,
+  {
+    maxBullets = 40
+  }: { maxBullets?: number } = {}
+): Promise<{ systemPrompt: string; userPrompt: string }> => {
+  const guidelines = await loadGuidelines([GUIDELINES_GENERAL, GUIDELINES_SUMMARY]);
+  const systemPrompt = [
+    BASE_IDENTITY,
+    "",
+    "Regelwerk (KI-Vorgaben):",
+    guidelines,
+    "",
+    "Format:",
+    "- Ausgabe ist reines Markdown.",
+    "- KEINE H1/H2/H3 Ueberschriften, KEINE Nummerierung.",
+    "- Nur dichte Bulletpoints ('- ...'), keine Einleitung, keine Abschlusssaetze."
+  ].join("\n");
+
+  const meta = [`ID: ${section.id}`, `Title: ${section.title}`];
+  if (typeof section.page === "number") meta.push(`Page: ${section.page}`);
+
+  const userPrompt = [
+    "Quelle:",
+    "-----",
+    meta.join(" | "),
+    "Text:",
+    section.text,
+    "",
+    "Aufgabe:",
+    `- Extrahiere die wichtigsten Lernpunkte als maximal ${Math.max(10, Math.floor(maxBullets))} Bulletpoints.`,
+    "- Fokus: Definitionen, Abgrenzungen, Mechanismen, Bedingungen, Trade-offs, Formeln + Variablen.",
+    "- Nur Inhalte aus dem Text, nichts erfinden."
   ].join("\n");
 
   return { systemPrompt, userPrompt };

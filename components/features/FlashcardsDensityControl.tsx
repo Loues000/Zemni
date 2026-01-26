@@ -1,26 +1,29 @@
 "use client";
 
+import { estimateFlashcardsPerSection } from "@/lib/study-heuristics";
+
 export type FlashcardsDensity = 1 | 2 | 3;
 
 type FlashcardsDensityControlProps = {
   value: FlashcardsDensity;
   onChange: (value: FlashcardsDensity) => void;
   disabled?: boolean;
+  totalChars?: number;
 };
 
 const labelFor = (value: FlashcardsDensity): string => {
-  if (value === 1) return "Low";
-  if (value === 2) return "Medium";
-  return "High";
+  if (value === 1) return "Few";
+  if (value === 2) return "Balanced";
+  return "Many";
 };
 
 const titleFor = (value: FlashcardsDensity): string => {
-  if (value === 1) return "Low coverage (fewer cards)";
-  if (value === 2) return "Medium coverage";
-  return "High coverage (more cards)";
+  if (value === 1) return "Fewer cards per document section";
+  if (value === 2) return "Balanced amount of cards per section";
+  return "More cards per document section";
 };
 
-export function FlashcardsDensityControl({ value, onChange, disabled }: FlashcardsDensityControlProps) {
+export function FlashcardsDensityControl({ value, onChange, disabled, totalChars }: FlashcardsDensityControlProps) {
   const values: FlashcardsDensity[] = [1, 2, 3];
   return (
     <div className="density-switch" role="group" aria-label="Flashcards amount">
@@ -34,7 +37,12 @@ export function FlashcardsDensityControl({ value, onChange, disabled }: Flashcar
           title={titleFor(v)}
           aria-pressed={v === value}
         >
-          {labelFor(v)}
+          <span className="density-label">{labelFor(v)}</span>
+          {typeof totalChars === "number" && totalChars > 0 && (
+            <span className="density-meta">
+              ~{estimateFlashcardsPerSection(totalChars, v)} cards
+            </span>
+          )}
         </button>
       ))}
     </div>

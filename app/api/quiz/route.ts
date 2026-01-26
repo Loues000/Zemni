@@ -5,10 +5,13 @@ import { loadModels } from "@/lib/models";
 import { buildUsageStats } from "@/lib/usage";
 import { buildQuizPrompts } from "@/lib/study-prompts";
 import { parseJsonFromModelText } from "@/lib/parse-model-json";
+import { createTimeoutController, isAbortError } from "@/lib/ai-performance";
 import type { DocumentSection, QuizQuestion, UsageStats } from "@/types";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 120;
+
+const MODEL_CALL_TIMEOUT_MS = 45_000;
 
 const toSection = (value: unknown): DocumentSection | null => {
   if (!value || typeof value !== "object") return null;
@@ -63,15 +66,35 @@ export async function POST(request: Request) {
   const { systemPrompt, userPrompt } = await buildQuizPrompts(section, questionsCount, avoidQuestions);
   const start = Date.now();
 
-  const result = await generateText({
-    model: openrouter(modelId) as any,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt }
-    ]
-  });
+  const timeout = createTimeoutController(MODEL_CALL_TIMEOUT_MS);
+  let result: Awaited<ReturnType<typeof generateText>>;
+  try {
+    result = await generateText({
+      model: openrouter(modelId) as any,
+      maxTokens: Math.min(3200, Math.max(900, questionsCount * 220)),
+      temperature: 0.2,
+      maxRetries: 1,
+      abortSignal: timeout.signal,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
+      ]
+    });
+  } catch (err) {
+    if (isAbortError(err)) {
+      return NextResponse.json({ error: "Quiz generation timed out. Try a faster model or fewer questions." }, { status: 504 });
+    }
+    throw err;
+  } finally {
+    timeout.cancel();
+  }
 
-  const parsed = parseJsonFromModelText<QuizResult>(result.text);
+  let parsed: QuizResult;
+  try {
+    parsed = parseJsonFromModelText<QuizResult>(result.text);
+  } catch {
+    return NextResponse.json({ error: "Model returned invalid JSON. Please try again." }, { status: 502 });
+  }
   const questions: QuizQuestion[] = [];
   for (const q of parsed.questions ?? []) {
     const sectionId = String(q.sectionId ?? "").trim() || section.id;

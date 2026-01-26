@@ -7,3 +7,4 @@ export * from "./FlashcardsMode";
 export * from "./QuizMode";
 export * from "./FlashcardsDensityControl";
 export * from "./SubjectPickerModal";
+export * from "./DeleteOutputModal";

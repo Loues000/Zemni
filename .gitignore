@@ -48,6 +48,9 @@ config/openrouter-models.prices.json
 .DS_Store
 Thumbs.db
 
+# Local AI/agent notes (personal)
+AGENTS.md
+
 # Local-only scratch/data (keep ignored)
 data/
 old_guidelines.md

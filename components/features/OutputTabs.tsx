@@ -6,7 +6,6 @@ interface OutputTabsProps {
   selectedTabId: string | null;
   secondTabId: string | null;
   generatingTabId: string | null;
-  tabToDelete: string | null;
   showSplitHint?: boolean;
   onTabChange: (tabId: string, event?: React.MouseEvent) => void;
   onCloseTab: (tabId: string, event: React.MouseEvent) => void;
@@ -17,7 +16,6 @@ export function OutputTabs({
   selectedTabId,
   secondTabId,
   generatingTabId,
-  tabToDelete,
   showSplitHint = true,
   onTabChange,
   onCloseTab
@@ -32,7 +30,6 @@ export function OutputTabs({
         outputTabs.map((tab) => {
           const isActive = tab.id === selectedTabId;
           const isSecond = tab.id === secondTabId;
-          const isConfirming = tabToDelete === tab.id;
           const canSplit = outputTabs.length > 1 && !isActive;
           return (
             <div
@@ -49,9 +46,10 @@ export function OutputTabs({
               <span className="output-tab-label">{tab.label}</span>
               <button
                 type="button"
-                className={`output-tab-close${isConfirming ? " confirming" : ""}`}
+                className="output-tab-close"
                 onClick={(e) => onCloseTab(tab.id, e)}
-                title={isConfirming ? "Click again to delete" : "Close tab"}
+                title="Delete output"
+                aria-label="Delete output"
               >
                 <IconClose />
               </button>

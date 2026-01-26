@@ -12,9 +12,10 @@ import {
   QuizMode,
   FlashcardsDensityControl,
   SubjectPickerModal,
+  DeleteOutputModal,
   type FlashcardsDensity
 } from "@/components/features";
-import { ActivityBar, StatusBadge, CostPreview, StatsSection, IconMenu, IconSun, IconMoon, Footer } from "@/components/ui";
+ import { ActivityBar, CostPreview, StatsSection, IconMenu, IconSun, IconMoon, Footer } from "@/components/ui";
 import type { 
   Model, 
   Subject, 
@@ -175,8 +176,6 @@ export default function AppClient() {
     }, {});
   }, [outputsForMode]);
 
-  const selectedTextForEstimate = extractedText;
-
   const docSection: DocumentSection = useMemo(() => {
     return {
       id: "doc",
@@ -191,6 +190,8 @@ export default function AppClient() {
       text: trimForModel(extractedText, 18_000)
     };
   }, [docSection, extractedText]);
+
+  const textForEstimate = outputKind === "summary" ? extractedText : studySection.text;
 
   const currentOutput = selectedTabId ? outputs[selectedTabId] : undefined;
   const currentKind: OutputKind = (currentOutput?.kind as OutputKind) || "summary";
@@ -263,11 +264,11 @@ export default function AppClient() {
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
-    if (sidebarOpen || subjectPickerOpen) document.body.style.overflow = "hidden";
+    if (sidebarOpen || subjectPickerOpen || tabToDelete) document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [sidebarOpen, subjectPickerOpen]);
+  }, [sidebarOpen, subjectPickerOpen, tabToDelete]);
 
   useEffect(() => {
     if (outputsForMode.length === 0) {
@@ -320,7 +321,7 @@ export default function AppClient() {
   }, [sidebarOpen]);
 
   useEffect(() => {
-    if (!selectedTextForEstimate) {
+    if (!textForEstimate) {
       setModelCosts([]);
       setCostHeuristic(null);
       return;
@@ -328,19 +329,20 @@ export default function AppClient() {
 
     const timer = setTimeout(() => {
       const n = outputKind === "flashcards"
-        ? estimateFlashcardsPerSection(selectedTextForEstimate.length, flashcardsDensity)
+        ? estimateFlashcardsPerSection(textForEstimate.length, flashcardsDensity)
         : outputKind === "quiz"
-          ? Math.min(QUIZ_INITIAL_BATCH_CAP, estimateQuizQuestions(selectedTextForEstimate.length))
+          ? Math.min(QUIZ_INITIAL_BATCH_CAP, estimateQuizQuestions(textForEstimate.length))
           : undefined;
-      fetchTokenEstimate(selectedTextForEstimate, structureHints, {
+      fetchTokenEstimate(textForEstimate, structureHints, {
         mode: outputKind,
-        n
+        n,
+        sectionsCount: outputKind === "summary" ? undefined : 1
       });
     }, 300);
 
     return () => clearTimeout(timer);
   }, [
-    selectedTextForEstimate,
+    textForEstimate,
     structureHints,
     outputKind,
     flashcardsDensity,
@@ -388,17 +390,8 @@ export default function AppClient() {
 
   const handleCloseTabRequest = (tabId: string, event: React.MouseEvent): void => {
     event.stopPropagation();
-    
-    if (tabToDelete === tabId) {
-      handleCloseTabConfirm(tabId);
-      return;
-    }
-    
+
     setTabToDelete(tabId);
-    
-    setTimeout(() => {
-      setTabToDelete((current) => current === tabId ? null : current);
-    }, 3000);
   };
 
   const handleCloseTabConfirm = (tabId: string): void => {
@@ -406,7 +399,6 @@ export default function AppClient() {
     
     if (tabId === secondTabId) {
       setSecondTabId(null);
-      return;
     }
     
     if (tabId === selectedTabId) {
@@ -840,6 +832,32 @@ export default function AppClient() {
     }
   };
 
+  const handleQuizPrev = () => {
+    if (!selectedTabId) return;
+    const output = outputs[selectedTabId];
+    if (!output || output.kind !== "quiz" || !output.quizState) return;
+
+    if (output.quizState.questionCursor <= 0) return;
+
+    setOutputs((prev) => {
+      const existing = prev[selectedTabId];
+      if (!existing || existing.kind !== "quiz" || !existing.quizState) return prev;
+      const nextCursor = Math.max(0, existing.quizState.questionCursor - 1);
+      const next: OutputEntry = {
+        ...existing,
+        quizState: {
+          ...existing.quizState,
+          questionCursor: nextCursor,
+          revealAnswer: false,
+          selectedOptionIndex: undefined
+        },
+        updatedAt: Date.now()
+      };
+      next.summary = renderQuizPreview(next, fileName);
+      return { ...prev, [selectedTabId]: next };
+    });
+  };
+
   const handleSubjectPicked = (subjectId: string) => {
     setSelectedSubject(subjectId);
     setSubjectPickerOpen(false);
@@ -1158,6 +1176,18 @@ export default function AppClient() {
   };
 
   const statusClass = status === "error" ? "error" : status === "ready" ? "ready" : "busy";
+  const statusTitle =
+    status === "parsing"
+      ? "Parsing PDF"
+      : status === "summarizing"
+        ? "Generating"
+        : status === "refining"
+          ? "Refining"
+          : status === "exporting"
+            ? "Exporting"
+            : status === "error"
+              ? "Error"
+              : "Ready";
   const isGenerating = generatingTabId === selectedTabId && generatingTabId !== null;
   const canGenerate =
     status !== "parsing" &&
@@ -1181,19 +1211,61 @@ export default function AppClient() {
       <div className="main">
         <header className="header">
           <div className="header-left">
-            <h1 className="header-title">Zemni</h1>
-            <label className="sr-only" htmlFor="mode-select">Output mode</label>
-            <select
-              id="mode-select"
-              className="mode-select"
-              value={outputKind}
-              onChange={(e) => setOutputKind(e.target.value as OutputKind)}
+            <button
+              type="button"
+              className="sidebar-toggle"
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              aria-label="Open history"
+              title="History"
             >
-              <option value="summary">Summary</option>
-              <option value="flashcards">Flashcards</option>
-              <option value="quiz">Quiz</option>
-            </select>
-            {isSmallScreen && (
+              <IconMenu />
+            </button>
+            <h1 className="header-title">Zemni</h1>
+          </div>
+          <div className="header-right">
+            <button
+              type="button"
+              className="icon-btn"
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              aria-label={theme === "dark" ? "Light Mode" : "Dark Mode"}
+              title={theme === "dark" ? "Light Mode" : "Dark Mode"}
+            >
+              {theme === "dark" ? <IconSun /> : <IconMoon />}
+            </button>
+          </div>
+        </header>
+
+        {isSmallScreen && (
+          <div className="top-toolbar" role="region" aria-label="Controls">
+            <div className="top-toolbar-left">
+              <div className="mode-switch" role="tablist" aria-label="Output mode">
+                <button
+                  type="button"
+                  className={`mode-btn${outputKind === "summary" ? " active" : ""}`}
+                  onClick={() => setOutputKind("summary")}
+                  aria-selected={outputKind === "summary"}
+                >
+                  Summary
+                </button>
+                <button
+                  type="button"
+                  className={`mode-btn${outputKind === "flashcards" ? " active" : ""}`}
+                  onClick={() => setOutputKind("flashcards")}
+                  aria-selected={outputKind === "flashcards"}
+                >
+                  Flashcards
+                </button>
+                <button
+                  type="button"
+                  className={`mode-btn${outputKind === "quiz" ? " active" : ""}`}
+                  onClick={() => setOutputKind("quiz")}
+                  aria-selected={outputKind === "quiz"}
+                >
+                  Quiz
+                </button>
+              </div>
+            </div>
+            <div className="top-toolbar-right">
               <div className="view-toggle" role="tablist" aria-label="View">
                 <button
                   type="button"
@@ -1212,20 +1284,9 @@ export default function AppClient() {
                   Output
                 </button>
               </div>
-            )}
+            </div>
           </div>
-          <div className="header-right">
-            <button
-              type="button"
-              className="icon-btn"
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-              aria-label={theme === "dark" ? "Light Mode" : "Dark Mode"}
-              title={theme === "dark" ? "Light Mode" : "Dark Mode"}
-            >
-              {theme === "dark" ? <IconSun /> : <IconMoon />}
-            </button>
-          </div>
-        </header>
+        )}
 
         {error && <div className="error-banner">{error}</div>}
         <SubjectPickerModal
@@ -1238,78 +1299,162 @@ export default function AppClient() {
             setPendingExport(false);
           }}
         /> 
+        <DeleteOutputModal
+          isOpen={tabToDelete !== null}
+          outputLabel={tabToDelete ? outputs[tabToDelete]?.label ?? "Output" : "Output"}
+          onCancel={() => setTabToDelete(null)}
+          onConfirm={() => {
+            if (!tabToDelete) return;
+            handleCloseTabConfirm(tabToDelete);
+          }}
+        />
 
         <div className={`content${isSmallScreen ? ` content-mobile view-${mobileView}` : ""}`}>
-          <InputPanel
-            fileName={fileName}
-            selectedModel={selectedModel}
-            models={models}
-            structureHints={structureHints}
-            showStructureHints={outputKind === "summary"}
-            dragActive={dragActive}
-            topBarLeft={
-              <button
-                type="button"
-                className="sidebar-toggle"
-                onClick={() => setSidebarOpen(!sidebarOpen)}
-                aria-label="Open history"
-                title="History"
-              >
-                <IconMenu />
-              </button>
-            }
-            topBarRight={<StatusBadge status={status} />}
-            onDrop={onDrop}
-            onDragOver={onDragOver}
-            onDragLeave={onDragLeave}
-            onSelectFile={onSelectFile}
-            onModelChange={handleModelChange}
-            onStructureChange={setStructureHints}
-          >
-            {outputKind === "flashcards" && (
-              <div className="field">
-                <label className="field-label">Flashcards amount</label>
-                <div className="field-inline">
-                  <FlashcardsDensityControl
-                    value={flashcardsDensity}
-                    onChange={setFlashcardsDensity}
-                    disabled={!extractedText || status === "parsing" || status === "summarizing"}
-                  />
+          {!isSmallScreen ? (
+            <div className="input-column">
+              <div className="input-panel-modebar" role="region" aria-label="Output mode">
+                <div className="mode-switch" role="tablist" aria-label="Output mode">
+                  <button
+                    type="button"
+                    className={`mode-btn${outputKind === "summary" ? " active" : ""}`}
+                    onClick={() => setOutputKind("summary")}
+                    aria-selected={outputKind === "summary"}
+                  >
+                    Summary
+                  </button>
+                  <button
+                    type="button"
+                    className={`mode-btn${outputKind === "flashcards" ? " active" : ""}`}
+                    onClick={() => setOutputKind("flashcards")}
+                    aria-selected={outputKind === "flashcards"}
+                  >
+                    Flashcards
+                  </button>
+                  <button
+                    type="button"
+                    className={`mode-btn${outputKind === "quiz" ? " active" : ""}`}
+                    onClick={() => setOutputKind("quiz")}
+                    aria-selected={outputKind === "quiz"}
+                  >
+                    Quiz
+                  </button>
                 </div>
               </div>
-            )}
-            <CostPreview
-              currentCost={currentCost}
-              isEstimating={isEstimating}
-              costHeuristic={costHeuristic}
-              defaultCollapsed={isCoarsePointer}
-            />
-            <StatsSection
-              currentUsage={currentUsage}
-              isOpen={statsOpen}
-              onToggle={() => setStatsOpen(!statsOpen)}
-            />
-            {isSmallScreen && (
-              <div className="mobile-actions">
-                <button
-                  type="button"
-                  className="btn btn-primary"
-                  onClick={() => void handleGenerate()}
-                  disabled={!canGenerate}
-                >
-                  {generatingTabId ? "Generating..." : "Generate"}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setMobileView("output")}
-                  disabled={!extractedText}
-                >
-                  View output
-                </button>
-              </div>
-            )}
-          </InputPanel>
+              <InputPanel
+                fileName={fileName}
+                selectedModel={selectedModel}
+                models={models}
+                structureHints={structureHints}
+                showStructureHints={outputKind === "summary"}
+                dragActive={dragActive}
+                dropzoneCorner={
+                  <span
+                    className={`status-dot ${statusClass} status-dot-corner`}
+                    title={statusTitle}
+                    aria-label={statusTitle}
+                  />
+                }
+                onDrop={onDrop}
+                onDragOver={onDragOver}
+                onDragLeave={onDragLeave}
+                onSelectFile={onSelectFile}
+                onModelChange={handleModelChange}
+                onStructureChange={setStructureHints}
+              >
+                {outputKind === "flashcards" && (
+                  <div className="field">
+                    <label className="field-label">Flashcards amount</label>
+                    <div className="field-inline">
+                      <FlashcardsDensityControl
+                        value={flashcardsDensity}
+                        onChange={setFlashcardsDensity}
+                        totalChars={studySection.text.length}
+                        disabled={!extractedText || status === "parsing" || status === "summarizing"}
+                      />
+                    </div>
+                  </div>
+                )}
+                <CostPreview
+                  currentCost={currentCost}
+                  isEstimating={isEstimating}
+                  costHeuristic={costHeuristic}
+                  defaultCollapsed={isCoarsePointer}
+                />
+                <StatsSection
+                  currentUsage={currentUsage}
+                  isOpen={statsOpen}
+                  onToggle={() => setStatsOpen(!statsOpen)}
+                />
+              </InputPanel>
+            </div>
+          ) : (
+            <InputPanel
+              fileName={fileName}
+              selectedModel={selectedModel}
+              models={models}
+              structureHints={structureHints}
+              showStructureHints={outputKind === "summary"}
+              dragActive={dragActive}
+              dropzoneCorner={
+                <span
+                  className={`status-dot ${statusClass} status-dot-corner`}
+                  title={statusTitle}
+                  aria-label={statusTitle}
+                />
+              }
+              onDrop={onDrop}
+              onDragOver={onDragOver}
+              onDragLeave={onDragLeave}
+              onSelectFile={onSelectFile}
+              onModelChange={handleModelChange}
+              onStructureChange={setStructureHints}
+            >
+              {outputKind === "flashcards" && (
+                <div className="field">
+                  <label className="field-label">Flashcards amount</label>
+                  <div className="field-inline">
+                    <FlashcardsDensityControl
+                      value={flashcardsDensity}
+                      onChange={setFlashcardsDensity}
+                      totalChars={studySection.text.length}
+                      disabled={!extractedText || status === "parsing" || status === "summarizing"}
+                    />
+                  </div>
+                </div>
+              )}
+              <CostPreview
+                currentCost={currentCost}
+                isEstimating={isEstimating}
+                costHeuristic={costHeuristic}
+                defaultCollapsed={isCoarsePointer}
+              />
+              <StatsSection
+                currentUsage={currentUsage}
+                isOpen={statsOpen}
+                onToggle={() => setStatsOpen(!statsOpen)}
+              />
+              {isSmallScreen && (
+                <div className="mobile-actions">
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => void handleGenerate()}
+                    disabled={!canGenerate}
+                  >
+                    {generatingTabId ? "Generating..." : "Generate"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setMobileView("output")}
+                    disabled={!extractedText}
+                  >
+                    View output
+                  </button>
+                </div>
+              )}
+            </InputPanel>
+          )}
 
           <div className="output-panel">
             <div className="output-header">
@@ -1318,7 +1463,6 @@ export default function AppClient() {
                 selectedTabId={selectedTabId}
                 secondTabId={secondTabId}
                 generatingTabId={generatingTabId}
-                tabToDelete={tabToDelete}
                 showSplitHint={!isCoarsePointer}
                 onTabChange={handleTabChange}
                 onCloseTab={handleCloseTabRequest}
@@ -1414,16 +1558,17 @@ export default function AppClient() {
               </div>
             ) : (
               <div className="mode-panel">
-                <QuizMode
-                  extractedText={extractedText}
-                  fileName={fileName}
-                  output={currentOutput}
-                  status={status}
-                  onReveal={handleQuizReveal}
-                  onNext={handleQuizNext}
-                  onSelectOption={handleQuizSelectOption}
-                  showKeyboardHints={!isCoarsePointer}
-                />
+                  <QuizMode
+                    extractedText={extractedText}
+                    fileName={fileName}
+                    output={currentOutput}
+                    status={status}
+                    onReveal={handleQuizReveal}
+                    onNext={handleQuizNext}
+                    onSelectOption={handleQuizSelectOption}
+                    onPrev={handleQuizPrev}
+                    showKeyboardHints={!isCoarsePointer}
+                  />
               </div>
             )}
 
