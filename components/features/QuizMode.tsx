@@ -29,6 +29,7 @@ type QuizModeProps = {
   onPrev: () => void;
   onSelectOption: (index: number) => void;
   showKeyboardHints?: boolean;
+  onRetry?: () => void | Promise<void>;
 };
 
 const baseNameFor = (fileName: string): string => {
@@ -46,7 +47,8 @@ export function QuizMode({
   onNext,
   onPrev,
   onSelectOption,
-  showKeyboardHints = true
+  showKeyboardHints = true,
+  onRetry
 }: QuizModeProps) {
   const quiz = output?.quiz ?? [];
   const state = output?.quizState;
@@ -114,7 +116,18 @@ export function QuizMode({
 
       if (key === "ArrowRight" || lower === "n") {
         e.preventDefault();
-        if (!isBusy) void onNext();
+        if (!isBusy) {
+          const questions = output?.quiz ?? [];
+          const currentCursor = state?.questionCursor ?? 0;
+          // Only allow next if not at last question, or allow if we can generate more
+          // (when at last question, onNext will trigger generation of more questions)
+          if (currentCursor < questions.length - 1) {
+            void onNext();
+          } else if (currentCursor === questions.length - 1 && questions.length > 0) {
+            // At last question - allow triggering generation of more questions
+            void onNext();
+          }
+        }
         return;
       }
 
@@ -163,7 +176,29 @@ export function QuizMode({
   }
 
   if (output.error) {
-    return <div className="mode-empty error">{output.error}</div>;
+    return (
+      <div className="mode-empty error">
+        <div className="error-display">
+          <div className="error-message">
+            <strong>Error:</strong> {output.error}
+          </div>
+          {output.errorSuggestion && (
+            <div className="error-suggestion">
+              💡 {output.errorSuggestion}
+            </div>
+          )}
+          {output.canRetry && onRetry && (
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => void onRetry()}
+            >
+              Retry Generation
+            </button>
+          )}
+        </div>
+      </div>
+    );
   }
 
   if (output.isGenerating && !currentQuestion) {
@@ -186,6 +221,11 @@ export function QuizMode({
 
   return (
     <div className="quiz-view">
+      {output.isCached && (
+        <div className="cache-badge" title="This result was loaded from cache">
+          💾 Cached
+        </div>
+      )}
       <div className="quiz-meta">
         <span>Question {cursor + 1} / {Math.max(1, quiz.length)}</span>
         <div className="quiz-actions">
@@ -197,8 +237,10 @@ export function QuizMode({
             className="btn btn-secondary btn-sm"
             onClick={() => void onNext()}
             disabled={isBusy}
+            title={cursor >= quiz.length - 1 && quiz.length > 0 ? "Generate more questions" : undefined}
           >
             {showKeyboardHints ? "Next (→)" : "Next"}
+            {cursor >= quiz.length - 1 && quiz.length > 0 && !isBusy && " (more...)"}
           </button>
           <ExportMenu
             disabled={!quiz.length}

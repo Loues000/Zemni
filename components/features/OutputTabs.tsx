@@ -43,7 +43,15 @@ export function OutputTabs({
               onClick={(e) => onTabChange(tab.id, e)}
               title={showSplitHint && canSplit ? "Ctrl+Click for split view" : undefined}
             >
-              <span className="output-tab-label">{tab.label}</span>
+              <span className="output-tab-label">
+                {tab.label}
+                {tab.isCached && (
+                  <span className="cache-indicator" title="Loaded from cache">💾</span>
+                )}
+                {tab.error && tab.canRetry && (
+                  <span className="error-retry-indicator" title="Error - Click to retry">⚠️</span>
+                )}
+              </span>
               <button
                 type="button"
                 className="output-tab-close"

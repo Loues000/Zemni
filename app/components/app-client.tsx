@@ -1,20 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, lazy, Suspense, useCallback } from "react";
 import { useChat } from "ai/react";
 import { 
   HistorySidebar, 
   InputPanel, 
   OutputTabs, 
-  SummaryPreview, 
   RefineBar,
-  FlashcardsMode,
-  QuizMode,
   FlashcardsDensityControl,
   SubjectPickerModal,
   DeleteOutputModal,
   type FlashcardsDensity
 } from "@/components/features";
+
+// Lazy load heavy components for better performance
+const SummaryPreview = lazy(() => import("@/components/features/SummaryPreview.tsx").then(m => ({ default: m.SummaryPreview })));
+const FlashcardsMode = lazy(() => import("@/components/features/FlashcardsMode.tsx").then(m => ({ default: m.FlashcardsMode })));
+const QuizMode = lazy(() => import("@/components/features/QuizMode.tsx").then(m => ({ default: m.QuizMode })));
 import { ActivityBar, CostPreview, StatsSection, IconMenu, IconSun, IconMoon, Footer } from "@/components/ui";
 import type { OutputKind, UsageStats, HistoryEntry } from "@/types";
 import { 
@@ -31,8 +33,10 @@ import {
 import { enforceOutputFormat } from "@/lib/format-output";
 import { getSummaryTitle } from "@/lib/output-previews";
 import { estimateFlashcardsPerSection, estimateQuizQuestions } from "@/lib/study-heuristics";
+import { formatErrorMessage } from "@/lib/utils/error-messages";
 import { handleTabChange, handleCloseTabRequest, handleCloseTabConfirm, type TabHandlersContext } from "@/lib/handlers/tab-handlers";
 import { handleRefineSubmit, handleCopySummary, handleCopySummarySecond, handleEditStart, handleEditSave, handleEditStartSecond, handleEditSaveSecond, type SummaryHandlersContext } from "@/lib/handlers/summary-handlers";
+import { handleRetryGeneration } from "@/lib/handlers/retry-handlers";
 
 export default function AppClient() {
   // Core app state
@@ -140,7 +144,7 @@ export default function AppClient() {
       setStatus("ready");
     },
     onError: (chatError: Error) => {
-      setError(chatError.message);
+      setError(formatErrorMessage(chatError));
       setStatus("error");
     }
   });
@@ -197,7 +201,7 @@ export default function AppClient() {
     setMessages,
     setInput
   );
-  const { docSection, studySection, textForEstimate, handleGenerate } = generation;
+  const { docSection, studySection, textForEstimate, handleGenerate, handleRetry } = generation;
 
   // Export
   const exportHook = useExport(
@@ -260,13 +264,15 @@ export default function AppClient() {
     return modelCosts.find((row) => row.id === selectedModel);
   }, [modelCosts, selectedModel]);
 
-  const currentKind: OutputKind = (currentOutput?.kind as OutputKind) || "summary";
-  const isCurrentTabRefining = chatConfig.isLoading && refineTargetRef.current === selectedTabId;
-  const currentSummary = isCurrentTabRefining && streamingRefineContent 
-    ? streamingRefineContent 
-    : (currentOutput?.summary ?? "");
-  const currentUsage = currentOutput?.usage ?? null;
-  const secondSummary = secondOutput?.summary ?? "";
+  const currentKind: OutputKind = useMemo(() => (currentOutput?.kind as OutputKind) || "summary", [currentOutput?.kind]);
+  const isCurrentTabRefining = useMemo(() => chatConfig.isLoading && refineTargetRef.current === selectedTabId, [chatConfig.isLoading, selectedTabId]);
+  const currentSummary = useMemo(() => {
+    return isCurrentTabRefining && streamingRefineContent 
+      ? streamingRefineContent 
+      : (currentOutput?.summary ?? "");
+  }, [isCurrentTabRefining, streamingRefineContent, currentOutput?.summary]);
+  const currentUsage = useMemo(() => currentOutput?.usage ?? null, [currentOutput?.usage]);
+  const secondSummary = useMemo(() => secondOutput?.summary ?? "", [secondOutput?.summary]);
 
   // Effects
   useEffect(() => {
@@ -341,16 +347,21 @@ export default function AppClient() {
   }, [outputs, status, fileHandling.extractedText, generatingTabId, loadedFromHistory]);
 
   // Handlers
-  const handleModelChange = (modelId: string): void => {
+  const handleModelChange = useCallback((modelId: string): void => {
     setSelectedModel(modelId);
-  };
+  }, [setSelectedModel]);
 
-  const tabContext: TabHandlersContext = {
+  // Memoize sorted output tabs to avoid recalculation
+  const outputTabs = useMemo(() => {
+    return Object.values(outputs).sort((a, b) => b.updatedAt - a.updatedAt);
+  }, [outputs]);
+
+  const tabContext: TabHandlersContext = useMemo(() => ({
     outputKind,
     selectedTabId,
     secondTabId,
     outputs,
-    outputTabs: Object.values(outputs).sort((a, b) => b.updatedAt - a.updatedAt),
+    outputTabs,
     setSelectedTabId,
     setSecondTabId,
     setSelectedModel,
@@ -363,21 +374,21 @@ export default function AppClient() {
     generatingTabId,
     setTabToDelete,
     setOutputs
-  };
+  }), [outputKind, selectedTabId, secondTabId, outputs, outputTabs, setSelectedTabId, setSecondTabId, setSelectedModel, setIsEditing, setIsEditingSecond, setError, setMessages, setInput, setData, generatingTabId, setTabToDelete, setOutputs]);
 
-  const handleTabChangeWrapper = (tabId: string, event?: React.MouseEvent): void => {
+  const handleTabChangeWrapper = useCallback((tabId: string, event?: React.MouseEvent): void => {
     handleTabChange(tabId, tabContext, event);
-  };
+  }, [tabContext]);
 
-  const handleCloseTabRequestWrapper = (tabId: string, event: React.MouseEvent): void => {
+  const handleCloseTabRequestWrapper = useCallback((tabId: string, event: React.MouseEvent): void => {
     handleCloseTabRequest(tabId, event, setTabToDelete);
-  };
+  }, [setTabToDelete]);
 
-  const handleCloseTabConfirmWrapper = (tabId: string): void => {
+  const handleCloseTabConfirmWrapper = useCallback((tabId: string): void => {
     handleCloseTabConfirm(tabId, tabContext);
-  };
+  }, [tabContext]);
 
-  const summaryContext: SummaryHandlersContext = {
+  const summaryContext: SummaryHandlersContext = useMemo(() => ({
     currentKind,
     currentSummary,
     selectedTabId,
@@ -404,37 +415,37 @@ export default function AppClient() {
     editDraftSecond,
     setEditDraftSecond,
     setCopySuccessSecond
-  };
+  }), [currentKind, currentSummary, selectedTabId, currentOutput, isSmallScreen, setStatus, setMobileView, setLoadedFromHistory, setIsEditing, refineTargetRef, setData, chatConfig.handleSubmit, setError, setCopySuccess, editDraft, setEditDraft, setOutputs, secondSummary, secondTabId, secondOutput, setIsEditingSecond, editDraftSecond, setEditDraftSecond, setCopySuccessSecond]);
 
-  const handleCopySummaryWrapper = async (): Promise<void> => {
+  const handleCopySummaryWrapper = useCallback(async (): Promise<void> => {
     await handleCopySummary(summaryContext);
-  };
+  }, [summaryContext]);
 
-  const handleCopySummarySecondWrapper = async (): Promise<void> => {
+  const handleCopySummarySecondWrapper = useCallback(async (): Promise<void> => {
     await handleCopySummarySecond(summaryContext);
-  };
+  }, [summaryContext]);
 
-  const handleEditStartWrapper = (): void => {
+  const handleEditStartWrapper = useCallback((): void => {
     handleEditStart(summaryContext);
-  };
+  }, [summaryContext]);
 
-  const handleEditSaveWrapper = (): void => {
+  const handleEditSaveWrapper = useCallback((): void => {
     handleEditSave(summaryContext);
-  };
+  }, [summaryContext]);
 
-  const handleEditStartSecondWrapper = (): void => {
+  const handleEditStartSecondWrapper = useCallback((): void => {
     handleEditStartSecond(summaryContext);
-  };
+  }, [summaryContext]);
 
-  const handleEditSaveSecondWrapper = (): void => {
+  const handleEditSaveSecondWrapper = useCallback((): void => {
     handleEditSaveSecond(summaryContext);
-  };
+  }, [summaryContext]);
 
-  const handleRefineSubmitWrapper = (event: React.FormEvent<HTMLFormElement>): void => {
+  const handleRefineSubmitWrapper = useCallback((event: React.FormEvent<HTMLFormElement>): void => {
     handleRefineSubmit(event, summaryContext);
-  };
+  }, [summaryContext]);
 
-  const saveToHistory = (outputsToSave?: Record<string, any>, exportedSubjectTitle?: string, notionPageId?: string): void => {
+  const saveToHistory = useCallback((outputsToSave?: Record<string, any>, exportedSubjectTitle?: string, notionPageId?: string): void => {
     const outputsData = outputsToSave || outputs;
     if (!fileHandling.extractedText || Object.keys(outputsData).length === 0) return;
 
@@ -484,9 +495,9 @@ export default function AppClient() {
     });
 
     if (!currentHistoryId) setCurrentHistoryId(historyId);
-  };
+  }, [outputs, fileHandling.extractedText, fileHandling.fileName, structureHints, currentHistoryId, updateHistoryState, setCurrentHistoryId]);
 
-  const loadFromHistory = (entry: HistoryEntry): void => {
+  const loadFromHistory = useCallback((entry: HistoryEntry): void => {
     fileHandling.setFileName(entry.fileName);
     fileHandling.setExtractedText(entry.extractedText);
     setOutputs(entry.outputs);
@@ -514,17 +525,17 @@ export default function AppClient() {
       const tab = entry.outputs[firstTabId];
       if (tab) setSelectedModel(tab.modelId);
     }
-  };
+  }, [fileHandling, setOutputs, setStructureHints, setCurrentHistoryId, setLoadedFromHistory, setError, setSidebarOpen, isSmallScreen, setMobileView, setIsEditing, setIsEditingSecond, setSecondTabId, exportHook, setMessages, setInput, setData, setSelectedTabId, setSelectedModel]);
 
-  const deleteHistoryEntry = (id: string, event: React.MouseEvent): void => {
+  const deleteHistoryEntry = useCallback((id: string, event: React.MouseEvent): void => {
     event.stopPropagation();
     updateHistoryState((prev) => prev.filter((entry) => entry.id !== id));
-  };
+  }, [updateHistoryState]);
 
-  // UI computed values
-  const statusClass = status === "error" ? "error" : status === "ready" ? "ready" : "busy";
-  const statusTitle =
-    status === "parsing"
+  // UI computed values - memoized for performance
+  const statusClass = useMemo(() => status === "error" ? "error" : status === "ready" ? "ready" : "busy", [status]);
+  const statusTitle = useMemo(() => {
+    return status === "parsing"
       ? "Parsing PDF"
       : status === "summarizing"
         ? "Generating"
@@ -535,27 +546,32 @@ export default function AppClient() {
             : status === "error"
               ? "Error"
               : "Ready";
-  const isGenerating = generatingTabId === selectedTabId && generatingTabId !== null;
+  }, [status]);
+  const isGenerating = useMemo(() => generatingTabId === selectedTabId && generatingTabId !== null, [generatingTabId, selectedTabId]);
   
-  // Improved button state management with clearer navigation flow
-  const canGenerate =
+  // Improved button state management with clearer navigation flow - memoized
+  const canGenerate = useMemo(() =>
     status !== "parsing" &&
     status !== "summarizing" &&
     status !== "exporting" &&
     !chatConfig.isLoading &&
     Boolean(fileHandling.extractedText) &&
     Boolean(selectedModel) &&
-    !generatingTabId;
+    !generatingTabId,
+    [status, chatConfig.isLoading, fileHandling.extractedText, selectedModel, generatingTabId]
+  );
   
-  const canExport = 
+  const canExport = useMemo(() => 
     outputKind === "summary" && 
     !!currentSummary && 
     status !== "exporting" && 
     status !== "parsing" && 
     status !== "summarizing" &&
-    !chatConfig.isLoading;
+    !chatConfig.isLoading,
+    [outputKind, currentSummary, status, chatConfig.isLoading]
+  );
   
-  const canViewOutput = Boolean(fileHandling.extractedText) && status !== "parsing";
+  const canViewOutput = useMemo(() => Boolean(fileHandling.extractedText) && status !== "parsing", [fileHandling.extractedText, status]);
 
   return (
     <div className="app">
@@ -883,57 +899,66 @@ export default function AppClient() {
             <ActivityBar status={status} exportProgress={exportProgress} />
 
             {outputKind === "summary" ? (
-              <SummaryPreview
-                isSplitView={isSplitView}
-                selectedTabId={selectedTabId}
-                secondTabId={secondTabId}
-                currentOutput={currentOutput}
-                secondOutput={secondOutput}
-                currentSummary={currentSummary}
-                secondSummary={secondSummary}
-                isEditing={isEditing}
-                isEditingSecond={isEditingSecond}
-                editDraft={editDraft}
-                editDraftSecond={editDraftSecond}
-                previewRef1={previewRef1}
-                previewRef2={previewRef2}
-                isScrolling={isScrolling}
-                copySuccess={copySuccess}
-                copySuccessSecond={copySuccessSecond}
-                onEditStart={handleEditStartWrapper}
-                onEditSave={handleEditSaveWrapper}
-                onEditStartSecond={handleEditStartSecondWrapper}
-                onEditSaveSecond={handleEditSaveSecondWrapper}
-                onEditDraftChange={setEditDraft}
-                onEditDraftChangeSecond={setEditDraftSecond}
-                onCopySummary={handleCopySummaryWrapper}
-                onCopySummarySecond={handleCopySummarySecondWrapper}
-                onSyncScroll={() => {}}
-                onCloseSplit={() => setSecondTabId(null)}
-                extractedText={fileHandling.extractedText}
-              />
+              <Suspense fallback={<div className="preview-empty">Loading preview...</div>}>
+                <SummaryPreview
+                  isSplitView={isSplitView}
+                  selectedTabId={selectedTabId}
+                  secondTabId={secondTabId}
+                  currentOutput={currentOutput}
+                  secondOutput={secondOutput}
+                  currentSummary={currentSummary}
+                  secondSummary={secondSummary}
+                  isEditing={isEditing}
+                  isEditingSecond={isEditingSecond}
+                  editDraft={editDraft}
+                  editDraftSecond={editDraftSecond}
+                  previewRef1={previewRef1}
+                  previewRef2={previewRef2}
+                  isScrolling={isScrolling}
+                  copySuccess={copySuccess}
+                  copySuccessSecond={copySuccessSecond}
+                  onEditStart={handleEditStartWrapper}
+                  onEditSave={handleEditSaveWrapper}
+                  onEditStartSecond={handleEditStartSecondWrapper}
+                  onEditSaveSecond={handleEditSaveSecondWrapper}
+                  onEditDraftChange={setEditDraft}
+                  onEditDraftChangeSecond={setEditDraftSecond}
+                  onCopySummary={handleCopySummaryWrapper}
+                  onCopySummarySecond={handleCopySummarySecondWrapper}
+                  onSyncScroll={() => {}}
+                  onCloseSplit={() => setSecondTabId(null)}
+                  onRetry={selectedTabId && currentOutput?.canRetry ? () => handleRetry(selectedTabId, outputs) : undefined}
+                  extractedText={fileHandling.extractedText}
+                />
+              </Suspense>
             ) : outputKind === "flashcards" ? (
               <div className="mode-panel">
-                <FlashcardsMode
-                  extractedText={fileHandling.extractedText}
-                  fileName={fileHandling.fileName}
-                  output={currentOutput}
-                  showKeyboardHints={!isCoarsePointer}
-                />
+                <Suspense fallback={<div className="preview-empty">Loading flashcards...</div>}>
+                  <FlashcardsMode
+                    extractedText={fileHandling.extractedText}
+                    fileName={fileHandling.fileName}
+                    output={currentOutput}
+                    showKeyboardHints={!isCoarsePointer}
+                    onRetry={selectedTabId && currentOutput?.canRetry ? () => handleRetry(selectedTabId, outputs) : undefined}
+                  />
+                </Suspense>
               </div>
             ) : (
               <div className="mode-panel">
-                <QuizMode
-                  extractedText={fileHandling.extractedText}
-                  fileName={fileHandling.fileName}
-                  output={currentOutput}
-                  status={status}
-                  onReveal={handleQuizReveal}
-                  onNext={handleQuizNext}
-                  onSelectOption={handleQuizSelectOption}
-                  onPrev={handleQuizPrev}
-                  showKeyboardHints={!isCoarsePointer}
-                />
+                <Suspense fallback={<div className="preview-empty">Loading quiz...</div>}>
+                  <QuizMode
+                    extractedText={fileHandling.extractedText}
+                    fileName={fileHandling.fileName}
+                    output={currentOutput}
+                    status={status}
+                    onReveal={handleQuizReveal}
+                    onNext={handleQuizNext}
+                    onSelectOption={handleQuizSelectOption}
+                    onPrev={handleQuizPrev}
+                    showKeyboardHints={!isCoarsePointer}
+                    onRetry={selectedTabId && currentOutput?.canRetry ? () => handleRetry(selectedTabId, outputs) : undefined}
+                  />
+                </Suspense>
               </div>
             )}
 

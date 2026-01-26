@@ -25,6 +25,7 @@ type FlashcardsModeProps = {
   fileName: string;
   output?: OutputEntry;
   showKeyboardHints?: boolean;
+  onRetry?: () => void | Promise<void>;
 };
 
 const baseNameFor = (fileName: string): string => {
@@ -33,7 +34,7 @@ const baseNameFor = (fileName: string): string => {
   return trimmed.replace(/\.[^.]+$/, "");
 };
 
-export function FlashcardsMode({ extractedText, fileName, output, showKeyboardHints = true }: FlashcardsModeProps) {
+export function FlashcardsMode({ extractedText, fileName, output, showKeyboardHints = true, onRetry }: FlashcardsModeProps) {
   const cards = output?.flashcards ?? [];
 
   const [playerOpen, setPlayerOpen] = useState(false);
@@ -107,7 +108,29 @@ export function FlashcardsMode({ extractedText, fileName, output, showKeyboardHi
   }
 
   if (output.error) {
-    return <div className="mode-empty error">{output.error}</div>;
+    return (
+      <div className="mode-empty error">
+        <div className="error-display">
+          <div className="error-message">
+            <strong>Error:</strong> {output.error}
+          </div>
+          {output.errorSuggestion && (
+            <div className="error-suggestion">
+              💡 {output.errorSuggestion}
+            </div>
+          )}
+          {output.canRetry && onRetry && (
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => void onRetry()}
+            >
+              Retry Generation
+            </button>
+          )}
+        </div>
+      </div>
+    );
   }
 
   if (output.isGenerating) {
@@ -131,6 +154,11 @@ export function FlashcardsMode({ extractedText, fileName, output, showKeyboardHi
 
   return (
     <div className="flashcards-view">
+      {output.isCached && (
+        <div className="cache-badge" title="This result was loaded from cache">
+          💾 Cached
+        </div>
+      )}
       <div className="flashcards-meta">
         <span>{cards.length} cards</span>
         <div className="flashcards-actions">

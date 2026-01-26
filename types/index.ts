@@ -90,6 +90,9 @@ export type OutputEntry = {
   updatedAt: number;
   isGenerating?: boolean;
   error?: string;
+  errorSuggestion?: string; // Actionable suggestion for the error
+  canRetry?: boolean; // Indicates if the error is retryable
+  isCached?: boolean; // Indicates if this result came from cache
   kind?: OutputKind;
   sectionIds?: string[];
   flashcards?: Flashcard[];

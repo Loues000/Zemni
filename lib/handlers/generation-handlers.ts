@@ -2,6 +2,9 @@ import type { Model, OutputKind, Status, OutputEntry, Flashcard, QuizQuestion, D
 import { postJson } from "@/lib/utils/api-helpers";
 import { flashcardsToMarkdown, renderQuizPreview } from "@/lib/output-previews";
 import { estimateFlashcardsPerSection, estimateQuizQuestions } from "@/lib/study-heuristics";
+import { createDocHash, createCacheKey, getCachedResult, setCachedResult, type CacheKey } from "@/lib/cache";
+import { retryWithBackoff, isRetryableError } from "@/lib/utils/retry";
+import { formatErrorMessage, getErrorInfo, isRetryableErrorMessage } from "@/lib/utils/error-messages";
 
 const QUIZ_INITIAL_BATCH_CAP = 12;
 
@@ -28,6 +31,7 @@ export interface GenerationHandlersContext {
   setData: (data: any[]) => void;
   setMessages: (messages: any[]) => void;
   setInput: (input: string) => void;
+  onCacheHit?: (cached: boolean) => void; // Callback to notify UI of cache status
 }
 
 /**
@@ -74,6 +78,49 @@ export const handleGenerate = async (context: GenerationHandlersContext): Promis
   const tabId = selectedModel + "-" + Date.now();
   const modelLabel = models.find((m) => m.id === selectedModel)?.displayName || selectedModel;
 
+  // Create cache key
+  const docHash = createDocHash(extractedText, fileName);
+  const cacheParams: CacheKey["params"] = {
+    structureHints: outputKind === "summary" ? structureHints : undefined,
+    flashcardsDensity: outputKind === "flashcards" ? flashcardsDensity : undefined,
+    questionsCount: outputKind === "quiz" ? Math.min(QUIZ_INITIAL_BATCH_CAP, estimateQuizQuestions(extractedText.length)) : undefined
+  };
+  const cacheKeyStr = createCacheKey(docHash, outputKind, selectedModel, cacheParams);
+
+  // Check cache first
+  const cached = getCachedResult(cacheKeyStr);
+  if (cached) {
+    // Use cached result
+    const cachedOutput: OutputEntry = {
+      ...cached.output,
+      id: tabId,
+      modelId: selectedModel,
+      label: modelLabel,
+      updatedAt: Date.now(),
+      isCached: true
+    };
+
+    if (isSmallScreen) setMobileView("output");
+    setOutputs((prev) => ({
+      ...prev,
+      [tabId]: cachedOutput
+    }));
+
+    setSelectedTabId(tabId);
+    setGeneratingTabId(null);
+    setError("");
+    setStatus("ready");
+    setLoadedFromHistory(false);
+    setIsEditing(false);
+    setData([]);
+    setMessages([]);
+    setInput("");
+    context.onCacheHit?.(true);
+    return;
+  }
+
+  context.onCacheHit?.(false);
+
   if (isSmallScreen) setMobileView("output");
   setOutputs((prev) => ({
     ...prev,
@@ -110,20 +157,22 @@ export const handleGenerate = async (context: GenerationHandlersContext): Promis
 
   try {
     if (outputKind === "summary") {
-      const data = await postJson<{ summary: string; usage?: UsageStats | null }>(
-        "/api/section-summary",
-        {
-          sections: [docSection],
-          modelId: selectedModel,
-          structure: structureHints,
-          titleHint: fileName
-        },
-        75_000
+      const data = await retryWithBackoff(
+        () => postJson<{ summary: string; usage?: UsageStats | null }>(
+          "/api/section-summary",
+          {
+            sections: [docSection],
+            modelId: selectedModel,
+            structure: structureHints,
+            titleHint: fileName
+          },
+          75_000
+        ),
+        { maxRetries: 2, initialDelayMs: 1000 }
       );
 
-      setOutputs((prev) => ({
-        ...prev,
-        [tabId]: {
+      setOutputs((prev) => {
+        const output: OutputEntry = {
           ...prev[tabId],
           error: undefined,
           summary: data.summary || "",
@@ -131,23 +180,38 @@ export const handleGenerate = async (context: GenerationHandlersContext): Promis
           updatedAt: Date.now(),
           isGenerating: false,
           kind: "summary"
-        }
-      }));
-    } else if (outputKind === "flashcards") {
-      const data = await postJson<{ flashcards: Flashcard[]; usage?: UsageStats | null }>(
-        "/api/flashcards",
-        {
-          sections: [studySection],
+        };
+
+        // Cache the result
+        setCachedResult(cacheKeyStr, output, {
+          docHash,
+          mode: outputKind,
           modelId: selectedModel,
-          coverageLevel: flashcardsDensity
-        },
-        75_000
+          params: cacheParams
+        });
+
+        return {
+          ...prev,
+          [tabId]: output
+        };
+      });
+    } else if (outputKind === "flashcards") {
+      const data = await retryWithBackoff(
+        () => postJson<{ flashcards: Flashcard[]; usage?: UsageStats | null }>(
+          "/api/flashcards",
+          {
+            sections: [studySection],
+            modelId: selectedModel,
+            coverageLevel: flashcardsDensity
+          },
+          75_000
+        ),
+        { maxRetries: 2, initialDelayMs: 1000 }
       );
       const markdown = flashcardsToMarkdown(data.flashcards ?? [], fileName);
 
-      setOutputs((prev) => ({
-        ...prev,
-        [tabId]: {
+      setOutputs((prev) => {
+        const output: OutputEntry = {
           ...prev[tabId],
           error: undefined,
           summary: markdown,
@@ -156,18 +220,34 @@ export const handleGenerate = async (context: GenerationHandlersContext): Promis
           isGenerating: false,
           kind: "flashcards",
           flashcards: data.flashcards ?? []
-        }
-      }));
-    } else if (outputKind === "quiz") {
-      const data = await postJson<{ questions: QuizQuestion[]; usage?: UsageStats | null }>(
-        "/api/quiz",
-        {
-          section: studySection,
+        };
+
+        // Cache the result
+        setCachedResult(cacheKeyStr, output, {
+          docHash,
+          mode: outputKind,
           modelId: selectedModel,
-          questionsCount: Math.min(QUIZ_INITIAL_BATCH_CAP, estimateQuizQuestions(extractedText.length)),
-          avoidQuestions: []
-        },
-        75_000
+          params: cacheParams
+        });
+
+        return {
+          ...prev,
+          [tabId]: output
+        };
+      });
+    } else if (outputKind === "quiz") {
+      const data = await retryWithBackoff(
+        () => postJson<{ questions: QuizQuestion[]; usage?: UsageStats | null }>(
+          "/api/quiz",
+          {
+            section: studySection,
+            modelId: selectedModel,
+            questionsCount: Math.min(QUIZ_INITIAL_BATCH_CAP, estimateQuizQuestions(extractedText.length)),
+            avoidQuestions: []
+          },
+          75_000
+        ),
+        { maxRetries: 2, initialDelayMs: 1000 }
       );
 
       setOutputs((prev) => {
@@ -183,6 +263,15 @@ export const handleGenerate = async (context: GenerationHandlersContext): Promis
           kind: "quiz"
         };
         next.summary = renderQuizPreview(next, fileName);
+        
+        // Cache the result
+        setCachedResult(cacheKeyStr, next, {
+          docHash,
+          mode: outputKind,
+          modelId: selectedModel,
+          params: cacheParams
+        });
+        
         return { ...prev, [tabId]: next };
       });
     }
@@ -192,16 +281,30 @@ export const handleGenerate = async (context: GenerationHandlersContext): Promis
     setStatus("ready");
     setGeneratingTabId(null);
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
+    const errorInfo = getErrorInfo(err);
+    const isRetryable = errorInfo.retryable || (err instanceof Error && isRetryableError(err));
+    
+    // Keep the tab with error state for retry
     setOutputs((prev) => {
-      const next = { ...prev };
-      delete next[tabId];
-      return next;
+      const existing = prev[tabId];
+      if (!existing) return prev;
+      return {
+        ...prev,
+        [tabId]: {
+          ...existing,
+          isGenerating: false,
+          error: errorInfo.message,
+          errorSuggestion: errorInfo.suggestion,
+          canRetry: isRetryable
+        }
+      };
     });
-    setSelectedTabId(previousTabId);
-    if (isSmallScreen) setMobileView("input");
-    setError(message);
-    setStatus("error");
+    
+    setSelectedTabId(tabId); // Keep the failed tab selected
     setGeneratingTabId(null);
+    setError(errorInfo.message);
+    setStatus("error");
+    
+    // Don't switch to input view on error - let user see the error and retry
   }
 };

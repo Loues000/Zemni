@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from "react";
 import type { OutputKind, DocumentSection, Model } from "@/types";
 import { handleGenerate as handleGenerateHandler, type GenerationHandlersContext } from "@/lib/handlers/generation-handlers";
+import { handleRetryGeneration } from "@/lib/handlers/retry-handlers";
 import { trimForModel } from "@/lib/utils/text-processing";
 
 export interface UseGenerationReturn {
@@ -8,6 +9,8 @@ export interface UseGenerationReturn {
   studySection: DocumentSection;
   textForEstimate: string;
   handleGenerate: () => Promise<void>;
+  handleRetry: (tabId: string, outputs: Record<string, any>) => Promise<void>;
+  generationContext: GenerationHandlersContext;
 }
 
 /**
@@ -81,10 +84,16 @@ export function useGeneration(
     await handleGenerateHandler(context);
   }, [context]);
 
+  const handleRetry = useCallback(async (tabId: string, outputs: Record<string, any>) => {
+    await handleRetryGeneration(tabId, context, outputs);
+  }, [context]);
+
   return {
     docSection,
     studySection,
     textForEstimate,
-    handleGenerate
+    handleGenerate,
+    handleRetry,
+    generationContext: context
   };
 }

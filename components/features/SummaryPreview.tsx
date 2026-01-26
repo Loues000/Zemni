@@ -78,6 +78,7 @@ interface SummaryPreviewProps {
   onCopySummarySecond: () => void;
   onSyncScroll: (source: 1 | 2) => void;
   onCloseSplit: () => void;
+  onRetry?: () => void | Promise<void>;
   extractedText: string;
 }
 
@@ -108,6 +109,7 @@ export function SummaryPreview({
   onCopySummarySecond,
   onSyncScroll,
   onCloseSplit,
+  onRetry,
   extractedText
 }: SummaryPreviewProps) {
   const handleSyncScroll = (source: 1 | 2) => {
@@ -175,8 +177,33 @@ export function SummaryPreview({
                 </button>
               </div>
             )}
-            {currentSummary ? (
+            {currentOutput?.error ? (
+              <div className="error-display">
+                <div className="error-message">
+                  <strong>Error:</strong> {currentOutput.error}
+                </div>
+                {currentOutput.errorSuggestion && (
+                  <div className="error-suggestion">
+                    💡 {currentOutput.errorSuggestion}
+                  </div>
+                )}
+                {currentOutput.canRetry && onRetry && (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => void onRetry()}
+                  >
+                    Retry Generation
+                  </button>
+                )}
+              </div>
+            ) : currentSummary ? (
               <div className="markdown-content">
+                {currentOutput?.isCached && (
+                  <div className="cache-badge" title="This result was loaded from cache">
+                    💾 Cached
+                  </div>
+                )}
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm, remarkMath]}
                   rehypePlugins={[rehypeKatex]}
@@ -238,6 +265,11 @@ export function SummaryPreview({
             )}
             {currentSummary ? (
               <div className="markdown-content">
+                {currentOutput?.isCached && (
+                  <div className="cache-badge" title="This result was loaded from cache">
+                    💾 Cached
+                  </div>
+                )}
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm, remarkMath]}
                   rehypePlugins={[rehypeKatex]}
@@ -292,8 +324,24 @@ export function SummaryPreview({
                   <IconClose />
                 </button>
               </div>
-              {secondSummary ? (
+              {secondOutput?.error ? (
+                <div className="error-display">
+                  <div className="error-message">
+                    <strong>Error:</strong> {secondOutput.error}
+                  </div>
+                  {secondOutput.errorSuggestion && (
+                    <div className="error-suggestion">
+                      💡 {secondOutput.errorSuggestion}
+                    </div>
+                  )}
+                </div>
+              ) : secondSummary ? (
                 <div className="markdown-content">
+                  {secondOutput?.isCached && (
+                    <div className="cache-badge" title="This result was loaded from cache">
+                      💾 Cached
+                    </div>
+                  )}
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm, remarkMath]}
                     rehypePlugins={[rehypeKatex]}

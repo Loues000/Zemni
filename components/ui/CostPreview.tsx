@@ -19,9 +19,11 @@ export function CostPreview({
 
   const [collapsed, setCollapsed] = useState(defaultCollapsed);
 
+  // Only sync defaultCollapsed on mount to avoid hydration issues
   useEffect(() => {
     setCollapsed(defaultCollapsed);
-  }, [defaultCollapsed]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const formatMoney = (value: number | null, currency: string): string => {
     if (value === null || Number.isNaN(value)) return "-";
