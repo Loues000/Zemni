@@ -10,6 +10,8 @@ import {
   FlashcardsDensityControl,
   SubjectPickerModal,
   DeleteOutputModal,
+  SettingsModal,
+  ModeSwitch,
   type FlashcardsDensity
 } from "@/components/features";
 
@@ -17,7 +19,7 @@ import {
 const SummaryPreview = lazy(() => import("@/components/features/SummaryPreview.tsx").then(m => ({ default: m.SummaryPreview })));
 const FlashcardsMode = lazy(() => import("@/components/features/FlashcardsMode.tsx").then(m => ({ default: m.FlashcardsMode })));
 const QuizMode = lazy(() => import("@/components/features/QuizMode.tsx").then(m => ({ default: m.QuizMode })));
-import { ActivityBar, CostPreview, StatsSection, IconMenu, IconSun, IconMoon, Footer } from "@/components/ui";
+import { ActivityBar, CostPreview, StatsSection, IconMenu, IconSun, IconMoon, IconSettings, Footer } from "@/components/ui";
 import type { OutputKind, UsageStats, HistoryEntry } from "@/types";
 import { 
   useHistory, 
@@ -28,7 +30,12 @@ import {
   useGeneration, 
   useExport, 
   useQuizState, 
-  useEditing 
+  useEditing,
+  useHistoryManagement,
+  useKeyboardShortcuts,
+  useUIState,
+  useComputedValues,
+  useRefineEffects
 } from "@/hooks";
 import { enforceOutputFormat } from "@/lib/format-output";
 import { getSummaryTitle } from "@/lib/output-previews";
@@ -36,7 +43,10 @@ import { estimateFlashcardsPerSection, estimateQuizQuestions } from "@/lib/study
 import { formatErrorMessage } from "@/lib/utils/error-messages";
 import { handleTabChange, handleCloseTabRequest, handleCloseTabConfirm, type TabHandlersContext } from "@/lib/handlers/tab-handlers";
 import { handleRefineSubmit, handleCopySummary, handleCopySummarySecond, handleEditStart, handleEditSave, handleEditStartSecond, handleEditSaveSecond, type SummaryHandlersContext } from "@/lib/handlers/summary-handlers";
+import { createSummaryContext } from "@/lib/handlers/summary-context";
+import { useSummaryWrappers } from "@/lib/handlers/summary-wrappers";
 import { handleRetryGeneration } from "@/lib/handlers/retry-handlers";
+import { exportHistoryAsZip } from "@/lib/export-history-zip";
 
 export default function AppClient() {
   // Core app state
@@ -59,7 +69,11 @@ export default function AppClient() {
     isCoarsePointer,
     isSmallScreen,
     statsOpen,
-    setStatsOpen
+    setStatsOpen,
+    defaultModel,
+    defaultStructureHints,
+    setDefaultModel,
+    setDefaultStructureHints
   } = appState;
 
   // Output kind and editing state
@@ -79,6 +93,7 @@ export default function AppClient() {
 
   // UI state
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [currentHistoryId, setCurrentHistoryId] = useState<string | null>(null);
   const [loadedFromHistory, setLoadedFromHistory] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
@@ -253,69 +268,56 @@ export default function AppClient() {
   const { handleQuizReveal, handleQuizSelectOption, handleQuizNext, handleQuizPrev } = quizState;
 
   // Computed values
-  const streamingRefineContent = useMemo(() => {
-    if (!chatConfig.isLoading) return null;
-    const assistantMessages = chatConfig.messages.filter(m => m.role === "assistant");
-    const lastAssistant = assistantMessages[assistantMessages.length - 1];
-    return lastAssistant?.content || null;
-  }, [chatConfig.isLoading, chatConfig.messages]);
-
-  const currentCost = useMemo(() => {
-    return modelCosts.find((row) => row.id === selectedModel);
-  }, [modelCosts, selectedModel]);
-
-  const currentKind: OutputKind = useMemo(() => (currentOutput?.kind as OutputKind) || "summary", [currentOutput?.kind]);
-  const isCurrentTabRefining = useMemo(() => chatConfig.isLoading && refineTargetRef.current === selectedTabId, [chatConfig.isLoading, selectedTabId]);
-  const currentSummary = useMemo(() => {
-    return isCurrentTabRefining && streamingRefineContent 
-      ? streamingRefineContent 
-      : (currentOutput?.summary ?? "");
-  }, [isCurrentTabRefining, streamingRefineContent, currentOutput?.summary]);
-  const currentUsage = useMemo(() => currentOutput?.usage ?? null, [currentOutput?.usage]);
-  const secondSummary = useMemo(() => secondOutput?.summary ?? "", [secondOutput?.summary]);
+  const { streamingRefineContent, currentCost, currentKind, isCurrentTabRefining, currentSummary, currentUsage, secondSummary } = useComputedValues({
+    chatConfig,
+    modelCosts,
+    selectedModel,
+    currentOutput,
+    secondOutput,
+    selectedTabId,
+    refineTargetRef,
+    setOutputs
+  });
 
   // Effects
+  // Initialize structure hints from defaults
+  useEffect(() => {
+    if (!structureHints && defaultStructureHints) {
+      setStructureHints(defaultStructureHints);
+    }
+  }, [defaultStructureHints]); // Only run once on mount
+
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
-    if (sidebarOpen || subjectPickerOpen || tabToDelete) document.body.style.overflow = "hidden";
+    if (sidebarOpen || subjectPickerOpen || tabToDelete || settingsOpen) document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [sidebarOpen, subjectPickerOpen, tabToDelete]);
+  }, [sidebarOpen, subjectPickerOpen, tabToDelete, settingsOpen]);
 
-  useEffect(() => {
-    if (!chatConfig.data?.length) return;
-    const latest = [...chatConfig.data].reverse().find((item) => {
-      return typeof item === "object" && item !== null && (item as Record<string, unknown>).type === "usage";
-    }) as { payload?: UsageStats } | undefined;
+  // Refine effects
+  useRefineEffects({
+    chatConfig,
+    refineTargetRef,
+    setOutputs
+  });
 
-    if (latest?.payload) {
-      const targetTabId = refineTargetRef.current;
-      if (!targetTabId) return;
-      setOutputs((prev) => {
-        const existing = prev[targetTabId];
-        if (!existing) return prev;
-        return {
-          ...prev,
-          [targetTabId]: {
-            ...existing,
-            usage: latest.payload ?? null,
-            updatedAt: Date.now()
-          }
-        };
-      });
-    }
-  }, [chatConfig.data, setOutputs]);
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && sidebarOpen) {
-        setSidebarOpen(false);
-      }
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [sidebarOpen]);
+  // Keyboard shortcuts
+  useKeyboardShortcuts({
+    sidebarOpen,
+    settingsOpen,
+    subjectPickerOpen,
+    setSidebarOpen,
+    setSettingsOpen,
+    setSubjectPickerOpen,
+    fileHandling,
+    selectedModel,
+    generatingTabId,
+    currentSummary,
+    isEditing,
+    isEditingSecond,
+    handleGenerate
+  });
 
   useEffect(() => {
     if (!textForEstimate) {
@@ -388,7 +390,7 @@ export default function AppClient() {
     handleCloseTabConfirm(tabId, tabContext);
   }, [tabContext]);
 
-  const summaryContext: SummaryHandlersContext = useMemo(() => ({
+  const summaryContext: SummaryHandlersContext = useMemo(() => createSummaryContext({
     currentKind,
     currentSummary,
     selectedTabId,
@@ -402,10 +404,8 @@ export default function AppClient() {
     setData,
     handleSubmit: chatConfig.handleSubmit,
     setError,
-    currentSummaryText: currentSummary,
     setCopySuccess,
     editDraft,
-    currentSummaryForEdit: currentSummary,
     setEditDraft,
     setOutputs,
     secondSummary,
@@ -417,161 +417,54 @@ export default function AppClient() {
     setCopySuccessSecond
   }), [currentKind, currentSummary, selectedTabId, currentOutput, isSmallScreen, setStatus, setMobileView, setLoadedFromHistory, setIsEditing, refineTargetRef, setData, chatConfig.handleSubmit, setError, setCopySuccess, editDraft, setEditDraft, setOutputs, secondSummary, secondTabId, secondOutput, setIsEditingSecond, editDraftSecond, setEditDraftSecond, setCopySuccessSecond]);
 
-  const handleCopySummaryWrapper = useCallback(async (): Promise<void> => {
-    await handleCopySummary(summaryContext);
-  }, [summaryContext]);
+  // Summary handler wrappers
+  const {
+    handleCopySummaryWrapper,
+    handleCopySummarySecondWrapper,
+    handleEditStartWrapper,
+    handleEditSaveWrapper,
+    handleEditStartSecondWrapper,
+    handleEditSaveSecondWrapper,
+    handleRefineSubmitWrapper
+  } = useSummaryWrappers(summaryContext);
 
-  const handleCopySummarySecondWrapper = useCallback(async (): Promise<void> => {
-    await handleCopySummarySecond(summaryContext);
-  }, [summaryContext]);
+  // History management
+  const { saveToHistory, loadFromHistory, deleteHistoryEntry } = useHistoryManagement({
+    fileHandling,
+    outputs,
+    structureHints,
+    currentHistoryId,
+    setCurrentHistoryId,
+    setOutputs,
+    setStructureHints,
+    setLoadedFromHistory,
+    setError,
+    setSidebarOpen,
+    isSmallScreen,
+    setMobileView,
+    setIsEditing,
+    setIsEditingSecond,
+    setSecondTabId,
+    setSelectedTabId,
+    setSelectedModel,
+    exportHook,
+    setMessages,
+    setInput,
+    setData,
+    updateHistoryState
+  });
 
-  const handleEditStartWrapper = useCallback((): void => {
-    handleEditStart(summaryContext);
-  }, [summaryContext]);
-
-  const handleEditSaveWrapper = useCallback((): void => {
-    handleEditSave(summaryContext);
-  }, [summaryContext]);
-
-  const handleEditStartSecondWrapper = useCallback((): void => {
-    handleEditStartSecond(summaryContext);
-  }, [summaryContext]);
-
-  const handleEditSaveSecondWrapper = useCallback((): void => {
-    handleEditSaveSecond(summaryContext);
-  }, [summaryContext]);
-
-  const handleRefineSubmitWrapper = useCallback((event: React.FormEvent<HTMLFormElement>): void => {
-    handleRefineSubmit(event, summaryContext);
-  }, [summaryContext]);
-
-  const saveToHistory = useCallback((outputsToSave?: Record<string, any>, exportedSubjectTitle?: string, notionPageId?: string): void => {
-    const outputsData = outputsToSave || outputs;
-    if (!fileHandling.extractedText || Object.keys(outputsData).length === 0) return;
-
-    const { getDocumentTitle } = require("@/lib/document-title");
-    const { createPdfId, getSummaryTitle } = require("@/lib/output-previews");
-
-    const derivedTitle = getDocumentTitle(fileHandling.extractedText, fileHandling.fileName);
-    const summaryTab = Object.values(outputsData).find((o) => (o.kind ?? "summary") === "summary" && (o.summary ?? "").trim().length > 0);
-    const title = summaryTab ? getSummaryTitle(summaryTab.summary ?? "", derivedTitle) : derivedTitle;
-    const pdfId = createPdfId(fileHandling.fileName || "untitled", fileHandling.extractedText);
-    const historyId = currentHistoryId || pdfId;
-    const now = Date.now();
-
-    updateHistoryState((prev) => {
-      const existingEntry = prev.find((h) => {
-        const hPdfId = createPdfId(h.fileName, h.extractedText);
-        return hPdfId === pdfId;
-      });
-
-      let finalExportedSubject: string | undefined;
-      if (exportedSubjectTitle !== undefined) {
-        finalExportedSubject = exportedSubjectTitle || undefined;
-      } else {
-        finalExportedSubject = existingEntry?.exportedSubject;
-      }
-
-      const entry: HistoryEntry = {
-        id: historyId,
-        title,
-        fileName: fileHandling.fileName,
-        extractedText: fileHandling.extractedText,
-        outputs: outputsData,
-        structureHints,
-        createdAt: existingEntry?.createdAt || now,
-        updatedAt: now,
-        exportedSubject: finalExportedSubject,
-        notionPageId: notionPageId || existingEntry?.notionPageId
-      };
-
-      const filtered = prev.filter((item) => {
-        if (item.id === entry.id) return false;
-        if (existingEntry && item.id === existingEntry.id) return false;
-        return true;
-      });
-
-      return [entry, ...filtered];
-    });
-
-    if (!currentHistoryId) setCurrentHistoryId(historyId);
-  }, [outputs, fileHandling.extractedText, fileHandling.fileName, structureHints, currentHistoryId, updateHistoryState, setCurrentHistoryId]);
-
-  const loadFromHistory = useCallback((entry: HistoryEntry): void => {
-    fileHandling.setFileName(entry.fileName);
-    fileHandling.setExtractedText(entry.extractedText);
-    setOutputs(entry.outputs);
-    setStructureHints(entry.structureHints);
-    setCurrentHistoryId(entry.id);
-    setLoadedFromHistory(true);
-    setError("");
-    setSidebarOpen(false);
-    if (isSmallScreen) setMobileView("output");
-    setIsEditing(false);
-    setIsEditingSecond(false);
-    setSecondTabId(null);
-    if (entry.notionPageId) {
-      exportHook.setLastExportedPageId(entry.notionPageId);
-    } else {
-      exportHook.setLastExportedPageId(null);
-    }
-    exportHook.setExportProgress(null);
-    setMessages([]);
-    setInput("");
-    setData([]);
-    const firstTabId = Object.keys(entry.outputs)[0];
-    if (firstTabId) {
-      setSelectedTabId(firstTabId);
-      const tab = entry.outputs[firstTabId];
-      if (tab) setSelectedModel(tab.modelId);
-    }
-  }, [fileHandling, setOutputs, setStructureHints, setCurrentHistoryId, setLoadedFromHistory, setError, setSidebarOpen, isSmallScreen, setMobileView, setIsEditing, setIsEditingSecond, setSecondTabId, exportHook, setMessages, setInput, setData, setSelectedTabId, setSelectedModel]);
-
-  const deleteHistoryEntry = useCallback((id: string, event: React.MouseEvent): void => {
-    event.stopPropagation();
-    updateHistoryState((prev) => prev.filter((entry) => entry.id !== id));
-  }, [updateHistoryState]);
-
-  // UI computed values - memoized for performance
-  const statusClass = useMemo(() => status === "error" ? "error" : status === "ready" ? "ready" : "busy", [status]);
-  const statusTitle = useMemo(() => {
-    return status === "parsing"
-      ? "Parsing PDF"
-      : status === "summarizing"
-        ? "Generating"
-        : status === "refining"
-          ? "Refining"
-          : status === "exporting"
-            ? "Exporting"
-            : status === "error"
-              ? "Error"
-              : "Ready";
-  }, [status]);
-  const isGenerating = useMemo(() => generatingTabId === selectedTabId && generatingTabId !== null, [generatingTabId, selectedTabId]);
-  
-  // Improved button state management with clearer navigation flow - memoized
-  const canGenerate = useMemo(() =>
-    status !== "parsing" &&
-    status !== "summarizing" &&
-    status !== "exporting" &&
-    !chatConfig.isLoading &&
-    Boolean(fileHandling.extractedText) &&
-    Boolean(selectedModel) &&
-    !generatingTabId,
-    [status, chatConfig.isLoading, fileHandling.extractedText, selectedModel, generatingTabId]
-  );
-  
-  const canExport = useMemo(() => 
-    outputKind === "summary" && 
-    !!currentSummary && 
-    status !== "exporting" && 
-    status !== "parsing" && 
-    status !== "summarizing" &&
-    !chatConfig.isLoading,
-    [outputKind, currentSummary, status, chatConfig.isLoading]
-  );
-  
-  const canViewOutput = useMemo(() => Boolean(fileHandling.extractedText) && status !== "parsing", [fileHandling.extractedText, status]);
+  // UI computed values
+  const { statusClass, statusTitle, isGenerating, canGenerate, canExport, canViewOutput } = useUIState({
+    status,
+    generatingTabId,
+    selectedTabId,
+    outputKind,
+    currentSummary,
+    fileHandling,
+    chatConfig,
+    selectedModel
+  });
 
   return (
     <div className="app">
@@ -602,6 +495,15 @@ export default function AppClient() {
             <button
               type="button"
               className="icon-btn"
+              onClick={() => setSettingsOpen(true)}
+              aria-label="Settings"
+              title="Settings"
+            >
+              <IconSettings />
+            </button>
+            <button
+              type="button"
+              className="icon-btn"
               onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
               aria-label={theme === "dark" ? "Light Mode" : "Dark Mode"}
               title={theme === "dark" ? "Light Mode" : "Dark Mode"}
@@ -614,32 +516,7 @@ export default function AppClient() {
         {isSmallScreen && (
           <div className="top-toolbar" role="region" aria-label="Controls">
             <div className="top-toolbar-left">
-              <div className="mode-switch" role="tablist" aria-label="Output mode">
-                <button
-                  type="button"
-                  className={`mode-btn${outputKind === "summary" ? " active" : ""}`}
-                  onClick={() => setOutputKind("summary")}
-                  aria-selected={outputKind === "summary"}
-                >
-                  Summary
-                </button>
-                <button
-                  type="button"
-                  className={`mode-btn${outputKind === "flashcards" ? " active" : ""}`}
-                  onClick={() => setOutputKind("flashcards")}
-                  aria-selected={outputKind === "flashcards"}
-                >
-                  Flashcards
-                </button>
-                <button
-                  type="button"
-                  className={`mode-btn${outputKind === "quiz" ? " active" : ""}`}
-                  onClick={() => setOutputKind("quiz")}
-                  aria-selected={outputKind === "quiz"}
-                >
-                  Quiz
-                </button>
-              </div>
+              <ModeSwitch outputKind={outputKind} onModeChange={setOutputKind} />
             </div>
             <div className="top-toolbar-right">
               <div className="view-toggle" role="tablist" aria-label="View">
@@ -684,37 +561,40 @@ export default function AppClient() {
             handleCloseTabConfirmWrapper(tabToDelete);
           }}
         />
+        <SettingsModal
+          isOpen={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          models={models}
+          selectedModel={selectedModel}
+          defaultModel={defaultModel}
+          structureHints={structureHints}
+          defaultStructureHints={defaultStructureHints}
+          onSave={(settings) => {
+            setDefaultModel(settings.defaultModel);
+            setDefaultStructureHints(settings.defaultStructureHints);
+            if (settings.defaultModel && settings.defaultModel !== selectedModel) {
+              setSelectedModel(settings.defaultModel);
+            }
+            if (settings.defaultStructureHints && !structureHints) {
+              setStructureHints(settings.defaultStructureHints);
+            }
+          }}
+          onExportZip={async () => {
+            try {
+              await exportHistoryAsZip(history);
+            } catch (err) {
+              setError(err instanceof Error ? err.message : "Failed to export history");
+              setStatus("error");
+            }
+          }}
+          historyCount={history.length}
+        />
 
         <div className={`content${isSmallScreen ? ` content-mobile view-${mobileView}` : ""}`}>
           {!isSmallScreen ? (
             <div className="input-column">
               <div className="input-panel-modebar" role="region" aria-label="Output mode">
-                <div className="mode-switch" role="tablist" aria-label="Output mode">
-                  <button
-                    type="button"
-                    className={`mode-btn${outputKind === "summary" ? " active" : ""}`}
-                    onClick={() => setOutputKind("summary")}
-                    aria-selected={outputKind === "summary"}
-                  >
-                    Summary
-                  </button>
-                  <button
-                    type="button"
-                    className={`mode-btn${outputKind === "flashcards" ? " active" : ""}`}
-                    onClick={() => setOutputKind("flashcards")}
-                    aria-selected={outputKind === "flashcards"}
-                  >
-                    Flashcards
-                  </button>
-                  <button
-                    type="button"
-                    className={`mode-btn${outputKind === "quiz" ? " active" : ""}`}
-                    onClick={() => setOutputKind("quiz")}
-                    aria-selected={outputKind === "quiz"}
-                  >
-                    Quiz
-                  </button>
-                </div>
+                <ModeSwitch outputKind={outputKind} onModeChange={setOutputKind} />
               </div>
               <InputPanel
                 fileName={fileHandling.fileName}

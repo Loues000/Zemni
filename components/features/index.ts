@@ -8,3 +8,5 @@ export * from "./QuizMode";
 export * from "./FlashcardsDensityControl";
 export * from "./SubjectPickerModal";
 export * from "./DeleteOutputModal";
+export * from "./SettingsModal";
+export * from "./ModeSwitch";

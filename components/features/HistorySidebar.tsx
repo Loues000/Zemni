@@ -1,3 +1,4 @@
+import { useState, useMemo } from "react";
 import { IconX } from "../ui/Icons";
 import type { HistoryEntry } from "@/types";
 
@@ -18,7 +19,19 @@ export function HistorySidebar({
   onSelectEntry,
   onDeleteEntry
 }: HistorySidebarProps) {
-  const groupHistoryByTime = (history: HistoryEntry[]): Array<[string, HistoryEntry[]]> => {
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const filteredHistory = useMemo(() => {
+    if (!searchQuery.trim()) return history;
+    const query = searchQuery.toLowerCase();
+    return history.filter(
+      (entry) =>
+        entry.title.toLowerCase().includes(query) ||
+        entry.fileName.toLowerCase().includes(query) ||
+        (entry.exportedSubject && entry.exportedSubject.toLowerCase().includes(query))
+    );
+  }, [history, searchQuery]);
+  const groupHistoryByTime = (entries: HistoryEntry[]): Array<[string, HistoryEntry[]]> => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const todayStart = today.getTime();
@@ -32,7 +45,7 @@ export function HistorySidebar({
       Older: []
     };
 
-    history.forEach((entry) => {
+    entries.forEach((entry) => {
       const t = entry.updatedAt;
       if (t >= todayStart) groups.Today.push(entry);
       else if (t >= yesterdayStart) groups.Yesterday.push(entry);
@@ -62,8 +75,29 @@ export function HistorySidebar({
           {history.length === 0 ? (
             <p className="hint">No history yet.</p>
           ) : (
-            <div className="history-groups">
-              {groupHistoryByTime(history).map(([groupLabel, entries]) => (
+            <>
+              <div className="wave-group">
+                <input
+                  type="text"
+                  className={`input history-search-input${searchQuery ? " has-value" : ""}`}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+                <span className="bar"></span>
+                <label className="label">
+                  <span className="label-char" style={{ "--index": 0 } as React.CSSProperties}>S</span>
+                  <span className="label-char" style={{ "--index": 1 } as React.CSSProperties}>e</span>
+                  <span className="label-char" style={{ "--index": 2 } as React.CSSProperties}>a</span>
+                  <span className="label-char" style={{ "--index": 3 } as React.CSSProperties}>r</span>
+                  <span className="label-char" style={{ "--index": 4 } as React.CSSProperties}>c</span>
+                  <span className="label-char" style={{ "--index": 5 } as React.CSSProperties}>h</span>
+                </label>
+              </div>
+              {filteredHistory.length === 0 ? (
+                <p className="hint">No results found.</p>
+              ) : (
+                <div className="history-groups">
+                  {groupHistoryByTime(filteredHistory).map(([groupLabel, entries]) => (
                 <div key={groupLabel}>
                   <h3 className="history-group-title">{groupLabel}</h3>
                   <ul className="history-list">
@@ -92,7 +126,9 @@ export function HistorySidebar({
                   </ul>
                 </div>
               ))}
-            </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </aside>

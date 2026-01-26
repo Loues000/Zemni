@@ -22,6 +22,10 @@ export interface UseAppStateReturn {
   isSmallScreen: boolean;
   statsOpen: boolean;
   setStatsOpen: (open: boolean) => void;
+  defaultModel: string;
+  defaultStructureHints: string;
+  setDefaultModel: (modelId: string) => void;
+  setDefaultStructureHints: (hints: string) => void;
 }
 
 /**
@@ -39,6 +43,8 @@ export function useAppState(): UseAppStateReturn {
   const [isCoarsePointer, setIsCoarsePointer] = useState(false);
   const [isSmallScreen, setIsSmallScreen] = useState(false);
   const [statsOpen, setStatsOpen] = useState(false);
+  const [defaultModel, setDefaultModel] = useState<string>("");
+  const [defaultStructureHints, setDefaultStructureHints] = useState<string>("");
 
   useEffect(() => {
     const query = window.matchMedia("(max-width: 768px)");
@@ -72,13 +78,25 @@ export function useAppState(): UseAppStateReturn {
       setStatsOpen(true);
     }
 
+    // Load user settings
+    const savedDefaultModel = window.localStorage.getItem("defaultModel");
+    const savedDefaultStructureHints = window.localStorage.getItem("defaultStructureHints");
+    if (savedDefaultModel) setDefaultModel(savedDefaultModel);
+    if (savedDefaultStructureHints) setDefaultStructureHints(savedDefaultStructureHints);
+
     const fetchModels = async () => {
       try {
         const res = await fetch("/api/models");
         if (!res.ok) throw new Error("Could not load models.");
         const data = await res.json() as { models: Model[] };
         setModels(data.models);
-        if (data.models.length > 0) setSelectedModel(data.models[0].id);
+        // Use saved default model or first model
+        if (data.models.length > 0) {
+          const modelToUse = savedDefaultModel && data.models.find(m => m.id === savedDefaultModel)
+            ? savedDefaultModel
+            : data.models[0].id;
+          setSelectedModel(modelToUse);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Unknown error");
         setStatus("error");
@@ -105,6 +123,16 @@ export function useAppState(): UseAppStateReturn {
     window.localStorage.setItem("theme", theme);
   }, [theme]);
 
+  useEffect(() => {
+    if (defaultModel) {
+      window.localStorage.setItem("defaultModel", defaultModel);
+    }
+  }, [defaultModel]);
+
+  useEffect(() => {
+    window.localStorage.setItem("defaultStructureHints", defaultStructureHints);
+  }, [defaultStructureHints]);
+
   return {
     theme,
     setTheme,
@@ -125,6 +153,10 @@ export function useAppState(): UseAppStateReturn {
     isCoarsePointer,
     isSmallScreen,
     statsOpen,
-    setStatsOpen
+    setStatsOpen,
+    defaultModel,
+    defaultStructureHints,
+    setDefaultModel,
+    setDefaultStructureHints
   };
 }
