@@ -43,7 +43,11 @@ export const buildSectionSummaryPrompts = async (
     "Format:",
     "- Ausgabe ist reines Markdown.",
     "- Beginnt direkt mit einer H1 (# Titel).",
-    "- Danach pro Section eine H2 (## <Section-Titel>) mit 5-10 Bulletpoints + Key Definitions."
+    "- Baue eine klare Gliederung mit mehreren H2 (##) und passenden H3 (###), statt einen langen unstrukturierten Block.",
+    "- Pro Unterkapitel: 5-10 dichte Bulletpoints + Key Definitions (wenn sinnvoll).",
+    "- Ueberschriften niemals nummerieren (kein '## 1.' / '## I.' etc).",
+    "- Wenn Mathe/Formeln vorkommen: nutze LaTeX (inline $...$, Display $$ ... $$) und erklaere Variablen direkt danach.",
+    "- VERBOTEN: Abschluss-Saetze wie 'Damit kann man sich gut vorbereiten' oder 'Alles kommt aus den Vorlesungsfolien'."
   ].join("\n");
 
   const serializedSections = sections
@@ -67,9 +71,11 @@ export const buildSectionSummaryPrompts = async (
     structure?.trim() ? structure.trim() : "Keine",
     "",
     "Aufgabe:",
-    "- Erstelle pro Section eine kompakte, pruefungsorientierte Zusammenfassung.",
-    "- Unter jeder Section: 5-10 Bulletpoints (kurz, dicht) + 'Key Definitions' (wenn sinnvoll).",
+    "- Erstelle eine kompakte, pruefungsorientierte Zusammenfassung mit klarer Gliederung (H2/H3).",
+    "- Pro Unterkapitel: 5-10 Bulletpoints (kurz, dicht) + 'Key Definitions' (wenn sinnvoll).",
     "- Keine Metadaten, keine Einleitung, kein Frontmatter.",
+    "- Ueberschriften nicht nummerieren.",
+    "- VERBOTEN: Abschluss-/Meta-Saetze (z.B. 'Damit kann man sich gut vorbereiten', 'Alles kommt aus den Vorlesungsfolien').",
     "",
     "Beginne direkt mit # Titel."
   ].join("\n");

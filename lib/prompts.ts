@@ -31,7 +31,10 @@ const FORMAT_CONTRACT = [
   "WICHTIG - Formatvertrag:",
   "- Ausgabe beginnt DIREKT mit einer H1-Ueberschrift (# Titel).",
   "- KEINE Metadaten, KEIN Frontmatter, KEINE einleitenden Kommentare.",
-  "- Nur reines Markdown."
+  "- Nur reines Markdown.",
+  "- Ueberschriften niemals nummerieren (kein '## 1.' / '## I.' etc).",
+  "- Wenn Mathe/Formeln vorkommen: nutze LaTeX (inline $...$, Display $$ ... $$) und erklaere Variablen direkt danach.",
+  "- VERBOTEN: Abschluss-Saetze wie 'Damit kann man sich gut vorbereiten' oder 'Alles kommt aus den Vorlesungsfolien'."
 ].join("\n");
 
 export const buildSummaryPrompts = async (text: string, structure?: string) => {

@@ -4,6 +4,52 @@ import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { IconEdit, IconCopy, IconCheck, IconClose } from "../ui/Icons";
 import type { OutputEntry } from "@/types";
+import { isStandaloneLatexMathLine } from "@/lib/latex-math";
+
+const normalizeMathForPreview = (markdown: string): string => {
+  if (!markdown) return markdown;
+  const lines = markdown.split("\n");
+  const out: string[] = [];
+  let inFence = false;
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    if (trimmed.startsWith("```")) {
+      inFence = !inFence;
+      out.push(line);
+      continue;
+    }
+
+    if (inFence) {
+      out.push(line);
+      continue;
+    }
+
+    if (trimmed === "$$" || /^\$\$.*\$\$$/.test(trimmed)) {
+      out.push(line);
+      continue;
+    }
+
+    if (trimmed && isStandaloneLatexMathLine(trimmed)) {
+      out.push("$$");
+      out.push(trimmed);
+      while (i + 1 < lines.length) {
+        const next = lines[i + 1]?.trim() ?? "";
+        if (!next || !isStandaloneLatexMathLine(next)) break;
+        i += 1;
+        out.push(next);
+      }
+      out.push("$$");
+      continue;
+    }
+
+    out.push(line);
+  }
+
+  return out.join("\n");
+};
 
 interface SummaryPreviewProps {
   isSplitView: boolean;
@@ -135,7 +181,7 @@ export function SummaryPreview({
                   remarkPlugins={[remarkGfm, remarkMath]}
                   rehypePlugins={[rehypeKatex]}
                 >
-                  {currentSummary}
+                  {normalizeMathForPreview(currentSummary)}
                 </ReactMarkdown>
               </div>
             ) : (
@@ -196,7 +242,7 @@ export function SummaryPreview({
                   remarkPlugins={[remarkGfm, remarkMath]}
                   rehypePlugins={[rehypeKatex]}
                 >
-                  {currentSummary}
+                  {normalizeMathForPreview(currentSummary)}
                 </ReactMarkdown>
               </div>
             ) : (
@@ -252,7 +298,7 @@ export function SummaryPreview({
                     remarkPlugins={[remarkGfm, remarkMath]}
                     rehypePlugins={[rehypeKatex]}
                   >
-                    {secondSummary}
+                    {normalizeMathForPreview(secondSummary)}
                   </ReactMarkdown>
                 </div>
               ) : (

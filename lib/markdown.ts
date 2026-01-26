@@ -1,4 +1,5 @@
 import type { BlockObjectRequest } from "@notionhq/client/build/src/api-endpoints";
+import { isStandaloneLatexMathLine } from "./latex-math";
 
 type RichTextColor = "default" | "gray" | "brown" | "orange" | "yellow" | "green" | "blue" | "purple" | "pink" | "red" | "default_background" | "gray_background" | "brown_background" | "orange_background" | "yellow_background" | "green_background" | "blue_background" | "purple_background" | "pink_background" | "red_background";
 
@@ -206,54 +207,6 @@ const equationBlock = (expression: string): BlockObjectRequest => ({
   equation: { expression }
 });
 
-/**
- * Detects if a line is a standalone math formula.
- * Focuses on LaTeX commands - only detect lines that clearly contain LaTeX.
- */
-const isStandaloneMathLine = (line: string): boolean => {
-  // Must have some content
-  if (line.length < 3) return false;
-  
-  // Skip if it looks like a heading, list, or other markdown
-  if (/^[#\-*+>\d`]/.test(line)) return false;
-  if (line.startsWith("|")) return false; // table
-  if (line.startsWith("//") || line.startsWith("/*")) return false; // comments
-  
-  // Must have at least one LaTeX command (backslash followed by letters)
-  const hasLatexCommand = /\\[a-zA-Z]{2,}/.test(line);
-  if (!hasLatexCommand) return false;
-  
-  // Common LaTeX math patterns that strongly indicate this is a formula
-  const latexPatterns = [
-    /\\frac\s*[{(]/,    // fractions
-    /\\sum/,            // summation
-    /\\prod/,           // product
-    /\\int/,            // integral
-    /\\lim/,            // limit
-    /\\sqrt/,           // square root
-    /\\partial/,        // partial derivative
-    /\\nabla/,          // nabla/gradient
-    /\\infty/,          // infinity
-    /\\cdot/,           // center dot
-    /\\times/,          // times
-    /\\div/,            // division
-    /\\pm/,             // plus-minus
-    /\\leq|\\geq|\\neq/, // comparisons
-    /\\alpha|\\beta|\\gamma|\\delta|\\epsilon/, // Greek
-    /\\theta|\\lambda|\\mu|\\sigma|\\omega/,     // Greek
-    /\\left[(\[{|]/,    // left delimiter
-    /\\right[)\]}|]/,   // right delimiter
-    /\\begin\{/,        // environment start
-    /\\end\{/,          // environment end
-    /\\mathbb|\\mathcal|\\mathrm/, // math fonts
-    /\\vec|\\hat|\\bar/, // vector notations
-    /\\sin|\\cos|\\tan|\\log|\\ln|\\exp/, // functions
-  ];
-  
-  // Must match at least one LaTeX math pattern
-  return latexPatterns.some(p => p.test(line));
-};
-
 const parseTableRow = (line: string): string[] => {
   const trimmed = line.trim();
   const rawCells = trimmed.split("|").map((cell) => cell.trim());
@@ -432,11 +385,32 @@ export const markdownToBlocks = (markdown: string): BlockObjectRequest[] => {
       continue;
     }
 
+    // Block math ($$ ... $$) - single line
+    const trimmedLine = line.trim();
+    const singleLineMathMatch = trimmedLine.match(/^\$\$(.+)\$\$$/);
+    if (singleLineMathMatch) {
+      flushParagraph();
+      blocks.push(equationBlock(singleLineMathMatch[1].trim()));
+      continue;
+    }
+
+    // Block math ($$ ... $$) - multi line
+    if (trimmedLine === "$$") {
+      flushParagraph();
+      const exprLines: string[] = [];
+      i += 1;
+      while (i < lines.length && lines[i].trim() !== "$$") {
+        exprLines.push(lines[i]);
+        i += 1;
+      }
+      blocks.push(equationBlock(exprLines.join("\n").trim()));
+      continue;
+    }
+
     // Standalone math line detection (line looks like a math formula)
     // Detects lines with LaTeX commands or typical math patterns
     // Must come after code fence detection to avoid misdetection
-    const trimmedLine = line.trim();
-    if (trimmedLine && isStandaloneMathLine(trimmedLine)) {
+    if (trimmedLine && isStandaloneLatexMathLine(trimmedLine)) {
       flushParagraph();
       blocks.push(equationBlock(trimmedLine));
       continue;

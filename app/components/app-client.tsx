@@ -14,7 +14,7 @@ import {
   SubjectPickerModal,
   type FlashcardsDensity
 } from "@/components/features";
-import { StatusBadge, CostPreview, StatsSection, IconMenu, IconSun, IconMoon, Footer } from "@/components/ui";
+import { ActivityBar, StatusBadge, CostPreview, StatsSection, IconMenu, IconSun, IconMoon, Footer } from "@/components/ui";
 import type { 
   Model, 
   Subject, 
@@ -81,6 +81,8 @@ export default function AppClient() {
   const [subjectPickerOpen, setSubjectPickerOpen] = useState(false);
   const [pendingExport, setPendingExport] = useState(false);
   const [isCoarsePointer, setIsCoarsePointer] = useState(false);
+  const [isSmallScreen, setIsSmallScreen] = useState(false);
+  const [mobileView, setMobileView] = useState<"input" | "output">("input");
   
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const previewRef1 = useRef<HTMLDivElement | null>(null);
@@ -98,6 +100,14 @@ export default function AppClient() {
   } = useTokenEstimate();
 
   const refineTargetRef = useRef<string>("");
+
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 768px)");
+    const update = () => setIsSmallScreen(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
 
   const chatConfig = useChat({
     api: "/api/refine",
@@ -433,6 +443,7 @@ export default function AppClient() {
     }
     
     setStatus("parsing");
+    setMobileView("input");
     setFileName(file.name);
     setOutputs({});
     setSelectedTabId(null);
@@ -554,6 +565,7 @@ export default function AppClient() {
     const tabId = selectedModel + "-" + Date.now();
     const modelLabel = models.find((m) => m.id === selectedModel)?.displayName || selectedModel;
 
+    if (isSmallScreen) setMobileView("output");
     setOutputs((prev) => ({
       ...prev,
       [tabId]: {
@@ -678,6 +690,7 @@ export default function AppClient() {
         return next;
       });
       setSelectedTabId(previousTabId);
+      if (isSmallScreen) setMobileView("input");
       setError(message);
       setStatus("error");
       setGeneratingTabId(null);
@@ -959,6 +972,7 @@ export default function AppClient() {
       return;
     }
     setStatus("refining");
+    if (isSmallScreen) setMobileView("output");
     setLoadedFromHistory(false);
     setIsEditing(false);
     refineTargetRef.current = selectedTabId;
@@ -1029,6 +1043,7 @@ export default function AppClient() {
     setLoadedFromHistory(true);
     setError("");
     setSidebarOpen(false);
+    if (isSmallScreen) setMobileView("output");
     setIsEditing(false);
     setIsEditingSecond(false);
     setSecondTabId(null);
@@ -1178,6 +1193,26 @@ export default function AppClient() {
               <option value="flashcards">Flashcards</option>
               <option value="quiz">Quiz</option>
             </select>
+            {isSmallScreen && (
+              <div className="view-toggle" role="tablist" aria-label="View">
+                <button
+                  type="button"
+                  className={`view-btn${mobileView === "input" ? " active" : ""}`}
+                  onClick={() => setMobileView("input")}
+                  aria-selected={mobileView === "input"}
+                >
+                  Setup
+                </button>
+                <button
+                  type="button"
+                  className={`view-btn${mobileView === "output" ? " active" : ""}`}
+                  onClick={() => setMobileView("output")}
+                  aria-selected={mobileView === "output"}
+                >
+                  Output
+                </button>
+              </div>
+            )}
           </div>
           <div className="header-right">
             <button
@@ -1202,9 +1237,9 @@ export default function AppClient() {
             setSubjectPickerOpen(false);
             setPendingExport(false);
           }}
-        />
+        /> 
 
-        <div className="content">
+        <div className={`content${isSmallScreen ? ` content-mobile view-${mobileView}` : ""}`}>
           <InputPanel
             fileName={fileName}
             selectedModel={selectedModel}
@@ -1254,6 +1289,26 @@ export default function AppClient() {
               isOpen={statsOpen}
               onToggle={() => setStatsOpen(!statsOpen)}
             />
+            {isSmallScreen && (
+              <div className="mobile-actions">
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => void handleGenerate()}
+                  disabled={!canGenerate}
+                >
+                  {generatingTabId ? "Generating..." : "Generate"}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setMobileView("output")}
+                  disabled={!extractedText}
+                >
+                  View output
+                </button>
+              </div>
+            )}
           </InputPanel>
 
           <div className="output-panel">
@@ -1279,18 +1334,10 @@ export default function AppClient() {
                 </button>
                 {outputKind === "summary" && (
                   <>
-                    {status === "exporting" && exportProgress ? (
-                      <div className="export-progress">
-                        <span className="export-progress-text">
-                          Exporting... {exportProgress.current}/{exportProgress.total}
-                        </span>
-                        <div className="export-progress-bar">
-                          <div
-                            className="export-progress-fill"
-                            style={{ width: `${(exportProgress.current / exportProgress.total) * 100}%` }}
-                          />
-                        </div>
-                      </div>
+                    {status === "exporting" ? (
+                      <button type="button" className="btn btn-secondary btn-sm" disabled>
+                        Exporting...
+                      </button>
                     ) : lastExportedPageId ? (
                       <div className="export-actions-group">
                         <a
@@ -1324,6 +1371,7 @@ export default function AppClient() {
                 )}
               </div>
             </div>
+            <ActivityBar status={status} exportProgress={exportProgress} />
 
             {outputKind === "summary" ? (
               <SummaryPreview
