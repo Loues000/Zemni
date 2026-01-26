@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "ai/react";
 import { 
   HistorySidebar, 
@@ -15,81 +15,80 @@ import {
   DeleteOutputModal,
   type FlashcardsDensity
 } from "@/components/features";
- import { ActivityBar, CostPreview, StatsSection, IconMenu, IconSun, IconMoon, Footer } from "@/components/ui";
-import type { 
-  Model, 
-  Subject, 
-  Status, 
-  UsageStats, 
-  OutputEntry, 
-  HistoryEntry,
-  CostRow,
-  OutputKind,
-  DocumentSection,
-  Flashcard,
-  QuizQuestion
-} from "@/types";
-import { useHistory, useTokenEstimate } from "@/hooks";
+import { ActivityBar, CostPreview, StatsSection, IconMenu, IconSun, IconMoon, Footer } from "@/components/ui";
+import type { OutputKind, UsageStats, HistoryEntry } from "@/types";
+import { 
+  useHistory, 
+  useTokenEstimate, 
+  useAppState, 
+  useOutputManagement, 
+  useFileHandling, 
+  useGeneration, 
+  useExport, 
+  useQuizState, 
+  useEditing 
+} from "@/hooks";
 import { enforceOutputFormat } from "@/lib/format-output";
-import { createPdfId, flashcardsToMarkdown, getSummaryTitle, renderQuizPreview } from "@/lib/output-previews";
+import { getSummaryTitle } from "@/lib/output-previews";
 import { estimateFlashcardsPerSection, estimateQuizQuestions } from "@/lib/study-heuristics";
-import { getDocumentTitle } from "@/lib/document-title";
-
-const QUIZ_MORE_BATCH_SIZE = 8;
-const QUIZ_INITIAL_BATCH_CAP = 12;
-
-const trimForModel = (text: string, maxChars: number): string => {
-  const normalized = (text ?? "").trim();
-  if (normalized.length <= maxChars) return normalized;
-  const headSize = Math.floor(maxChars * 0.7);
-  const tailSize = Math.max(0, maxChars - headSize);
-  const head = normalized.slice(0, headSize).trim();
-  const tail = normalized.slice(Math.max(0, normalized.length - tailSize)).trim();
-  return `${head}\n\n...\n\n${tail}`;
-};
+import { handleTabChange, handleCloseTabRequest, handleCloseTabConfirm, type TabHandlersContext } from "@/lib/handlers/tab-handlers";
+import { handleRefineSubmit, handleCopySummary, handleCopySummarySecond, handleEditStart, handleEditSave, handleEditStartSecond, handleEditSaveSecond, type SummaryHandlersContext } from "@/lib/handlers/summary-handlers";
 
 export default function AppClient() {
-  const [theme, setTheme] = useState<"light" | "dark">("light");
-  const [models, setModels] = useState<Model[]>([]);
-  const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [selectedModel, setSelectedModel] = useState<string>("");
-  const [selectedSubject, setSelectedSubject] = useState<string>("");
-  const [structureHints, setStructureHints] = useState<string>("");
-  const [status, setStatus] = useState<Status>("ready");
-  const [generatingTabId, setGeneratingTabId] = useState<string | null>(null);
-  const [error, setError] = useState<string>("");
-  const [dragActive, setDragActive] = useState(false);
-  const [fileName, setFileName] = useState<string>("");
-  const [extractedText, setExtractedText] = useState<string>("");
+  // Core app state
+  const appState = useAppState();
+  const {
+    theme,
+    setTheme,
+    models,
+    subjects,
+    selectedModel,
+    setSelectedModel,
+    selectedSubject,
+    setSelectedSubject,
+    structureHints,
+    setStructureHints,
+    status,
+    setStatus,
+    error,
+    setError,
+    isCoarsePointer,
+    isSmallScreen,
+    statsOpen,
+    setStatsOpen
+  } = appState;
+
+  // Output kind and editing state
   const [outputKind, setOutputKind] = useState<OutputKind>("summary");
-  const [outputs, setOutputs] = useState<Record<string, OutputEntry>>({});
-  const [selectedTabId, setSelectedTabId] = useState<string | null>(null);
-  const [secondTabId, setSecondTabId] = useState<string | null>(null);
+  const [flashcardsDensity, setFlashcardsDensity] = useState<FlashcardsDensity>(2);
+  const editing = useEditing();
+  const {
+    isEditing,
+    setIsEditing,
+    isEditingSecond,
+    setIsEditingSecond,
+    editDraft,
+    setEditDraft,
+    editDraftSecond,
+    setEditDraftSecond
+  } = editing;
+
+  // UI state
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [currentHistoryId, setCurrentHistoryId] = useState<string | null>(null);
   const [loadedFromHistory, setLoadedFromHistory] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
   const [copySuccessSecond, setCopySuccessSecond] = useState(false);
-  const [statsOpen, setStatsOpen] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
-  const [isEditingSecond, setIsEditingSecond] = useState(false);
-  const [editDraft, setEditDraft] = useState("");
-  const [editDraftSecond, setEditDraftSecond] = useState("");
   const [tabToDelete, setTabToDelete] = useState<string | null>(null);
-  const [exportProgress, setExportProgress] = useState<{ current: number; total: number } | null>(null);
-  const [lastExportedPageId, setLastExportedPageId] = useState<string | null>(null);
-  const [flashcardsDensity, setFlashcardsDensity] = useState<FlashcardsDensity>(2);
-  const [subjectPickerOpen, setSubjectPickerOpen] = useState(false);
-  const [pendingExport, setPendingExport] = useState(false);
-  const [isCoarsePointer, setIsCoarsePointer] = useState(false);
-  const [isSmallScreen, setIsSmallScreen] = useState(false);
   const [mobileView, setMobileView] = useState<"input" | "output">("input");
-  
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Refs
   const previewRef1 = useRef<HTMLDivElement | null>(null);
   const previewRef2 = useRef<HTMLDivElement | null>(null);
   const isScrolling = useRef<boolean>(false);
-  
+  const refineTargetRef = useRef<string>("");
+
+  // History and token estimation
   const { history, updateHistoryState } = useHistory();
   const { 
     modelCosts, 
@@ -100,16 +99,24 @@ export default function AppClient() {
     setCostHeuristic
   } = useTokenEstimate();
 
-  const refineTargetRef = useRef<string>("");
+  // Output management
+  const outputManagement = useOutputManagement(outputKind, setIsEditing, setIsEditingSecond);
+  const {
+    outputs,
+    setOutputs,
+    selectedTabId,
+    setSelectedTabId,
+    secondTabId,
+    setSecondTabId,
+    generatingTabId,
+    setGeneratingTabId,
+    outputsForModeRecord,
+    currentOutput,
+    secondOutput,
+    isSplitView
+  } = outputManagement;
 
-  useEffect(() => {
-    const query = window.matchMedia("(max-width: 768px)");
-    const update = () => setIsSmallScreen(query.matches);
-    update();
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
-  }, []);
-
+  // Chat/refine - need to create this first for file handling
   const chatConfig = useChat({
     api: "/api/refine",
     onFinish: (message) => {
@@ -138,130 +145,130 @@ export default function AppClient() {
     }
   });
 
-  const input = chatConfig.input;
-  const handleInputChange = chatConfig.handleInputChange;
-  const handleSubmit = chatConfig.handleSubmit;
-  const isRefining = chatConfig.isLoading;
-  const chatData = chatConfig.data;
-  const setData = chatConfig.setData;
   const setMessages = chatConfig.setMessages;
   const setInput = chatConfig.setInput;
-  const chatMessages = chatConfig.messages;
+  const setData = chatConfig.setData;
 
+  // Temporary state for export (to avoid circular dependency)
+  const [tempLastExportedPageId, setTempLastExportedPageId] = useState<string | null>(null);
+  const [tempExportProgress, setTempExportProgress] = useState<{ current: number; total: number } | null>(null);
+
+  // File handling
+  const fileHandling = useFileHandling(
+    setStatus,
+    setError,
+    setOutputs,
+    setSelectedTabId,
+    setSecondTabId,
+    setGeneratingTabId,
+    setLoadedFromHistory,
+    setCurrentHistoryId,
+    setMessages,
+    setInput,
+    setData,
+    setIsEditing,
+    setIsEditingSecond,
+    setTempLastExportedPageId,
+    setTempExportProgress,
+    refineTargetRef,
+    setMobileView
+  );
+
+  // Generation
+  const generation = useGeneration(
+    fileHandling.fileName,
+    fileHandling.extractedText,
+    outputKind,
+    selectedModel,
+    models,
+    structureHints,
+    flashcardsDensity,
+    isSmallScreen,
+    selectedTabId,
+    setOutputs,
+    setSelectedTabId,
+    setGeneratingTabId,
+    setError,
+    setStatus,
+    setMobileView,
+    setLoadedFromHistory,
+    setIsEditing,
+    setData,
+    setMessages,
+    setInput
+  );
+  const { docSection, studySection, textForEstimate, handleGenerate } = generation;
+
+  // Export
+  const exportHook = useExport(
+    outputKind,
+    currentOutput?.summary ?? "",
+    fileHandling.fileName,
+    selectedSubject,
+    subjects,
+    fileHandling.extractedText,
+    outputs,
+    structureHints,
+    currentHistoryId,
+    setError,
+    setStatus,
+    setSelectedSubject,
+    setLoadedFromHistory,
+    updateHistoryState
+  );
+  const {
+    exportProgress,
+    lastExportedPageId,
+    subjectPickerOpen,
+    setSubjectPickerOpen,
+    pendingExport,
+    handleExport,
+    handleSubjectPicked
+  } = exportHook;
+
+  // Sync temp state with export hook
+  useEffect(() => {
+    exportHook.setLastExportedPageId(tempLastExportedPageId);
+  }, [tempLastExportedPageId, exportHook]);
+  useEffect(() => {
+    exportHook.setExportProgress(tempExportProgress);
+  }, [tempExportProgress, exportHook]);
+
+  // Quiz state
+  const quizState = useQuizState(
+    selectedTabId,
+    outputs,
+    fileHandling.fileName,
+    fileHandling.extractedText,
+    generation.studySection,
+    setOutputs,
+    setError,
+    setStatus,
+    setGeneratingTabId
+  );
+  const { handleQuizReveal, handleQuizSelectOption, handleQuizNext, handleQuizPrev } = quizState;
+
+  // Computed values
   const streamingRefineContent = useMemo(() => {
-    if (!isRefining) return null;
-    const assistantMessages = chatMessages.filter(m => m.role === "assistant");
+    if (!chatConfig.isLoading) return null;
+    const assistantMessages = chatConfig.messages.filter(m => m.role === "assistant");
     const lastAssistant = assistantMessages[assistantMessages.length - 1];
     return lastAssistant?.content || null;
-  }, [isRefining, chatMessages]);
+  }, [chatConfig.isLoading, chatConfig.messages]);
 
   const currentCost = useMemo(() => {
     return modelCosts.find((row) => row.id === selectedModel);
   }, [modelCosts, selectedModel]);
 
-  // `selectedSubject` is kept for default selection in the export modal.
-
-  const outputTabs = useMemo(() => {
-    return Object.values(outputs).sort((a, b) => b.updatedAt - a.updatedAt);
-  }, [outputs]);
-
-  const outputsForMode = useMemo(() => {
-    return outputTabs.filter((tab) => (tab.kind ?? "summary") === outputKind);
-  }, [outputTabs, outputKind]);
-
-  const outputsForModeRecord = useMemo(() => {
-    return outputsForMode.reduce<Record<string, OutputEntry>>((acc, item) => {
-      acc[item.id] = item;
-      return acc;
-    }, {});
-  }, [outputsForMode]);
-
-  const docSection: DocumentSection = useMemo(() => {
-    return {
-      id: "doc",
-      title: fileName ? fileName : "Document",
-      text: extractedText
-    };
-  }, [fileName, extractedText]);
-
-  const studySection: DocumentSection = useMemo(() => {
-    return {
-      ...docSection,
-      text: trimForModel(extractedText, 18_000)
-    };
-  }, [docSection, extractedText]);
-
-  const textForEstimate = outputKind === "summary" ? extractedText : studySection.text;
-
-  const currentOutput = selectedTabId ? outputs[selectedTabId] : undefined;
   const currentKind: OutputKind = (currentOutput?.kind as OutputKind) || "summary";
-  const isCurrentTabRefining = isRefining && refineTargetRef.current === selectedTabId;
+  const isCurrentTabRefining = chatConfig.isLoading && refineTargetRef.current === selectedTabId;
   const currentSummary = isCurrentTabRefining && streamingRefineContent 
     ? streamingRefineContent 
     : (currentOutput?.summary ?? "");
   const currentUsage = currentOutput?.usage ?? null;
-
-  const secondOutput = secondTabId ? outputs[secondTabId] : undefined;
   const secondSummary = secondOutput?.summary ?? "";
-  const isSplitView = secondTabId !== null;
 
-  useEffect(() => {
-    const saved = window.localStorage.getItem("theme");
-    if (saved === "dark" || saved === "light") {
-      setTheme(saved);
-    } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-      setTheme("dark");
-    }
-
-    if (window.innerWidth >= 769) {
-      setStatsOpen(true);
-    }
-
-    const fetchModels = async () => {
-      try {
-        const res = await fetch("/api/models");
-        if (!res.ok) throw new Error("Could not load models.");
-        const data = await res.json() as { models: Model[] };
-        setModels(data.models);
-        if (data.models.length > 0) setSelectedModel(data.models[0].id);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Unknown error");
-        setStatus("error");
-      }
-    };
-
-    const fetchSubjects = async () => {
-      try {
-        const res = await fetch("/api/notion/subjects");
-        if (!res.ok) return;
-        const data = await res.json() as { subjects: Subject[] };
-        setSubjects(data.subjects);
-      } catch (err) {
-        // Ignore
-      }
-    };
-
-    fetchModels();
-    fetchSubjects();
-  }, []);
-
-  useEffect(() => {
-    const mq = window.matchMedia("(hover: none) and (pointer: coarse)");
-    const update = () => setIsCoarsePointer(mq.matches);
-    update();
-    if (mq.addEventListener) mq.addEventListener("change", update);
-    else mq.addListener(update);
-    return () => {
-      if (mq.removeEventListener) mq.removeEventListener("change", update);
-      else mq.removeListener(update);
-    };
-  }, []);
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    window.localStorage.setItem("theme", theme);
-  }, [theme]);
-
+  // Effects
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
     if (sidebarOpen || subjectPickerOpen || tabToDelete) document.body.style.overflow = "hidden";
@@ -271,24 +278,8 @@ export default function AppClient() {
   }, [sidebarOpen, subjectPickerOpen, tabToDelete]);
 
   useEffect(() => {
-    if (outputsForMode.length === 0) {
-      setSelectedTabId(null);
-      setSecondTabId(null);
-      return;
-    }
-
-    if (!selectedTabId || !outputsForMode.some((t) => t.id === selectedTabId)) {
-      setSelectedTabId(outputsForMode[0].id);
-    }
-
-    setSecondTabId(null);
-    setIsEditing(false);
-    setIsEditingSecond(false);
-  }, [outputKind, outputsForMode, selectedTabId]);
-
-  useEffect(() => {
-    if (!chatData?.length) return;
-    const latest = [...chatData].reverse().find((item) => {
+    if (!chatConfig.data?.length) return;
+    const latest = [...chatConfig.data].reverse().find((item) => {
       return typeof item === "object" && item !== null && (item as Record<string, unknown>).type === "usage";
     }) as { payload?: UsageStats } | undefined;
 
@@ -308,7 +299,7 @@ export default function AppClient() {
         };
       });
     }
-  }, [chatData]);
+  }, [chatConfig.data, setOutputs]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -331,7 +322,7 @@ export default function AppClient() {
       const n = outputKind === "flashcards"
         ? estimateFlashcardsPerSection(textForEstimate.length, flashcardsDensity)
         : outputKind === "quiz"
-          ? Math.min(QUIZ_INITIAL_BATCH_CAP, estimateQuizQuestions(textForEstimate.length))
+          ? Math.min(12, estimateQuizQuestions(textForEstimate.length))
           : undefined;
       fetchTokenEstimate(textForEstimate, structureHints, {
         mode: outputKind,
@@ -341,676 +332,119 @@ export default function AppClient() {
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [
-    textForEstimate,
-    structureHints,
-    outputKind,
-    flashcardsDensity,
-    fetchTokenEstimate
-  ]);
+  }, [textForEstimate, structureHints, outputKind, flashcardsDensity, fetchTokenEstimate, setModelCosts, setCostHeuristic]);
 
   useEffect(() => {
-    if (status === "ready" && Object.keys(outputs).length > 0 && extractedText && !generatingTabId && !loadedFromHistory) {
+    if (status === "ready" && Object.keys(outputs).length > 0 && fileHandling.extractedText && !generatingTabId && !loadedFromHistory) {
       saveToHistory();
     }
-  }, [outputs, status, extractedText, generatingTabId, loadedFromHistory]);
+  }, [outputs, status, fileHandling.extractedText, generatingTabId, loadedFromHistory]);
 
-  const handleTabChange = (tabId: string, event?: React.MouseEvent): void => {
-    const isCtrlClick = outputKind === "summary" && event && (event.ctrlKey || event.metaKey);
-    
-    if (isCtrlClick && selectedTabId) {
-      if (tabId === selectedTabId) return;
-      if (tabId === secondTabId) {
-        setSecondTabId(selectedTabId);
-        setSelectedTabId(tabId);
-        const tab = outputs[tabId];
-        if (tab) setSelectedModel(tab.modelId);
-        return;
-      }
-      setSecondTabId(tabId);
-      return;
-    }
-    
-    if (tabId === secondTabId) {
-      setSecondTabId(null);
-    }
-    
-    setSelectedTabId(tabId);
-    setIsEditing(false);
-    setIsEditingSecond(false);
-    const tab = outputs[tabId];
-    if (tab) setSelectedModel(tab.modelId);
-    if (!generatingTabId || tabId !== generatingTabId) {
-      setError("");
-      setMessages([]);
-      setInput("");
-      setData([]);
-    }
-  };
-
-  const handleCloseTabRequest = (tabId: string, event: React.MouseEvent): void => {
-    event.stopPropagation();
-
-    setTabToDelete(tabId);
-  };
-
-  const handleCloseTabConfirm = (tabId: string): void => {
-    setTabToDelete(null);
-    
-    if (tabId === secondTabId) {
-      setSecondTabId(null);
-    }
-    
-    if (tabId === selectedTabId) {
-      if (secondTabId) {
-        setSelectedTabId(secondTabId);
-        setSecondTabId(null);
-      } else {
-        const remainingTabs = outputTabs.filter(t => t.id !== tabId);
-        setSelectedTabId(remainingTabs.length > 0 ? remainingTabs[0].id : null);
-      }
-    }
-    
-    setOutputs((prev) => {
-      const newOutputs = { ...prev };
-      delete newOutputs[tabId];
-      return newOutputs;
-    });
-    
-    setIsEditing(false);
-    setIsEditingSecond(false);
-  };
-
+  // Handlers
   const handleModelChange = (modelId: string): void => {
     setSelectedModel(modelId);
   };
 
-  const handleFile = async (file: File): Promise<void> => {
-    setError("");
-    
-    const largeFileThreshold = 50 * 1024 * 1024;
-    if (file.size > largeFileThreshold) {
-      const fileSizeMB = (file.size / (1024 * 1024)).toFixed(1);
-      console.warn(`Large file detected (${fileSizeMB} MB). Parsing may take a bit longer.`);
-    }
-    
-    setStatus("parsing");
-    setMobileView("input");
-    setFileName(file.name);
-    setOutputs({});
-    setSelectedTabId(null);
-    setSecondTabId(null);
-    setGeneratingTabId(null);
-    setLoadedFromHistory(false);
-    setCurrentHistoryId(null);
-    setMessages([]);
-    setInput("");
-    setData([]);
-    setIsEditing(false);
-    setIsEditingSecond(false);
-    setLastExportedPageId(null);
-    setExportProgress(null);
-    refineTargetRef.current = "";
-    
-    try {
-      let extractedText = "";
-      let normalizedText: string | null = null;
-
-      if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
-        try {
-          const { extractTextFromPdf } = await import("@/lib/parse-pdf-client.ts");
-          extractedText = await extractTextFromPdf(file);
-        } catch (parseError) {
-          const formData = new FormData();
-          formData.append("file", file);
-          const res = await fetch("/api/parse-pdf", {
-            method: "POST",
-            body: formData
-          });
-          if (!res.ok) {
-            const clientMessage = parseError instanceof Error ? parseError.message : "Unknown error";
-            throw new Error(`Client parsing failed. Server fallback failed. (${clientMessage})`);
-          }
-          const data = await res.json() as { text: string };
-          normalizedText = data.text ?? "";
-        }
-      } else if (file.type === "text/markdown" || file.name.toLowerCase().endsWith(".md")) {
-        extractedText = await file.text();
-        normalizedText = extractedText;
-      } else {
-        extractedText = await file.text();
-      }
-
-      if (normalizedText === null) {
-        const res = await fetch("/api/parse-pdf", {
-          method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: extractedText })
-      });
-
-        if (!res.ok) throw new Error("Could not normalize text.");
-
-        const data = await res.json() as { text: string };
-        normalizedText = data.text ?? "";
-      }
-
-      setExtractedText(normalizedText);
-      setStatus("ready");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
-      setStatus("error");
-    }
+  const tabContext: TabHandlersContext = {
+    outputKind,
+    selectedTabId,
+    secondTabId,
+    outputs,
+    outputTabs: Object.values(outputs).sort((a, b) => b.updatedAt - a.updatedAt),
+    setSelectedTabId,
+    setSecondTabId,
+    setSelectedModel,
+    setIsEditing,
+    setIsEditingSecond,
+    setError,
+    setMessages,
+    setInput,
+    setData,
+    generatingTabId,
+    setTabToDelete,
+    setOutputs
   };
 
-  const postJson = async <T,>(
-    url: string,
-    payload: unknown,
-    timeoutMs: number = 60_000
-  ): Promise<T> => {
-    const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        signal: controller.signal
-      });
-
-      const text = await res.text();
-      if (!res.ok) {
-        const message = (() => {
-          try {
-            const parsed = JSON.parse(text) as { error?: string; message?: string };
-            return parsed.error || parsed.message;
-          } catch {
-            return null;
-          }
-        })();
-        throw new Error(message || "Request failed.");
-      }
-
-      return (text ? (JSON.parse(text) as T) : ({} as T));
-    } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") {
-        throw new Error("Request timed out. Please try again.");
-      }
-      throw err;
-    } finally {
-      window.clearTimeout(timeoutId);
-    }
+  const handleTabChangeWrapper = (tabId: string, event?: React.MouseEvent): void => {
+    handleTabChange(tabId, tabContext, event);
   };
 
-  const handleGenerate = async (): Promise<void> => {
-    if (!extractedText) {
-      setError("Upload a PDF/MD file first.");
-      setStatus("error");
-      return;
-    }
-    if (!selectedModel) {
-      setError("Select a model.");
-      setStatus("error");
-      return;
-    }
-
-    const previousTabId = selectedTabId;
-    const tabId = selectedModel + "-" + Date.now();
-    const modelLabel = models.find((m) => m.id === selectedModel)?.displayName || selectedModel;
-
-    if (isSmallScreen) setMobileView("output");
-    setOutputs((prev) => ({
-      ...prev,
-      [tabId]: {
-        id: tabId,
-        modelId: selectedModel,
-        label: modelLabel,
-        summary: "",
-        usage: null,
-        updatedAt: Date.now(),
-        isGenerating: true,
-        error: undefined,
-        kind: outputKind,
-        sectionIds: ["doc"],
-        flashcards: outputKind === "flashcards" ? [] : undefined,
-        quiz: outputKind === "quiz" ? [] : undefined,
-        quizState:
-          outputKind === "quiz"
-            ? {
-                questionCursor: 0,
-                revealAnswer: false
-              }
-            : undefined
-      }
-    }));
-
-    setSelectedTabId(tabId);
-    setGeneratingTabId(tabId);
-    setError("");
-    setStatus("summarizing");
-    setLoadedFromHistory(false);
-    setIsEditing(false);
-    setData([]);
-
-    try {
-      if (outputKind === "summary") {
-        const data = await postJson<{ summary: string; usage?: UsageStats | null }>(
-          "/api/section-summary",
-          {
-            sections: [docSection],
-            modelId: selectedModel,
-            structure: structureHints,
-            titleHint: fileName
-          },
-          75_000
-        );
-
-        setOutputs((prev) => ({
-          ...prev,
-          [tabId]: {
-            ...prev[tabId],
-            error: undefined,
-            summary: data.summary || "",
-            usage: data.usage ?? null,
-            updatedAt: Date.now(),
-            isGenerating: false,
-            kind: "summary"
-          }
-        }));
-      } else if (outputKind === "flashcards") {
-        const data = await postJson<{ flashcards: Flashcard[]; usage?: UsageStats | null }>(
-          "/api/flashcards",
-          {
-            sections: [studySection],
-            modelId: selectedModel,
-            coverageLevel: flashcardsDensity
-          },
-          75_000
-        );
-        const markdown = flashcardsToMarkdown(data.flashcards ?? [], fileName);
-
-        setOutputs((prev) => ({
-          ...prev,
-          [tabId]: {
-            ...prev[tabId],
-            error: undefined,
-            summary: markdown,
-            usage: data.usage ?? null,
-            updatedAt: Date.now(),
-            isGenerating: false,
-            kind: "flashcards",
-            flashcards: data.flashcards ?? []
-          }
-        }));
-      } else if (outputKind === "quiz") {
-        const data = await postJson<{ questions: QuizQuestion[]; usage?: UsageStats | null }>(
-          "/api/quiz",
-          {
-            section: studySection,
-            modelId: selectedModel,
-            questionsCount: Math.min(QUIZ_INITIAL_BATCH_CAP, estimateQuizQuestions(extractedText.length)),
-            avoidQuestions: []
-          },
-          75_000
-        );
-
-        setOutputs((prev) => {
-          const existing = prev[tabId];
-          if (!existing) return prev;
-          const next: OutputEntry = {
-            ...existing,
-            error: undefined,
-            quiz: data.questions ?? [],
-            usage: data.usage ?? null,
-            updatedAt: Date.now(),
-            isGenerating: false,
-            kind: "quiz"
-          };
-          next.summary = renderQuizPreview(next, fileName);
-          return { ...prev, [tabId]: next };
-        });
-      }
-
-      setMessages([]);
-      setInput("");
-      setStatus("ready");
-      setGeneratingTabId(null);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Unknown error";
-      setOutputs((prev) => {
-        const next = { ...prev };
-        delete next[tabId];
-        return next;
-      });
-      setSelectedTabId(previousTabId);
-      if (isSmallScreen) setMobileView("input");
-      setError(message);
-      setStatus("error");
-      setGeneratingTabId(null);
-    }
+  const handleCloseTabRequestWrapper = (tabId: string, event: React.MouseEvent): void => {
+    handleCloseTabRequest(tabId, event, setTabToDelete);
   };
 
-  const handleQuizReveal = () => {
-    if (!selectedTabId) return;
-    setOutputs((prev) => {
-      const existing = prev[selectedTabId];
-      if (!existing || existing.kind !== "quiz" || !existing.quizState) return prev;
-      const next: OutputEntry = {
-        ...existing,
-        quizState: {
-          ...existing.quizState,
-          revealAnswer: !existing.quizState.revealAnswer
-        },
-        updatedAt: Date.now()
-      };
-      next.summary = renderQuizPreview(next, fileName);
-      return { ...prev, [selectedTabId]: next };
-    });
+  const handleCloseTabConfirmWrapper = (tabId: string): void => {
+    handleCloseTabConfirm(tabId, tabContext);
   };
 
-  const handleQuizSelectOption = (selectedOptionIndex: number) => {
-    if (!selectedTabId) return;
-    setOutputs((prev) => {
-      const existing = prev[selectedTabId];
-      if (!existing || existing.kind !== "quiz" || !existing.quizState) return prev;
-      const next: OutputEntry = {
-        ...existing,
-        quizState: {
-          ...existing.quizState,
-          selectedOptionIndex,
-          revealAnswer: true
-        },
-        updatedAt: Date.now()
-      };
-      next.summary = renderQuizPreview(next, fileName);
-      return { ...prev, [selectedTabId]: next };
-    });
+  const summaryContext: SummaryHandlersContext = {
+    currentKind,
+    currentSummary,
+    selectedTabId,
+    currentOutput,
+    isSmallScreen,
+    setStatus,
+    setMobileView,
+    setLoadedFromHistory,
+    setIsEditing,
+    refineTargetRef,
+    setData,
+    handleSubmit: chatConfig.handleSubmit,
+    setError,
+    currentSummaryText: currentSummary,
+    setCopySuccess,
+    editDraft,
+    currentSummaryForEdit: currentSummary,
+    setEditDraft,
+    setOutputs,
+    secondSummary,
+    secondTabId,
+    secondOutput,
+    setIsEditingSecond,
+    editDraftSecond,
+    setEditDraftSecond,
+    setCopySuccessSecond
   };
 
-  const handleQuizNext = async () => {
-    if (!selectedTabId) return;
-    const output = outputs[selectedTabId];
-    if (!output || output.kind !== "quiz" || !output.quizState) return;
-
-    const state = output.quizState;
-    const nextCursor = state.questionCursor + 1;
-    const questions = output.quiz ?? [];
-
-    if (nextCursor < questions.length) {
-      setOutputs((prev) => {
-        const existing = prev[selectedTabId];
-        if (!existing || existing.kind !== "quiz" || !existing.quizState) return prev;
-        const next: OutputEntry = {
-          ...existing,
-          error: undefined,
-          quizState: {
-            ...existing.quizState,
-            questionCursor: nextCursor,
-            revealAnswer: false,
-            selectedOptionIndex: undefined
-          },
-          updatedAt: Date.now()
-        };
-        next.summary = renderQuizPreview(next, fileName);
-        return { ...prev, [selectedTabId]: next };
-      });
-      return;
-    }
-
-    setError("");
-    setStatus("summarizing");
-    setGeneratingTabId(selectedTabId);
-    setOutputs((prev) => {
-      const existing = prev[selectedTabId];
-      if (!existing) return prev;
-      return {
-        ...prev,
-        [selectedTabId]: {
-          ...existing,
-          isGenerating: true,
-          error: undefined,
-          summary: "# Quiz\n\nGenerating questions...\n",
-          updatedAt: Date.now()
-        }
-      };
-    });
-
-    try {
-      const avoid = (output.quiz ?? []).map((q) => q.question).filter(Boolean);
-      const data = await postJson<{ questions: QuizQuestion[]; usage?: UsageStats | null }>(
-        "/api/quiz",
-        {
-          section: studySection,
-          modelId: output.modelId,
-          questionsCount: Math.min(QUIZ_MORE_BATCH_SIZE, estimateQuizQuestions(extractedText.length)),
-          avoidQuestions: avoid
-        },
-        75_000
-      );
-
-      setOutputs((prev) => {
-        const existing = prev[selectedTabId];
-        if (!existing || existing.kind !== "quiz" || !existing.quizState) return prev;
-        const appended = data.questions ?? [];
-        const cursor = (existing.quiz ?? []).length;
-        const next: OutputEntry = {
-          ...existing,
-          isGenerating: false,
-          error: undefined,
-          quiz: [...(existing.quiz ?? []), ...appended],
-          usage: data.usage ?? existing.usage,
-          quizState: {
-            ...existing.quizState,
-            questionCursor: cursor,
-            revealAnswer: false,
-            selectedOptionIndex: undefined
-          },
-          updatedAt: Date.now()
-        };
-        next.summary = renderQuizPreview(next, fileName);
-        return { ...prev, [selectedTabId]: next };
-      });
-
-      setStatus("ready");
-      setGeneratingTabId(null);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Unknown error";
-      setError(message);
-      setStatus("error");
-      setGeneratingTabId(null);
-      setOutputs((prev) => {
-        const existing = prev[selectedTabId];
-        if (!existing) return prev;
-        const next: OutputEntry = {
-          ...existing,
-          isGenerating: false,
-          error: message,
-          updatedAt: Date.now()
-        };
-        next.summary = renderQuizPreview(next, fileName);
-        return { ...prev, [selectedTabId]: next };
-      });
-    }
+  const handleCopySummaryWrapper = async (): Promise<void> => {
+    await handleCopySummary(summaryContext);
   };
 
-  const handleQuizPrev = () => {
-    if (!selectedTabId) return;
-    const output = outputs[selectedTabId];
-    if (!output || output.kind !== "quiz" || !output.quizState) return;
-
-    if (output.quizState.questionCursor <= 0) return;
-
-    setOutputs((prev) => {
-      const existing = prev[selectedTabId];
-      if (!existing || existing.kind !== "quiz" || !existing.quizState) return prev;
-      const nextCursor = Math.max(0, existing.quizState.questionCursor - 1);
-      const next: OutputEntry = {
-        ...existing,
-        quizState: {
-          ...existing.quizState,
-          questionCursor: nextCursor,
-          revealAnswer: false,
-          selectedOptionIndex: undefined
-        },
-        updatedAt: Date.now()
-      };
-      next.summary = renderQuizPreview(next, fileName);
-      return { ...prev, [selectedTabId]: next };
-    });
+  const handleCopySummarySecondWrapper = async (): Promise<void> => {
+    await handleCopySummarySecond(summaryContext);
   };
 
-  const handleSubjectPicked = (subjectId: string) => {
-    setSelectedSubject(subjectId);
-    setSubjectPickerOpen(false);
-    if (pendingExport) {
-      setPendingExport(false);
-      void handleExport(subjectId);
-      return;
-    }
-    setPendingExport(false);
+  const handleEditStartWrapper = (): void => {
+    handleEditStart(summaryContext);
   };
 
-  const handleExport = async (overrideSubjectId?: string): Promise<void> => {
-    const subjectId = overrideSubjectId ?? "";
-    if (currentKind !== "summary") {
-      setError("Only summaries can be exported to Notion.");
-      setStatus("error");
-      return;
-    }
-    if (!currentSummary) {
-      setError("No summary to export.");
-      setStatus("error");
-      return;
-    }
-    if (!subjectId) {
-      setError("");
-      setPendingExport(true);
-      setSubjectPickerOpen(true);
-      return;
-    }
-    setError("");
-    setStatus("exporting");
-    setExportProgress(null);
-    setLastExportedPageId(null);
-    setPendingExport(false);
-
-    try {
-      const title = getSummaryTitle(currentSummary, fileName || "Summary");
-      const res = await fetch("/api/notion/export", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          subjectId,
-          title,
-          markdown: currentSummary,
-          stream: true
-        })
-      });
-
-      if (!res.ok) throw new Error("Notion export failed.");
-
-      const reader = res.body?.getReader();
-      if (!reader) throw new Error("Stream not available.");
-
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let exportedPageId: string | null = null;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          try {
-            const event = JSON.parse(line) as { type: string; [key: string]: unknown };
-            if (event.type === "started") {
-              setExportProgress({ current: 0, total: event.totalChunks as number });
-            } else if (event.type === "chunk") {
-              setExportProgress({ current: event.index as number, total: event.totalChunks as number });
-            } else if (event.type === "done") {
-              exportedPageId = event.pageId as string;
-              setLastExportedPageId(exportedPageId);
-            } else if (event.type === "error") {
-              throw new Error(event.message as string || "Export failed");
-            }
-          } catch (parseErr) {
-            if (parseErr instanceof Error && parseErr.message !== "Export failed") {
-              console.warn("Failed to parse export event:", parseErr);
-            } else {
-              throw parseErr;
-            }
-          }
-        }
-      }
-
-      setStatus("ready");
-      setExportProgress(null);
-      const subjectTitle = subjects.find((s) => s.id === selectedSubject)?.title;
-      setLoadedFromHistory(false);
-      if (outputs && extractedText && subjectTitle) {
-        saveToHistory(undefined, subjectTitle, exportedPageId || undefined);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
-      setStatus("error");
-      setExportProgress(null);
-    }
+  const handleEditSaveWrapper = (): void => {
+    handleEditSave(summaryContext);
   };
 
-  const onDrop = (event: React.DragEvent<HTMLDivElement>): void => {
-    event.preventDefault();
-    setDragActive(false);
-    const file = event.dataTransfer.files?.[0];
-    if (file) handleFile(file);
+  const handleEditStartSecondWrapper = (): void => {
+    handleEditStartSecond(summaryContext);
   };
 
-  const onDragOver = (event: React.DragEvent<HTMLDivElement>): void => {
-    event.preventDefault();
-    setDragActive(true);
+  const handleEditSaveSecondWrapper = (): void => {
+    handleEditSaveSecond(summaryContext);
   };
 
-  const onDragLeave = (): void => {
-    setDragActive(false);
+  const handleRefineSubmitWrapper = (event: React.FormEvent<HTMLFormElement>): void => {
+    handleRefineSubmit(event, summaryContext);
   };
 
-  const onSelectFile = (event: React.ChangeEvent<HTMLInputElement>): void => {
-    const file = event.target.files?.[0];
-    if (file) handleFile(file);
-  };
-
-  const handleRefineSubmit = (event: React.FormEvent<HTMLFormElement>): void => {
-    event.preventDefault();
-    if (currentKind !== "summary" || !currentSummary || !selectedTabId || !currentOutput) {
-      setError("No summary available.");
-      setStatus("error");
-      return;
-    }
-    setStatus("refining");
-    if (isSmallScreen) setMobileView("output");
-    setLoadedFromHistory(false);
-    setIsEditing(false);
-    refineTargetRef.current = selectedTabId;
-    setData([]);
-    handleSubmit(event, {
-      body: {
-        summary: currentSummary,
-        modelId: currentOutput.modelId
-      }
-    });
-  };
-
-  const saveToHistory = (outputsToSave?: Record<string, OutputEntry>, exportedSubjectTitle?: string, notionPageId?: string): void => {
+  const saveToHistory = (outputsToSave?: Record<string, any>, exportedSubjectTitle?: string, notionPageId?: string): void => {
     const outputsData = outputsToSave || outputs;
-    if (!extractedText || Object.keys(outputsData).length === 0) return;
+    if (!fileHandling.extractedText || Object.keys(outputsData).length === 0) return;
 
-    const derivedTitle = getDocumentTitle(extractedText, fileName);
+    const { getDocumentTitle } = require("@/lib/document-title");
+    const { createPdfId, getSummaryTitle } = require("@/lib/output-previews");
+
+    const derivedTitle = getDocumentTitle(fileHandling.extractedText, fileHandling.fileName);
     const summaryTab = Object.values(outputsData).find((o) => (o.kind ?? "summary") === "summary" && (o.summary ?? "").trim().length > 0);
     const title = summaryTab ? getSummaryTitle(summaryTab.summary ?? "", derivedTitle) : derivedTitle;
-    const pdfId = createPdfId(fileName || "untitled", extractedText);
+    const pdfId = createPdfId(fileHandling.fileName || "untitled", fileHandling.extractedText);
     const historyId = currentHistoryId || pdfId;
     const now = Date.now();
 
@@ -1030,8 +464,8 @@ export default function AppClient() {
       const entry: HistoryEntry = {
         id: historyId,
         title,
-        fileName,
-        extractedText,
+        fileName: fileHandling.fileName,
+        extractedText: fileHandling.extractedText,
         outputs: outputsData,
         structureHints,
         createdAt: existingEntry?.createdAt || now,
@@ -1053,8 +487,8 @@ export default function AppClient() {
   };
 
   const loadFromHistory = (entry: HistoryEntry): void => {
-    setFileName(entry.fileName);
-    setExtractedText(entry.extractedText);
+    fileHandling.setFileName(entry.fileName);
+    fileHandling.setExtractedText(entry.extractedText);
     setOutputs(entry.outputs);
     setStructureHints(entry.structureHints);
     setCurrentHistoryId(entry.id);
@@ -1065,8 +499,12 @@ export default function AppClient() {
     setIsEditing(false);
     setIsEditingSecond(false);
     setSecondTabId(null);
-    setLastExportedPageId(entry.notionPageId || null);
-    setExportProgress(null);
+    if (entry.notionPageId) {
+      exportHook.setLastExportedPageId(entry.notionPageId);
+    } else {
+      exportHook.setLastExportedPageId(null);
+    }
+    exportHook.setExportProgress(null);
     setMessages([]);
     setInput("");
     setData([]);
@@ -1083,98 +521,7 @@ export default function AppClient() {
     updateHistoryState((prev) => prev.filter((entry) => entry.id !== id));
   };
 
-  const handleCopySummary = async (): Promise<void> => {
-    if (!currentSummary) return;
-    try {
-      await navigator.clipboard.writeText(currentSummary);
-      setCopySuccess(true);
-      setTimeout(() => setCopySuccess(false), 2000);
-    } catch (err) {
-      const textArea = document.createElement("textarea");
-      textArea.value = currentSummary;
-      textArea.style.position = "fixed";
-      textArea.style.opacity = "0";
-      document.body.appendChild(textArea);
-      textArea.select();
-      try {
-        document.execCommand("copy");
-        setCopySuccess(true);
-        setTimeout(() => setCopySuccess(false), 2000);
-      } catch (e) {
-        // Ignore
-      }
-      document.body.removeChild(textArea);
-    }
-  };
-
-  const handleEditStart = (): void => {
-    setEditDraft(currentSummary);
-    setIsEditing(true);
-  };
-
-  const handleEditSave = (): void => {
-    if (!selectedTabId || !currentOutput || editDraft === currentSummary) {
-      setIsEditing(false);
-      return;
-    }
-    setOutputs((prev) => ({
-      ...prev,
-      [selectedTabId]: {
-        ...currentOutput,
-        summary: editDraft,
-        updatedAt: Date.now()
-      }
-    }));
-    setLoadedFromHistory(false);
-    setIsEditing(false);
-  };
-
-  const handleEditStartSecond = (): void => {
-    setEditDraftSecond(secondSummary);
-    setIsEditingSecond(true);
-  };
-
-  const handleEditSaveSecond = (): void => {
-    if (!secondTabId || !secondOutput || editDraftSecond === secondSummary) {
-      setIsEditingSecond(false);
-      return;
-    }
-    setOutputs((prev) => ({
-      ...prev,
-      [secondTabId]: {
-        ...secondOutput,
-        summary: editDraftSecond,
-        updatedAt: Date.now()
-      }
-    }));
-    setLoadedFromHistory(false);
-    setIsEditingSecond(false);
-  };
-
-  const handleCopySummarySecond = async (): Promise<void> => {
-    if (!secondSummary) return;
-    try {
-      await navigator.clipboard.writeText(secondSummary);
-      setCopySuccessSecond(true);
-      setTimeout(() => setCopySuccessSecond(false), 2000);
-    } catch (err) {
-      const textArea = document.createElement("textarea");
-      textArea.value = secondSummary;
-      textArea.style.position = "fixed";
-      textArea.style.opacity = "0";
-      document.body.appendChild(textArea);
-      textArea.select();
-      try {
-        document.execCommand("copy");
-        setCopySuccessSecond(true);
-        setTimeout(() => setCopySuccessSecond(false), 2000);
-      } catch (e) {
-        // Ignore
-      }
-      document.body.removeChild(textArea);
-    }
-  };
-
+  // UI computed values
   const statusClass = status === "error" ? "error" : status === "ready" ? "ready" : "busy";
   const statusTitle =
     status === "parsing"
@@ -1189,13 +536,26 @@ export default function AppClient() {
               ? "Error"
               : "Ready";
   const isGenerating = generatingTabId === selectedTabId && generatingTabId !== null;
+  
+  // Improved button state management with clearer navigation flow
   const canGenerate =
     status !== "parsing" &&
     status !== "summarizing" &&
-    !isRefining &&
-    Boolean(extractedText) &&
-    Boolean(selectedModel);
-  const canExport = outputKind === "summary" && !!currentSummary && status !== "exporting";
+    status !== "exporting" &&
+    !chatConfig.isLoading &&
+    Boolean(fileHandling.extractedText) &&
+    Boolean(selectedModel) &&
+    !generatingTabId;
+  
+  const canExport = 
+    outputKind === "summary" && 
+    !!currentSummary && 
+    status !== "exporting" && 
+    status !== "parsing" && 
+    status !== "summarizing" &&
+    !chatConfig.isLoading;
+  
+  const canViewOutput = Boolean(fileHandling.extractedText) && status !== "parsing";
 
   return (
     <div className="app">
@@ -1296,7 +656,7 @@ export default function AppClient() {
           onSelect={handleSubjectPicked}
           onClose={() => {
             setSubjectPickerOpen(false);
-            setPendingExport(false);
+            exportHook.setPendingExport(false);
           }}
         /> 
         <DeleteOutputModal
@@ -1305,7 +665,7 @@ export default function AppClient() {
           onCancel={() => setTabToDelete(null)}
           onConfirm={() => {
             if (!tabToDelete) return;
-            handleCloseTabConfirm(tabToDelete);
+            handleCloseTabConfirmWrapper(tabToDelete);
           }}
         />
 
@@ -1341,12 +701,12 @@ export default function AppClient() {
                 </div>
               </div>
               <InputPanel
-                fileName={fileName}
+                fileName={fileHandling.fileName}
                 selectedModel={selectedModel}
                 models={models}
                 structureHints={structureHints}
                 showStructureHints={outputKind === "summary"}
-                dragActive={dragActive}
+                dragActive={fileHandling.dragActive}
                 dropzoneCorner={
                   <span
                     className={`status-dot ${statusClass} status-dot-corner`}
@@ -1354,10 +714,10 @@ export default function AppClient() {
                     aria-label={statusTitle}
                   />
                 }
-                onDrop={onDrop}
-                onDragOver={onDragOver}
-                onDragLeave={onDragLeave}
-                onSelectFile={onSelectFile}
+                onDrop={fileHandling.onDrop}
+                onDragOver={fileHandling.onDragOver}
+                onDragLeave={fileHandling.onDragLeave}
+                onSelectFile={fileHandling.onSelectFile}
                 onModelChange={handleModelChange}
                 onStructureChange={setStructureHints}
               >
@@ -1368,8 +728,8 @@ export default function AppClient() {
                       <FlashcardsDensityControl
                         value={flashcardsDensity}
                         onChange={setFlashcardsDensity}
-                        totalChars={studySection.text.length}
-                        disabled={!extractedText || status === "parsing" || status === "summarizing"}
+                        totalChars={generation.studySection.text.length}
+                        disabled={!fileHandling.extractedText || status === "parsing" || status === "summarizing"}
                       />
                     </div>
                   </div>
@@ -1389,12 +749,12 @@ export default function AppClient() {
             </div>
           ) : (
             <InputPanel
-              fileName={fileName}
+              fileName={fileHandling.fileName}
               selectedModel={selectedModel}
               models={models}
               structureHints={structureHints}
               showStructureHints={outputKind === "summary"}
-              dragActive={dragActive}
+              dragActive={fileHandling.dragActive}
               dropzoneCorner={
                 <span
                   className={`status-dot ${statusClass} status-dot-corner`}
@@ -1402,10 +762,10 @@ export default function AppClient() {
                   aria-label={statusTitle}
                 />
               }
-              onDrop={onDrop}
-              onDragOver={onDragOver}
-              onDragLeave={onDragLeave}
-              onSelectFile={onSelectFile}
+              onDrop={fileHandling.onDrop}
+              onDragOver={fileHandling.onDragOver}
+              onDragLeave={fileHandling.onDragLeave}
+              onSelectFile={fileHandling.onSelectFile}
               onModelChange={handleModelChange}
               onStructureChange={setStructureHints}
             >
@@ -1416,8 +776,8 @@ export default function AppClient() {
                     <FlashcardsDensityControl
                       value={flashcardsDensity}
                       onChange={setFlashcardsDensity}
-                      totalChars={studySection.text.length}
-                      disabled={!extractedText || status === "parsing" || status === "summarizing"}
+                      totalChars={generation.studySection.text.length}
+                      disabled={!fileHandling.extractedText || status === "parsing" || status === "summarizing"}
                     />
                   </div>
                 </div>
@@ -1447,7 +807,8 @@ export default function AppClient() {
                     type="button"
                     className="btn btn-secondary"
                     onClick={() => setMobileView("output")}
-                    disabled={!extractedText}
+                    disabled={!canViewOutput}
+                    aria-label="View generated output"
                   >
                     View output
                   </button>
@@ -1464,8 +825,8 @@ export default function AppClient() {
                 secondTabId={secondTabId}
                 generatingTabId={generatingTabId}
                 showSplitHint={!isCoarsePointer}
-                onTabChange={handleTabChange}
-                onCloseTab={handleCloseTabRequest}
+                onTabChange={handleTabChangeWrapper}
+                onCloseTab={handleCloseTabRequestWrapper}
               />
               <div className="output-actions">
                 <button
@@ -1473,6 +834,8 @@ export default function AppClient() {
                   className="btn btn-secondary btn-sm"
                   onClick={handleGenerate}
                   disabled={!canGenerate}
+                  aria-label={canGenerate ? "Generate content" : "Cannot generate - missing file or model"}
+                  title={!canGenerate && !fileHandling.extractedText ? "Upload a file first" : !canGenerate && !selectedModel ? "Select a model first" : ""}
                 >
                   {generatingTabId ? "Generating..." : "Generate"}
                 </button>
@@ -1507,6 +870,8 @@ export default function AppClient() {
                         className="btn btn-primary btn-sm"
                         onClick={() => void handleExport()}
                         disabled={!canExport}
+                        aria-label={canExport ? "Export summary to Notion" : "Cannot export - no summary available"}
+                        title={!canExport ? "Generate a summary first" : ""}
                       >
                         Export to Notion
                       </button>
@@ -1535,50 +900,50 @@ export default function AppClient() {
                 isScrolling={isScrolling}
                 copySuccess={copySuccess}
                 copySuccessSecond={copySuccessSecond}
-                onEditStart={handleEditStart}
-                onEditSave={handleEditSave}
-                onEditStartSecond={handleEditStartSecond}
-                onEditSaveSecond={handleEditSaveSecond}
+                onEditStart={handleEditStartWrapper}
+                onEditSave={handleEditSaveWrapper}
+                onEditStartSecond={handleEditStartSecondWrapper}
+                onEditSaveSecond={handleEditSaveSecondWrapper}
                 onEditDraftChange={setEditDraft}
                 onEditDraftChangeSecond={setEditDraftSecond}
-                onCopySummary={handleCopySummary}
-                onCopySummarySecond={handleCopySummarySecond}
+                onCopySummary={handleCopySummaryWrapper}
+                onCopySummarySecond={handleCopySummarySecondWrapper}
                 onSyncScroll={() => {}}
                 onCloseSplit={() => setSecondTabId(null)}
-                extractedText={extractedText}
+                extractedText={fileHandling.extractedText}
               />
             ) : outputKind === "flashcards" ? (
               <div className="mode-panel">
                 <FlashcardsMode
-                  extractedText={extractedText}
-                  fileName={fileName}
+                  extractedText={fileHandling.extractedText}
+                  fileName={fileHandling.fileName}
                   output={currentOutput}
                   showKeyboardHints={!isCoarsePointer}
                 />
               </div>
             ) : (
               <div className="mode-panel">
-                  <QuizMode
-                    extractedText={extractedText}
-                    fileName={fileName}
-                    output={currentOutput}
-                    status={status}
-                    onReveal={handleQuizReveal}
-                    onNext={handleQuizNext}
-                    onSelectOption={handleQuizSelectOption}
-                    onPrev={handleQuizPrev}
-                    showKeyboardHints={!isCoarsePointer}
-                  />
+                <QuizMode
+                  extractedText={fileHandling.extractedText}
+                  fileName={fileHandling.fileName}
+                  output={currentOutput}
+                  status={status}
+                  onReveal={handleQuizReveal}
+                  onNext={handleQuizNext}
+                  onSelectOption={handleQuizSelectOption}
+                  onPrev={handleQuizPrev}
+                  showKeyboardHints={!isCoarsePointer}
+                />
               </div>
             )}
 
             {outputKind === "summary" && (
               <RefineBar
-                input={input}
-                isRefining={isRefining}
+                input={chatConfig.input}
+                isRefining={chatConfig.isLoading}
                 hasCurrentSummary={!!currentSummary}
-                onInputChange={handleInputChange}
-                onSubmit={handleRefineSubmit}
+                onInputChange={chatConfig.handleInputChange}
+                onSubmit={handleRefineSubmitWrapper}
               />
             )}
           </div>
