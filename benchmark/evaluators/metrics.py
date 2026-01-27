@@ -1,7 +1,21 @@
 """Metrics calculation and aggregation with extensive statistics."""
 import statistics
 from typing import Dict, Any, List, Optional
-import pandas as pd
+
+# Overall score calculation constants
+OVERALL_SCORE_BASE_WEIGHT = 0.5  # Base weight for combined reliability+quality score
+OVERALL_SCORE_FACTUAL_WEIGHT = 0.3  # Weight for factual accuracy component
+OVERALL_SCORE_AVERAGE_WEIGHT = 0.2  # Weight for average performance component
+
+# Reliability penalty thresholds (1-100 scale)
+RELIABILITY_LOW_THRESHOLD = 50.0  # Below this: heavy penalty
+RELIABILITY_MEDIUM_THRESHOLD = 70.0  # Between 50-70: moderate penalty
+RELIABILITY_HEAVY_PENALTY = 0.3  # Multiplier for reliability < 50
+RELIABILITY_MODERATE_PENALTY = 0.7  # Multiplier for reliability 50-70
+
+# Consistency penalty constants
+CONSISTENCY_MAX_PENALTY = 0.2  # Maximum penalty for high variance
+CONSISTENCY_VARIANCE_DIVISOR = 200.0  # Divisor for variance normalization
 
 
 def calculate_percentiles(values: List[float]) -> Dict[str, float]:
@@ -32,12 +46,16 @@ def calculate_percentiles(values: List[float]) -> Dict[str, float]:
     }
 
 
-def aggregate_model_metrics(results: List[Dict[str, Any]]) -> Dict[str, Any]:
+def aggregate_model_metrics(
+    results: List[Dict[str, Any]], 
+    config: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
     """
     Aggregate metrics for a single model across all test cases.
     
     Args:
         results: List of result dicts, each containing scores, costs, latency, etc.
+        config: Optional config dict with reliability_weight and quality_weight
     
     Returns:
         Aggregated metrics dict
@@ -130,44 +148,68 @@ def aggregate_model_metrics(results: List[Dict[str, Any]]) -> Dict[str, Any]:
         metrics["cost_per_reliability_point"] = 0
     
     # Calculate combined score (weighted) - now in 1-100 scale
-    reliability_weight = 0.3
-    quality_weight = 0.7
+    # Load weights from config if available, otherwise use defaults
+    reliability_weight = config.get("reliability_weight", 0.3) if config else 0.3
+    quality_weight = config.get("quality_weight", 0.7) if config else 0.7
     metrics["combined_score"] = (
         metrics["reliability"]["mean"] * reliability_weight +
         metrics["content_quality"]["mean"] * quality_weight
     )
     
     # Calculate reliable overall score (1-100 scale)
-    # This is a more robust score that considers:
-    # 1. Reliability is critical (must be > 50 to be usable)
-    # 2. Content quality is important
-    # 3. Consistency (low std dev is better)
-    # 4. Factual accuracy is essential
+    # 
+    # This is a more robust score that considers multiple factors:
+    # 1. Reliability is critical (must be > 50 to be usable for automation)
+    # 2. Content quality is important for user satisfaction
+    # 3. Consistency (low std dev) indicates stable performance
+    # 4. Factual accuracy is essential for educational content
+    #
+    # Formula breakdown:
+    # - Base component: (reliability * reliability_weight + quality * quality_weight) 
+    #   * reliability_penalty * consistency_penalty * OVERALL_SCORE_BASE_WEIGHT
+    # - Factual component: factual_mean * OVERALL_SCORE_FACTUAL_WEIGHT
+    # - Average component: (reliability + quality) / 2 * OVERALL_SCORE_AVERAGE_WEIGHT
+    #
+    # The penalties ensure that unreliable or inconsistent models are penalized:
+    # - reliability_penalty: 0.3 if reliability < 50, 0.7 if 50-70, 1.0 if >= 70
+    # - consistency_penalty: 1.0 - min(0.2, (reliability_std + quality_std) / 200.0)
+    #
+    # Note: The weights (0.5, 0.3, 0.2) sum to 1.0, ensuring the score stays in 1-100 range
+    # after clamping. The formula is designed to prioritize reliability and factual accuracy
+    # while still considering overall quality and consistency.
     reliability_mean = metrics["reliability"]["mean"]
     quality_mean = metrics["content_quality"]["mean"]
     factual_mean = metrics["factual_accuracy"]["mean"] if factual_scores else quality_mean
     
     # Penalize if reliability is too low (unusable for automation) - scaled to 1-100
     reliability_penalty = 1.0
-    if reliability_mean < 50.0:
-        reliability_penalty = 0.3  # Heavy penalty for unreliable models
-    elif reliability_mean < 70.0:
-        reliability_penalty = 0.7  # Moderate penalty
+    if reliability_mean < RELIABILITY_LOW_THRESHOLD:
+        reliability_penalty = RELIABILITY_HEAVY_PENALTY
+    elif reliability_mean < RELIABILITY_MEDIUM_THRESHOLD:
+        reliability_penalty = RELIABILITY_MODERATE_PENALTY
     
     # Penalize high variance (inconsistent performance) - scaled to 1-100
     reliability_std = metrics["reliability"]["std_dev"]
     quality_std = metrics["content_quality"]["std_dev"]
-    consistency_penalty = 1.0 - min(0.2, (reliability_std + quality_std) / 200.0)
+    consistency_penalty = 1.0 - min(
+        CONSISTENCY_MAX_PENALTY, 
+        (reliability_std + quality_std) / CONSISTENCY_VARIANCE_DIVISOR
+    )
     
     # Overall score: weighted combination with penalties
-    metrics["overall_score"] = (
+    # Base component (weighted reliability + quality with penalties)
+    base_component = (
         (reliability_mean * reliability_weight + quality_mean * quality_weight) *
         reliability_penalty *
         consistency_penalty *
-        0.5 +  # Base score
-        factual_mean * 0.3 +  # Factual accuracy is critical
-        (reliability_mean + quality_mean) / 2 * 0.2  # Average performance
+        OVERALL_SCORE_BASE_WEIGHT
     )
+    # Factual accuracy component
+    factual_component = factual_mean * OVERALL_SCORE_FACTUAL_WEIGHT
+    # Average performance component
+    average_component = (reliability_mean + quality_mean) / 2 * OVERALL_SCORE_AVERAGE_WEIGHT
+    
+    metrics["overall_score"] = base_component + factual_component + average_component
     
     # Clamp to 1-100
     metrics["overall_score"] = max(1.0, min(100.0, metrics["overall_score"]))
@@ -251,7 +293,8 @@ def calculate_comparative_metrics(
 
 def calculate_performance_by_category(
     results: List[Dict[str, Any]],
-    category_key: str
+    category_key: str,
+    config: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Dict[str, Any]]:
     """
     Calculate performance metrics grouped by category (e.g., topic, format_type).
@@ -313,3 +356,125 @@ def calculate_judge_consensus_metrics(
             consensus_metrics[f"{key}_median_agreement"] = statistics.median(values)
     
     return consensus_metrics
+
+
+def calculate_model_metrics_by_dimension(
+    all_results: List[Dict[str, Any]],
+    dimension_key: str,
+    config: Optional[Dict[str, Any]] = None
+) -> Dict[str, Dict[str, Any]]:
+    """
+    Calculate metrics grouped by a dimension (e.g., task, topic, format).
+    
+    Args:
+        all_results: List of all result dicts
+        dimension_key: Key to group by (e.g., "task", "test_case_topic", "test_case_format")
+    
+    Returns:
+        Dict mapping dimension value to aggregated metrics
+    """
+    dimension_groups = {}
+    
+    for result in all_results:
+        if result.get("error"):
+            continue
+        dimension_value = result.get(dimension_key, "unknown")
+        if dimension_value not in dimension_groups:
+            dimension_groups[dimension_value] = []
+        dimension_groups[dimension_value].append(result)
+    
+    dimension_metrics = {}
+    for dimension_value, results in dimension_groups.items():
+        if results:
+            dimension_metrics[dimension_value] = aggregate_model_metrics(results, config)
+    
+    return dimension_metrics
+
+
+def calculate_comprehensive_model_metrics(
+    all_results: List[Dict[str, Any]],
+    config: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """
+    Calculate comprehensive metrics for a model including:
+    - Overall metrics (all tasks combined)
+    - Task-specific metrics (summary, quiz, flashcards)
+    - Topic-specific metrics (chemistry, physics, etc.)
+    - Format-specific metrics (academic, ocr_like, etc.)
+    
+    Args:
+        all_results: List of all result dicts for a single model
+    
+    Returns:
+        Comprehensive metrics dict with all breakdowns
+    """
+    # Filter out errors
+    valid_results = [r for r in all_results if not r.get("error")]
+    
+    if not valid_results:
+        return {}
+    
+    # Overall metrics (all tasks combined)
+    overall_metrics = aggregate_model_metrics(valid_results, config)
+    
+    # Task-specific metrics
+    task_metrics = calculate_model_metrics_by_dimension(valid_results, "task", config)
+    
+    # Topic-specific metrics
+    topic_metrics = calculate_model_metrics_by_dimension(valid_results, "test_case_topic", config)
+    
+    # Format-specific metrics
+    format_metrics = calculate_model_metrics_by_dimension(valid_results, "test_case_format", config)
+    
+    # Task x Topic breakdown (nested)
+    task_topic_metrics = {}
+    for task in ["summary", "quiz", "flashcards"]:
+        task_results = [r for r in valid_results if r.get("task") == task]
+        if task_results:
+            task_topic_metrics[task] = calculate_model_metrics_by_dimension(task_results, "test_case_topic", config)
+    
+    # Task x Format breakdown (nested)
+    task_format_metrics = {}
+    for task in ["summary", "quiz", "flashcards"]:
+        task_results = [r for r in valid_results if r.get("task") == task]
+        if task_results:
+            task_format_metrics[task] = calculate_model_metrics_by_dimension(task_results, "test_case_format", config)
+    
+    # Topic x Format breakdown (nested)
+    topic_format_metrics = {}
+    topics = set(r.get("test_case_topic", "unknown") for r in valid_results)
+    for topic in topics:
+        topic_results = [r for r in valid_results if r.get("test_case_topic") == topic]
+        if topic_results:
+            topic_format_metrics[topic] = calculate_model_metrics_by_dimension(topic_results, "test_case_format", config)
+    
+    # Summary statistics
+    summary_stats = {
+        "total_tests": len(valid_results),
+        "tasks_tested": list(set(r.get("task") for r in valid_results)),
+        "topics_tested": list(set(r.get("test_case_topic") for r in valid_results)),
+        "formats_tested": list(set(r.get("test_case_format") for r in valid_results)),
+        "test_count_by_task": {
+            task: len([r for r in valid_results if r.get("task") == task])
+            for task in ["summary", "quiz", "flashcards"]
+        },
+        "test_count_by_topic": {
+            topic: len([r for r in valid_results if r.get("test_case_topic") == topic])
+            for topic in set(r.get("test_case_topic", "unknown") for r in valid_results)
+        },
+        "test_count_by_format": {
+            fmt: len([r for r in valid_results if r.get("test_case_format") == fmt])
+            for fmt in set(r.get("test_case_format", "unknown") for r in valid_results)
+        }
+    }
+    
+    return {
+        "overall": overall_metrics,
+        "by_task": task_metrics,
+        "by_topic": topic_metrics,
+        "by_format": format_metrics,
+        "by_task_and_topic": task_topic_metrics,
+        "by_task_and_format": task_format_metrics,
+        "by_topic_and_format": topic_format_metrics,
+        "summary_stats": summary_stats
+    }

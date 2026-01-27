@@ -10,28 +10,33 @@ export async function GET() {
     const resultsPath = path.join(process.cwd(), "benchmark", "results", "benchmark_results.json");
     const metricsPath = path.join(process.cwd(), "benchmark", "results", "benchmark_metrics.json");
     
-    let results = [];
-    let metrics = { model_metrics: {}, comparative_metrics: {} };
+    let results: any[] = [];
+    let metrics: {
+      model_metrics?: any;
+      model_metrics_comprehensive?: any;
+      comparative_metrics?: any;
+    } = { model_metrics: {}, comparative_metrics: {} };
     
     try {
       const resultsData = await fs.readFile(resultsPath, "utf-8");
       results = JSON.parse(resultsData);
     } catch (error) {
-      // Results file doesn't exist yet
-      console.log("Benchmark results not found");
+      // Results file doesn't exist yet or parsing failed
+      console.error("Benchmark results not found or invalid:", error);
     }
     
     try {
       const metricsData = await fs.readFile(metricsPath, "utf-8");
       metrics = JSON.parse(metricsData);
     } catch (error) {
-      // Metrics file doesn't exist yet
-      console.log("Benchmark metrics not found");
+      // Metrics file doesn't exist yet or parsing failed
+      console.error("Benchmark metrics not found or invalid:", error);
     }
     
     return NextResponse.json({
       results,
       metrics: metrics.model_metrics || {},
+      metricsComprehensive: metrics.model_metrics_comprehensive || {},
       comparative: metrics.comparative_metrics || {},
       hasResults: results.length > 0
     });

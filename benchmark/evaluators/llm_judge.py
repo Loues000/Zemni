@@ -6,7 +6,6 @@ import os
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 import sys
-from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from benchmark.models.client import ModelClient
@@ -15,10 +14,67 @@ from benchmark.models.client import ModelClient
 JUDGE_CACHE_DIR = Path(__file__).parent.parent / "results" / "judge_cache"
 JUDGE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
+# Cost optimization: Reduced source text length for judges (1500 instead of 2000)
+JUDGE_SOURCE_TEXT_MAX_CHARS = 1500
+
+
+def get_judge_source_text(source_text: str, max_chars: int = JUDGE_SOURCE_TEXT_MAX_CHARS) -> str:
+    """
+    Get truncated source text for judge evaluation with intelligent sentence boundary detection.
+    
+    Args:
+        source_text: Full source text
+        max_chars: Maximum characters to include (default: 1500)
+    
+    Returns:
+        Truncated source text, ideally cut at sentence boundary
+    """
+    if len(source_text) <= max_chars:
+        return source_text
+    
+    truncated = source_text[:max_chars]
+    # Try to cut at sentence boundary (period or newline)
+    last_period = truncated.rfind('.')
+    last_newline = truncated.rfind('\n')
+    cut_point = max(last_period, last_newline)
+    
+    # Only use cut point if it's at least 80% of desired length (to avoid too short truncation)
+    if cut_point > max_chars * 0.8:
+        return source_text[:cut_point + 1]
+    
+    return truncated + "..."
+
+
+def normalize_text_for_cache(text: str) -> str:
+    """
+    Normalize text for better cache hits by removing excessive whitespace.
+    
+    Args:
+        text: Text to normalize
+    
+    Returns:
+        Normalized text with single spaces and trimmed
+    """
+    import re
+    # Replace multiple whitespace with single space
+    text = re.sub(r'\s+', ' ', text)
+    return text.strip()
+
 
 def get_output_hash(output_text: str, task_type: str, source_text: str) -> str:
     """Generate hash for caching judge evaluations."""
-    content = f"{task_type}:{output_text}:{source_text[:500]}"
+    # Normalize texts for better cache hits (same content = same hash)
+    output_text = normalize_text_for_cache(output_text)
+    source_text = normalize_text_for_cache(source_text)
+    
+    # Use full text for better uniqueness, hash if too long
+    if len(output_text) > 10000:
+        output_hash = hashlib.sha256(output_text.encode()).hexdigest()
+        output_text = output_hash
+    if len(source_text) > 10000:
+        source_hash = hashlib.sha256(source_text.encode()).hexdigest()
+        source_text = source_hash
+    content = f"{task_type}:{output_text}:{source_text}"
     return hashlib.sha256(content.encode()).hexdigest()
 
 
@@ -47,95 +103,95 @@ def build_judge_prompt(
 ) -> str:
     """Build prompt for judge model."""
     
+    # Optimize source text length for judges (cost optimization)
+    judge_source = get_judge_source_text(source_text)
+    
     if task_type == "summary":
-        prompt = f"""Du bewertest eine KI-generierte Zusammenfassung von Vorlesungsmaterial.
+        prompt = f"""Bewerte eine KI-generierte Zusammenfassung von Vorlesungsmaterial.
 
-Quelle (Originaltext):
-{source_text[:2000]}
+Quelle: {judge_source}
 
-Generierte Zusammenfassung:
-{output_text}
+Zusammenfassung: {output_text}
 
-Bewerte die Zusammenfassung auf einer Skala von 1-100 für folgende Kriterien:
+Bewertungsgrundlage: Quelltext ist EINZIGE Referenz. Prüfe nur Übereinstimmung, nicht absolute Korrektheit.
 
-1. **Factual Accuracy (Faktische Genauigkeit)**: Entspricht die Ausgabe dem Quellmaterial? Gibt es Halluzinationen oder Fehler? (1 = viele Fehler, 100 = perfekt)
-2. **Completeness (Vollständigkeit)**: Werden alle wichtigen Konzepte aus der Quelle abgedeckt? Fehlt etwas Wichtiges? (1 = unvollständig, 100 = vollständig)
-3. **Quality (Qualität)**: Wie nützlich ist die Zusammenfassung für die Prüfungsvorbereitung? Ist sie klar strukturiert und verständlich? (1 = unbrauchbar, 100 = ausgezeichnet)
-4. **LaTeX Correctness**: Sind mathematische Formeln korrekt escaped (inline: $...$ oder \\(...\\), Display: $$...$$ oder \\[...\\]) und renderbar? (1 = fehlerhaft, 100 = perfekt)
+Bewerte auf Skala 1-100:
+1. **Source Fidelity**: Entspricht Ausgabe dem Quelltext? Halluzinationen? (1=many errors, 100=perfect match)
+2. **Completeness**: Werden wichtige Konzepte abgedeckt? (1=incomplete, 100=complete)
+3. **Quality**: Nützlich für Prüfungsvorbereitung? Klar strukturiert? (1=unusable, 100=excellent)
+4. **LaTeX Correctness**: Formeln korrekt escaped? ($...$ oder \\(...\\) inline, $$...$$ oder \\[...\\] display) (1=errors, 100=perfect)
 
-WICHTIG: Wenn die Zusammenfassung leer ist oder keine Inhalte hat, gib für alle Scores 1 (nicht 0).
+Leere Ausgabe = alle Scores 1.
 
-Antworte NUR mit einem JSON-Objekt im folgenden Format:
+Antworte NUR mit JSON:
 {{
   "factual_accuracy": <1-100>,
   "completeness": <1-100>,
   "quality": <1-100>,
   "latex_correctness": <1-100>,
-  "reasoning": "Kurze Begründung für die Scores"
+  "reasoning": "Kurze Begründung"
 }}"""
     
     elif task_type == "quiz":
         questions = output_json.get("questions", []) if output_json else []
         questions_text = json.dumps(questions, indent=2, ensure_ascii=False)
         
-        prompt = f"""Du bewertest KI-generierte Quiz-Fragen zu Vorlesungsmaterial.
+        prompt = f"""Bewerte KI-generierte Quiz-Fragen zu Vorlesungsmaterial.
 
-Quelle (Originaltext):
-{source_text[:2000]}
+Quelle: {judge_source}
 
-Generierte Quiz-Fragen:
-{questions_text}
+Quiz-Fragen: {questions_text}
 
-Bewerte die Quiz-Fragen auf einer Skala von 1-100 für folgende Kriterien:
+Bewertungsgrundlage: Quelltext ist EINZIGE Referenz. Prüfe nur Übereinstimmung, nicht absolute Korrektheit.
 
-1. **Factual Accuracy**: Entsprechen die Fragen und Antworten dem Quellmaterial? Gibt es Halluzinationen? (1 = viele Fehler, 100 = perfekt)
-2. **Completeness**: Werden wichtige Konzepte aus der Quelle abgedeckt? (1 = unvollständig, 100 = vollständig)
-3. **Question Quality**: Sind die Fragen klar, relevant und prüfungsorientiert? (1 = schlecht, 100 = ausgezeichnet)
-4. **Distractor Quality**: Sind die Distraktoren plausibel und nicht offensichtlich falsch? (1 = offensichtlich falsch, 100 = sehr plausibel)
-5. **Pedagogical Usefulness**: "Ist die Erklärung in den Quiz-Antworten so hilfreich, dass ein Student den Fehler versteht, ohne Google zu nutzen?" (1 = nicht hilfreich, 100 = sehr hilfreich)
+Bewerte auf Skala 1-100:
+1. **Source Fidelity**: Entsprechen Fragen/Antworten dem Quelltext? Halluzinationen? (1=many errors, 100=perfect match)
+2. **Completeness**: Werden wichtige Konzepte abgedeckt? (1=incomplete, 100=complete)
+3. **Question Quality**: Fragen klar, relevant, prüfungsorientiert? (1=bad, 100=excellent)
+4. **Distractor Quality**: Distraktoren plausibel? (1=obviously wrong, 100=very plausible)
+5. **Pedagogical Usefulness**: Erklärungen so hilfreich, dass Student Fehler ohne Google versteht? (1=not helpful, 100=very helpful)
 
-WICHTIG: Wenn die Quiz-Fragen leer sind oder keine Inhalte haben, gib für alle Scores 1 (nicht 0).
+Leere Fragen = alle Scores 1.
 
-Antworte NUR mit einem JSON-Objekt im folgenden Format:
+Antworte NUR mit JSON:
 {{
   "factual_accuracy": <1-100>,
   "completeness": <1-100>,
   "question_quality": <1-100>,
   "distractor_quality": <1-100>,
   "pedagogical_usefulness": <1-100>,
-  "reasoning": "Kurze Begründung für die Scores"
+  "reasoning": "Kurze Begründung"
 }}"""
     
     elif task_type == "flashcards":
         flashcards = output_json.get("flashcards", []) if output_json else []
         flashcards_text = json.dumps(flashcards, indent=2, ensure_ascii=False)
         
-        prompt = f"""Du bewertest KI-generierte Flashcards zu Vorlesungsmaterial.
+        prompt = f"""Bewerte KI-generierte Flashcards zu Vorlesungsmaterial.
 
-Quelle (Originaltext):
-{source_text[:2000]}
+Quelle: {judge_source}
 
-Generierte Flashcards:
-{flashcards_text}
+Flashcards: {flashcards_text}
 
-Bewerte die Flashcards auf einer Skala von 1-100 für folgende Kriterien:
+Bewertungsgrundlage: Quelltext ist EINZIGE Referenz. Prüfe nur Übereinstimmung, nicht absolute Korrektheit.
 
-1. **Factual Accuracy**: Entsprechen die Flashcards dem Quellmaterial? Gibt es Halluzinationen? (1 = viele Fehler, 100 = perfekt)
-2. **Completeness**: Werden wichtige Konzepte abgedeckt? (1 = unvollständig, 100 = vollständig)
-3. **Clarity**: Sind die Fragen/Aufgaben klar und verständlich? (1 = unklar, 100 = sehr klar)
-4. **Memorability**: Sind die Flashcards gut zum Lernen geeignet? (1 = schlecht, 100 = ausgezeichnet)
-5. **Appropriate Detail**: Ist das Detailniveau angemessen (nicht zu oberflächlich, nicht zu detailliert)? (1 = unangemessen, 100 = perfekt)
+Bewerte auf Skala 1-100:
+1. **Source Fidelity**: Entsprechen Flashcards dem Quelltext? Halluzinationen? (1=many errors, 100=perfect match)
+2. **Completeness**: Werden wichtige Konzepte abgedeckt? (1=incomplete, 100=complete)
+3. **Clarity**: Fragen/Aufgaben klar und verständlich? (1=unclear, 100=very clear)
+4. **Memorability**: Gut zum Lernen geeignet? (1=bad, 100=excellent)
+5. **Appropriate Detail**: Detailniveau angemessen? (1=inappropriate, 100=perfect)
 
-WICHTIG: Wenn die Flashcards leer sind oder keine Inhalte haben, gib für alle Scores 1 (nicht 0).
+Leere Flashcards = alle Scores 1.
 
-Antworte NUR mit einem JSON-Objekt im folgenden Format:
+Antworte NUR mit JSON:
 {{
   "factual_accuracy": <1-100>,
   "completeness": <1-100>,
   "clarity": <1-100>,
   "memorability": <1-100>,
   "appropriate_detail": <1-100>,
-  "reasoning": "Kurze Begründung für die Scores"
+  "reasoning": "Kurze Begründung"
 }}"""
     
     else:
@@ -157,7 +213,7 @@ async def judge_with_model(
     prompt = build_judge_prompt(task_type, source_text, output_text, output_json)
     
     system_prompt = """Du bist ein Experte für die Bewertung von KI-generierten Lernmaterialien. 
-Bewerte objektiv und konsistent. Nutze die volle Skala von 0-10."""
+Bewerte objektiv und konsistent. Nutze die volle Skala von 1-100."""
     
     result = await client.generate(
         model_id=model_id,
@@ -189,6 +245,15 @@ Bewerte objektiv und konsistent. Nutze die volle Skala von 0-10."""
     # Track judge cost
     judge_cost = result.get("cost", 0.0)
     
+    # Check if response is empty
+    if not result.get("text") or not result["text"].strip():
+        return {
+            "model_id": model_id,
+            "error": "Empty response from judge model",
+            "scores": {},
+            "cost": judge_cost
+        }
+    
     # Try to parse JSON from response
     try:
         # Extract JSON from response (might have markdown code fences)
@@ -198,17 +263,20 @@ Bewerte objektiv und konsistent. Nutze die volle Skala von 0-10."""
         elif "```" in text:
             text = text.split("```")[1].split("```")[0].strip()
         
+        if not text:
+            return {
+                "model_id": model_id,
+                "error": "Empty JSON content after extraction",
+                "scores": {},
+                "raw_response": result["text"],
+                "cost": judge_cost
+            }
+        
         scores = json.loads(text)
         
-        # Ensure scores are in 1-100 range and convert from 0-10 if needed
+        # Ensure scores are in 1-100 range (clamp only, no conversion needed as prompts use 1-100)
         for key, value in scores.items():
             if key != "reasoning" and isinstance(value, (int, float)):
-                # If score is 0-10, convert to 1-100
-                if 0 <= value <= 10:
-                    if value == 0:
-                        scores[key] = 1.0  # Minimum is 1, not 0
-                    else:
-                        scores[key] = (value / 10.0) * 100.0
                 # Clamp to 1-100
                 scores[key] = max(1.0, min(100.0, float(scores[key])))
         

@@ -3,6 +3,12 @@ import json
 import re
 from typing import Dict, Any, Optional
 
+# Penalty constants for reliability scoring
+MARKDOWN_ISSUE_PENALTY = 5.0  # Penalty per markdown issue
+LATEX_ISSUE_PENALTY = 3.0  # Penalty per LaTeX issue
+JSON_SCHEMA_ISSUE_PENALTY = 10.0  # Penalty per JSON schema issue (more severe)
+LATEX_IN_JSON_PENALTY = 2.0  # Penalty per LaTeX issue in JSON strings
+
 
 def check_latex_escaping(text: str) -> tuple[bool, list[str]]:
     """
@@ -169,13 +175,13 @@ def evaluate_reliability(
         md_valid, md_issues = check_markdown_structure(output_text)
         all_issues.extend(md_issues)
         if not md_valid:
-            score -= len(md_issues) * 15  # Penalize each issue (scaled to 1-100)
+            score -= len(md_issues) * MARKDOWN_ISSUE_PENALTY
         
         # Check LaTeX escaping
         latex_valid, latex_issues = check_latex_escaping(output_text)
         all_issues.extend(latex_issues)
         if not latex_valid:
-            score -= len(latex_issues) * 5  # Less severe penalty for LaTeX (scaled to 1-100)
+            score -= len(latex_issues) * LATEX_ISSUE_PENALTY
         
         details["markdown_valid"] = md_valid
         details["latex_valid"] = latex_valid
@@ -183,6 +189,16 @@ def evaluate_reliability(
         details["latex_issues"] = latex_issues
     
     elif task_type in ["quiz", "flashcards"]:
+        # Check if output_text is empty before parsing
+        if not output_text or not output_text.strip():
+            all_issues.append("Empty output text")
+            score = 1.0  # Critical: empty output (minimum score is 1, not 0)
+            return {
+                "reliability_score": max(1.0, score),
+                "issues": all_issues,
+                "details": {"json_parseable": False, "parse_error": "Empty output text"}
+            }
+        
         # Try to parse JSON
         try:
             if parsed_json is None:
@@ -202,8 +218,8 @@ def evaluate_reliability(
         all_issues.extend(json_issues)
         
         if not json_valid:
-            # Severe penalty for schema issues (scaled to 1-100)
-            score -= len(json_issues) * 20
+            # Severe penalty for schema issues
+            score -= len(json_issues) * JSON_SCHEMA_ISSUE_PENALTY
         
         details["json_parseable"] = True
         details["json_valid"] = json_valid
@@ -214,7 +230,7 @@ def evaluate_reliability(
         latex_valid, latex_issues = check_latex_escaping(json_str)
         if latex_issues:
             all_issues.extend([f"LaTeX in JSON: {issue}" for issue in latex_issues])
-            score -= len(latex_issues) * 3  # Scaled to 1-100
+            score -= len(latex_issues) * LATEX_IN_JSON_PENALTY
     
     # Clamp score to 1-100
     score = max(1.0, min(100.0, score))
