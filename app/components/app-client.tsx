@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, lazy, Suspense, useCallback } from "react";
 import { useChat } from "ai/react";
+import { useRouter } from "next/navigation";
 import { 
   HistorySidebar, 
   InputPanel, 
@@ -10,7 +11,6 @@ import {
   FlashcardsDensityControl,
   SubjectPickerModal,
   DeleteOutputModal,
-  SettingsModal,
   ModeSwitch,
   type FlashcardsDensity
 } from "@/components/features";
@@ -46,9 +46,9 @@ import { handleRefineSubmit, handleCopySummary, handleCopySummarySecond, handleE
 import { createSummaryContext } from "@/lib/handlers/summary-context";
 import { useSummaryWrappers } from "@/lib/handlers/summary-wrappers";
 import { handleRetryGeneration } from "@/lib/handlers/retry-handlers";
-import { exportHistoryAsZip } from "@/lib/export-history-zip";
 
 export default function AppClient() {
+  const router = useRouter();
   // Core app state
   const appState = useAppState();
   const {
@@ -70,10 +70,7 @@ export default function AppClient() {
     isSmallScreen,
     statsOpen,
     setStatsOpen,
-    defaultModel,
     defaultStructureHints,
-    setDefaultModel,
-    setDefaultStructureHints
   } = appState;
 
   // Output kind and editing state
@@ -106,6 +103,8 @@ export default function AppClient() {
   const previewRef2 = useRef<HTMLDivElement | null>(null);
   const isScrolling = useRef<boolean>(false);
   const refineTargetRef = useRef<string>("");
+  const settingsMenuRef = useRef<HTMLDivElement | null>(null);
+  const settingsButtonRef = useRef<HTMLButtonElement | null>(null);
 
   // History and token estimation
   const { history, updateHistoryState } = useHistory();
@@ -289,11 +288,38 @@ export default function AppClient() {
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
-    if (sidebarOpen || subjectPickerOpen || tabToDelete || settingsOpen) document.body.style.overflow = "hidden";
+    if (sidebarOpen || subjectPickerOpen || tabToDelete) document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [sidebarOpen, subjectPickerOpen, tabToDelete, settingsOpen]);
+  }, [sidebarOpen, subjectPickerOpen, tabToDelete]);
+
+  useEffect(() => {
+    if (!settingsOpen) return;
+
+    const onPointerDown = (e: PointerEvent) => {
+      const menu = settingsMenuRef.current;
+      const button = settingsButtonRef.current;
+      if (!menu || !button) return;
+      if (menu.contains(e.target as Node) || button.contains(e.target as Node)) {
+        return;
+      }
+      setSettingsOpen(false);
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setSettingsOpen(false);
+      }
+    };
+
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [settingsOpen]);
 
   // Refine effects
   useRefineEffects({
@@ -466,6 +492,10 @@ export default function AppClient() {
     selectedModel
   });
 
+  const outputsCount = Object.keys(outputs).length;
+  const isBusy = status === "parsing" || status === "summarizing" || status === "exporting";
+  const headerCompact = !fileHandling.extractedText && outputsCount === 0 && !isBusy;
+
   return (
     <div className="app">
       <HistorySidebar
@@ -478,7 +508,7 @@ export default function AppClient() {
       />
 
       <div className="main">
-        <header className="header">
+        <header className={`header${headerCompact ? " header-compact" : ""}`}>
           <div className="header-left">
             <button
               type="button"
@@ -492,24 +522,46 @@ export default function AppClient() {
             <h1 className="header-title">Zemni</h1>
           </div>
           <div className="header-right">
-            <button
-              type="button"
-              className="icon-btn"
-              onClick={() => setSettingsOpen(true)}
-              aria-label="Settings"
-              title="Settings"
-            >
-              <IconSettings />
-            </button>
-            <button
-              type="button"
-              className="icon-btn"
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-              aria-label={theme === "dark" ? "Light Mode" : "Dark Mode"}
-              title={theme === "dark" ? "Light Mode" : "Dark Mode"}
-            >
-              {theme === "dark" ? <IconSun /> : <IconMoon />}
-            </button>
+            <div className={`settings-menu${settingsOpen ? " open" : ""}`} ref={settingsMenuRef}>
+              <button
+                ref={settingsButtonRef}
+                type="button"
+                className="icon-btn"
+                onClick={() => setSettingsOpen((prev) => !prev)}
+                aria-label="Open quick settings"
+                aria-expanded={settingsOpen}
+                title="Quick settings"
+              >
+                <IconSettings />
+              </button>
+              {settingsOpen && (
+                <div className="settings-popover" role="menu" aria-label="Quick settings">
+                  <div className="settings-popover-section">Quick settings</div>
+                  <button
+                    type="button"
+                    className="settings-popover-item"
+                    role="menuitem"
+                    onClick={() => {
+                      setTheme(theme === "dark" ? "light" : "dark");
+                    }}
+                  >
+                    <span>Theme</span>
+                    <span className="settings-popover-meta">{theme === "dark" ? "Dark" : "Light"}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="settings-popover-item"
+                    role="menuitem"
+                    onClick={() => {
+                      setSettingsOpen(false);
+                      router.push("/settings");
+                    }}
+                  >
+                    <span>Settings</span>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
@@ -560,34 +612,6 @@ export default function AppClient() {
             if (!tabToDelete) return;
             handleCloseTabConfirmWrapper(tabToDelete);
           }}
-        />
-        <SettingsModal
-          isOpen={settingsOpen}
-          onClose={() => setSettingsOpen(false)}
-          models={models}
-          selectedModel={selectedModel}
-          defaultModel={defaultModel}
-          structureHints={structureHints}
-          defaultStructureHints={defaultStructureHints}
-          onSave={(settings) => {
-            setDefaultModel(settings.defaultModel);
-            setDefaultStructureHints(settings.defaultStructureHints);
-            if (settings.defaultModel && settings.defaultModel !== selectedModel) {
-              setSelectedModel(settings.defaultModel);
-            }
-            if (settings.defaultStructureHints && !structureHints) {
-              setStructureHints(settings.defaultStructureHints);
-            }
-          }}
-          onExportZip={async () => {
-            try {
-              await exportHistoryAsZip(history);
-            } catch (err) {
-              setError(err instanceof Error ? err.message : "Failed to export history");
-              setStatus("error");
-            }
-          }}
-          historyCount={history.length}
         />
 
         <div className={`content${isSmallScreen ? ` content-mobile view-${mobileView}` : ""}`}>

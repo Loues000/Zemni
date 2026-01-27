@@ -9,4 +9,5 @@ export * from "./FlashcardsDensityControl";
 export * from "./SubjectPickerModal";
 export * from "./DeleteOutputModal";
 export * from "./SettingsModal";
+export * from "./SettingsPage";
 export * from "./ModeSwitch";

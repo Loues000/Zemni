@@ -490,6 +490,18 @@ a {
   padding: 12px 20px;
   border-bottom: 1px solid var(--stroke);
   background: var(--surface);
+  transition: padding 180ms ease, border-color 180ms ease, background-color 180ms ease;
+}
+
+.header.header-compact {
+  padding: 8px 16px;
+  border-bottom-color: color-mix(in srgb, var(--stroke) 65%, transparent);
+}
+
+.header.header-compact .header-title {
+  font-size: 16px;
+  opacity: 0.92;
+  transition: font-size 180ms ease, opacity 180ms ease;
 }
 
 .activity-bar {
@@ -699,6 +711,73 @@ a {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.settings-menu {
+  position: relative;
+}
+
+.settings-menu.open .icon-btn {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.settings-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 220px;
+  border: 1px solid var(--stroke);
+  background: var(--surface);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 80;
+}
+
+.settings-popover-section {
+  padding: 6px 8px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.settings-popover-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.settings-popover-item:hover:not(:disabled),
+.settings-popover-item:focus-visible {
+  background: var(--surface-muted);
+  border-color: var(--stroke);
+  outline: none;
+}
+
+.settings-popover-item:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.settings-popover-meta {
+  color: var(--text-muted);
+  font-size: 12px;
 }
 
 .icon-btn {
@@ -2326,6 +2405,271 @@ body.flashcard-player-open {
   font-size: 13px;
 }
 
+/* ========== Settings Page ========== */
+.settings-page {
+  min-height: 100vh;
+  padding: 28px 24px 48px;
+  background:
+    radial-gradient(1200px 600px at -10% -20%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 70%),
+    radial-gradient(900px 500px at 120% 10%, color-mix(in srgb, var(--accent) 12%, transparent), transparent 72%),
+    var(--surface-muted);
+}
+
+.settings-shell {
+  max-width: 1180px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+
+.settings-sidebar {
+  position: sticky;
+  top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.settings-back-link:hover,
+.settings-back-link:focus-visible {
+  color: var(--text-primary);
+  background: var(--surface);
+  outline: none;
+}
+
+.settings-sidebar-card {
+  border: 1px solid var(--stroke);
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 18px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: var(--accent-muted);
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 22px;
+}
+
+.settings-sidebar-title {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.settings-sidebar-subtitle {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.settings-sidebar-divider {
+  height: 1px;
+  background: var(--stroke);
+  margin: 6px 0;
+}
+
+.settings-metric {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.settings-metric strong {
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.settings-main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settings-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 22px;
+  margin-top:45px;
+  border-radius: var(--radius);
+  border: 1px solid var(--stroke);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.settings-title {
+  margin: 0 0 4px;
+  font-size: 26px;
+}
+
+.settings-subtitle {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  max-width: 640px;
+}
+
+.settings-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.settings-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 4px;
+  border-radius: 12px;
+  border: 1px solid var(--stroke);
+  background: var(--surface);
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.settings-tab {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.settings-tab:hover,
+.settings-tab:focus-visible {
+  color: var(--text-primary);
+  background: var(--surface-muted);
+  outline: none;
+}
+
+.settings-tab.active {
+  color: var(--accent);
+  background: var(--accent-muted);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.settings-notice {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--stroke);
+  background: var(--surface);
+  font-size: 13px;
+}
+
+.settings-notice.success {
+  border-color: color-mix(in srgb, var(--success-text) 40%, transparent);
+  background: color-mix(in srgb, var(--success-bg) 75%, var(--surface));
+  color: var(--success-text);
+}
+
+.settings-notice.error {
+  border-color: color-mix(in srgb, var(--error-text) 40%, transparent);
+  background: color-mix(in srgb, var(--error-bg) 70%, var(--surface));
+  color: var(--error-text);
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 8px;
+}
+
+.settings-section-header h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.settings-section-header p {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.settings-card {
+  border: 1px solid var(--stroke);
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 18px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.settings-card-split {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.settings-card-block {
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  background: var(--surface-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-card-title {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.settings-card-copy {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.settings-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.settings-textarea {
+  min-height: 140px;
+  resize: vertical;
+}
+
+.settings-hidden-input {
+  display: none;
+}
+
 /* ========== Utility ========== */
 .hint {
   font-size: 12px;
@@ -2333,6 +2677,16 @@ body.flashcard-player-open {
 }
 
 /* ========== Responsive ========== */
+@media (max-width: 1100px) {
+  .settings-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-sidebar {
+    position: static;
+  }
+}
+
 @media (min-width: 769px) {
   .status-text {
     display: inline;
@@ -2348,6 +2702,27 @@ body.flashcard-player-open {
 }
 
 @media (max-width: 768px) {
+  .settings-page {
+    padding: 20px 16px 40px;
+  }
+
+  .settings-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .settings-actions {
+    width: 100%;
+  }
+
+  .settings-tabs {
+    width: 100%;
+  }
+
+  .settings-card-split {
+    grid-template-columns: 1fr;
+  }
+
   .mode-select {
     width: 100%;
     border-radius: 999px;
@@ -2455,6 +2830,10 @@ body.flashcard-player-open {
 @media (max-width: 480px) {
   .header {
     padding: 10px 16px;
+  }
+
+  .header.header-compact {
+    padding: 7px 12px;
   }
 
   .header-title {
