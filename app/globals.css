@@ -316,10 +316,6 @@ a {
   outline: none;
 }
 
-.wave-group .input.history-search-input {
-  /* Specific styling for history search */
-}
-
 .wave-group .label {
   color: var(--text-muted);
   font-size: 14px;
