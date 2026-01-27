@@ -122,34 +122,38 @@ python reports/generator.py
 
 ### Scoring System
 
-#### Reliability Score (0-10)
+#### Reliability Score (1-100)
 Separate from content quality, measures format compliance:
 - **Summaries**: H1 heading, valid markdown, no forbidden phrases, LaTeX escaping
 - **Quizzes**: JSON parseability, correct schema, 4 options, valid correctIndex
 - **Flashcards**: JSON parseability, correct schema, valid type field
+- Minimum score is 1 (not 0) to ensure models are always rankable
 
-#### Content Quality Score (0-10)
+#### Content Quality Score (1-100)
 Evaluated by multi-model judge consensus:
-- **Factual Accuracy**: Matches source material, no hallucinations
-- **Completeness**: Covers key concepts
+- **Source Fidelity (Quelltreue)**: Matches source material exactly, no hallucinations (checks only against provided source text, not absolute correctness)
+- **Completeness**: Covers key concepts from source
 - **Quality**: Overall usefulness for exam prep
 - **Pedagogical Usefulness**: Explanations help students understand without Google
+- Minimum score is 1 (not 0) to ensure models are always rankable
 
-#### Overall Score (0-10)
+#### Overall Score (1-100)
 Reliable composite score that considers:
-- Reliability (critical for automation)
-- Content quality
-- Consistency (low variance)
-- Factual accuracy
+- Reliability (critical for automation) - weighted 30%
+- Content quality - weighted 70%
+- Consistency (low variance) - penalizes high std dev
+- Source fidelity (factual accuracy) - critical component
 - Applies penalties for unreliable or inconsistent models
+- Formula: Base component (reliability + quality with penalties) × 0.5 + Factual component × 0.3 + Average component × 0.2
 
 ### Extensive Statistics
-- Score distributions (min, max, median, percentiles, std dev)
+- Score distributions (min, max, median, percentiles p0, p25, p50, p75, p95, p99, p100, std dev)
 - Cost per quality/reliability point
 - Latency statistics (mean, p50, p95, p99)
 - Judge consensus metrics (agreement, variance)
 - Performance by topic category
 - Performance by format type
+- Comprehensive breakdowns: by task, by topic, by format, and nested combinations
 
 ## Configuration
 
@@ -192,6 +196,14 @@ python run_benchmark.py --models "gpt-4o,claude-sonnet-4.5" --tasks summary,quiz
 python reports/generator.py --output benchmark/reports/report.html
 ```
 
+## Logging
+
+Benchmark runs create structured JSON logs in `benchmark/results/logs/`:
+- One JSON object per line (JSONL format)
+- Timestamped log files (e.g., `benchmark_20241201_143022.jsonl`)
+- Includes: benchmark start/end, progress updates, model results, errors
+- Can be analyzed with standard JSON tools or imported into analysis tools
+
 ## Troubleshooting
 
 **No models available:**
@@ -206,3 +218,9 @@ python reports/generator.py --output benchmark/reports/report.html
 **Rate limits:**
 - Reduce `concurrency_limit` in `benchmark_config.json`
 - Add delays between requests if needed
+
+**Running tests:**
+```bash
+cd benchmark
+pytest tests/ -v
+```

@@ -23,15 +23,15 @@
   "quality_weight": 0.7,
   "adaptive_input_sizing": {
     "free": 2000,
-    "budget": 1500,
-    "mid_tier": 1000,
-    "premium": 500
+    "budget": 1200,
+    "mid_tier": 600,
+    "premium": 300
   },
   "token_limit_multipliers": {
     "free": 1.0,
-    "budget": 1.0,
-    "mid_tier": 0.75,
-    "premium": 0.5
+    "budget": 0.85,
+    "mid_tier": 0.65,
+    "premium": 0.4
   },
   "test_case_formats": [
     "ocr_like",

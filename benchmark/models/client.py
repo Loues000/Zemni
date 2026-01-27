@@ -45,8 +45,16 @@ class ModelClient:
                     "max_tokens": 5
                 }
             )
+            if response.status_code != 200:
+                # Log error for debugging
+                try:
+                    error_data = response.json()
+                    print(f"⚠ Model {model_id} unavailable: {error_data.get('error', {}).get('message', f'Status {response.status_code}')}")
+                except:
+                    print(f"⚠ Model {model_id} unavailable: Status {response.status_code}")
             return response.status_code == 200
-        except Exception:
+        except Exception as e:
+            print(f"⚠ Model {model_id} check failed: {str(e)}")
             return False
     
     async def check_models_availability(self, model_ids: List[str]) -> Dict[str, bool]:
