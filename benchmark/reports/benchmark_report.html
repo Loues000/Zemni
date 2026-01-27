@@ -1,0 +1,351 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Model Benchmark Report</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1, h2, h3 {
+            color: #2c3e50;
+        }
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .section {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #3498db;
+            color: white;
+            font-weight: 600;
+        }
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+        .score {
+            font-weight: bold;
+        }
+        .score-high { color: #27ae60; }
+        .score-medium { color: #f39c12; }
+        .score-low { color: #e74c3c; }
+        .ranking {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+        .rank-1 { background: #ffd700; }
+        .rank-2 { background: #c0c0c0; }
+        .rank-3 { background: #cd7f32; }
+        .metric-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .metric-card {
+            background: #ecf0f1;
+            padding: 15px;
+            border-radius: 6px;
+        }
+        .metric-label {
+            font-size: 0.9em;
+            color: #7f8c8d;
+            margin-bottom: 5px;
+        }
+        .metric-value {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #2c3e50;
+        }
+        .sample-output {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid #3498db;
+            margin-top: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Model Benchmark Report</h1>
+        <p>Generated: 2026-01-27 16:21:04</p>
+        <p>Models tested: 2</p>
+        <p>Test cases: 20</p>
+    </div>
+
+    <div class="section">
+        <h2>Model Rankings</h2>
+        
+        <h3>By Combined Score (Reliability + Content Quality)</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Rank</th>
+                    <th>Model</th>
+                    <th>Combined Score</th>
+                    <th>Reliability</th>
+                    <th>Content Quality</th>
+                    <th>Cost per Quality Point</th>
+                </tr>
+            </thead>
+            <tbody>
+                
+                <tr>
+                    <td>
+                        <span class="ranking rank-1">1</span>
+                    </td>
+                    <td><strong>moonshotai/kimi-k2-thinking</strong></td>
+                    <td class="score score-high">7.11</td>
+                    <td>9.15</td>
+                    <td>6.24</td>
+                    <td>$0.0010</td>
+                </tr>
+                
+                <tr>
+                    <td>
+                        <span class="ranking rank-2">2</span>
+                    </td>
+                    <td><strong>moonshotai/kimi-k2.5</strong></td>
+                    <td class="score score-high">6.49</td>
+                    <td>8.90</td>
+                    <td>5.46</td>
+                    <td>$0.0017</td>
+                </tr>
+                
+            </tbody>
+        </table>
+
+        <h3>By Cost Effectiveness</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Rank</th>
+                    <th>Model</th>
+                    <th>Value Score</th>
+                    <th>Combined Score</th>
+                    <th>Total Cost</th>
+                </tr>
+            </thead>
+            <tbody>
+                
+                <tr>
+                    <td>
+                        <span class="ranking rank-1">1</span>
+                    </td>
+                    <td><strong>moonshotai/kimi-k2-thinking</strong></td>
+                    <td class="score score-high">58.81</td>
+                    <td>7.11</td>
+                    <td>$0.1209</td>
+                </tr>
+                
+                <tr>
+                    <td>
+                        <span class="ranking rank-2">2</span>
+                    </td>
+                    <td><strong>moonshotai/kimi-k2.5</strong></td>
+                    <td class="score score-high">35.62</td>
+                    <td>6.49</td>
+                    <td>$0.1822</td>
+                </tr>
+                
+            </tbody>
+        </table>
+    </div>
+
+    <div class="section">
+        <h2>Detailed Model Metrics</h2>
+        
+        <h3>moonshotai/kimi-k2-thinking</h3>
+        <div class="metric-grid">
+            <div class="metric-card">
+                <div class="metric-label">Reliability Score</div>
+                <div class="metric-value score-high">9.15</div>
+                <div style="font-size: 0.8em; color: #7f8c8d;">Std Dev: 0.63</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Content Quality</div>
+                <div class="metric-value score-high">6.24</div>
+                <div style="font-size: 0.8em; color: #7f8c8d;">Std Dev: 2.68</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Factual Accuracy</div>
+                <div class="metric-value">7.48</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Completeness</div>
+                <div class="metric-value">5.76</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Total Cost</div>
+                <div class="metric-value">$0.1209</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Avg Latency (p50)</div>
+                <div class="metric-value">38878ms</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Cost per Quality Point</div>
+                <div class="metric-value">$0.0010</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Test Count</div>
+                <div class="metric-value">20</div>
+            </div>
+        </div>
+        
+        <h3>moonshotai/kimi-k2.5</h3>
+        <div class="metric-grid">
+            <div class="metric-card">
+                <div class="metric-label">Reliability Score</div>
+                <div class="metric-value score-high">8.90</div>
+                <div style="font-size: 0.8em; color: #7f8c8d;">Std Dev: 0.58</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Content Quality</div>
+                <div class="metric-value score-high">5.46</div>
+                <div style="font-size: 0.8em; color: #7f8c8d;">Std Dev: 2.66</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Factual Accuracy</div>
+                <div class="metric-value">6.53</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Completeness</div>
+                <div class="metric-value">4.99</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Total Cost</div>
+                <div class="metric-value">$0.1822</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Avg Latency (p50)</div>
+                <div class="metric-value">71511ms</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Cost per Quality Point</div>
+                <div class="metric-value">$0.0017</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Test Count</div>
+                <div class="metric-value">20</div>
+            </div>
+        </div>
+        
+    </div>
+
+    <div class="section">
+        <h2>Sample Outputs</h2>
+        
+        <div style="margin-bottom: 20px;">
+            <h4>moonshotai/kimi-k2-thinking - summary (test_0010)</h4>
+            <div class="sample-output"># Fehler: Kein Vorlesungsmaterial bereitgestellt
+
+- Es wurde kein PDF-Extrakt oder Vorlesungstext zur Verarbeitung bereitgestellt.
+- Ohne Quellmaterial kann keine prüfungsorientierte Zusammenfassung erstellt werden.
+- Bitte fügen Sie den Inhalt des Vorlesungsskripts ein, um eine vollständige Zusammenfassung gemäß den Vorgaben zu erhalten....</div>
+            <div style="margin-top: 10px; font-size: 0.9em; color: #7f8c8d;">
+                Reliability: 10.00 | 
+                Quality: 5.65
+            </div>
+        </div>
+        
+        <div style="margin-bottom: 20px;">
+            <h4>moonshotai/kimi-k2-thinking - summary (test_0003)</h4>
+            <div class="sample-output"># Chemische Grundlagen: Elemente, Moleküle und Bindungen
+
+## Chemie als Naturwissenschaft
+- Befasst sich mit Zusammensetzung,...</div>
+            <div style="margin-top: 10px; font-size: 0.9em; color: #7f8c8d;">
+                Reliability: 10.00 | 
+                Quality: 5.40
+            </div>
+        </div>
+        
+        <div style="margin-bottom: 20px;">
+            <h4>moonshotai/kimi-k2-thinking - summary (test_0004)</h4>
+            <div class="sample-output"># Physik – Grundpfeiler der Naturwissenschaften
+
+Physik befasst sich mit den Grundgrößen **force** (Kraft), **energy** (Energie) und **momentum** (Impuls) sowie mit den Phänomenen **wave** (Welle) und **quantum** (Quant). Die folgenden Konzepte bilden das Fundament der klassischen Mechanik und modernen Theorien.
+
+## Grundgrößen und fundamentale Prinzipien
+
+### Kraft und Bewegung: Newtonsches Gesetz
+
+Die Kraft wird durch das zweite Newtonsche Gesetz definiert:
+
+$$
+F = ma
+$$
+
+- $F$ = Kraft (force)...</div>
+            <div style="margin-top: 10px; font-size: 0.9em; color: #7f8c8d;">
+                Reliability: 9.50 | 
+                Quality: 9.44
+            </div>
+        </div>
+        
+        <div style="margin-bottom: 20px;">
+            <h4>moonshotai/kimi-k2.5 - summary (test_0010)</h4>
+            <div class="sample-output"># Hinweis: Quelle nicht vorhanden
+
+> Der PDF-Extrakt wurde nicht übermittelt. Bitte fügen Sie den Text der Vorlesungsfolien (60–100 Seiten) nach der Zeile `Quelle (PDF-Extrakt):` ein, damit ich die prüfungsorientierte Zusammenfassung gemäß den Vorgaben (deutsche Sprache, H1-H3 Struktur, Notion-kompatibles Markdown) erstellen kann....</div>
+            <div style="margin-top: 10px; font-size: 0.9em; color: #7f8c8d;">
+                Reliability: 10.00 | 
+                Quality: 0.55
+            </div>
+        </div>
+        
+        <div style="margin-bottom: 20px;">
+            <h4>moonshotai/kimi-k2-thinking - summary (test_0011)</h4>
+            <div class="sample-output"># Geschichte: Eine Einführung
+
+## Was ist Geschichte?
+
+Geschichte ist die Untersuchung der Vergangenheit zur Verständigung der Gegenwart und Gestaltung der Zukunft. Sie analysiert die Entwicklung von Menschen, Gesellschaften und **Zivilisationen** über Zeit.
+
+> **Definition**: Geschichte ist keine reine Datensammlung, sondern eine *Interpretation* der Vergangenheit basierend auf verfügbaren Beweisen. Es existiert keine absolute Wahrheit, sondern multiple Perspektiven und Deutungen.
+
+- **Etymolog...</div>
+            <div style="margin-top: 10px; font-size: 0.9em; color: #7f8c8d;">
+                Reliability: 10.00 | 
+                Quality: 9.50
+            </div>
+        </div>
+        
+    </div>
+</body>
+</html>

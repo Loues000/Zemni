@@ -1,0 +1,42 @@
+{
+  "topics": {
+    "computer_science": {
+      "keywords": ["algorithm", "data structure", "complexity", "programming", "software engineering", "database", "network", "operating system"],
+      "formulas": ["O(n)", "O(log n)", "O(n²)", "complexity analysis"]
+    },
+    "biology": {
+      "keywords": ["cell", "DNA", "protein", "enzyme", "metabolism", "evolution", "genetics", "ecosystem"],
+      "formulas": ["ATP", "photosynthesis", "cellular respiration"]
+    },
+    "physics": {
+      "keywords": ["force", "energy", "momentum", "wave", "quantum", "electromagnetic", "thermodynamics"],
+      "formulas": ["F=ma", "E=mc²", "E=hf", "PV=nRT"]
+    },
+    "economics": {
+      "keywords": ["supply", "demand", "market", "GDP", "inflation", "monetary policy", "fiscal policy"],
+      "formulas": ["GDP = C + I + G + (X-M)", "supply and demand curves"]
+    },
+    "history": {
+      "keywords": ["revolution", "empire", "war", "civilization", "culture", "politics", "society"],
+      "formulas": []
+    },
+    "mathematics": {
+      "keywords": ["derivative", "integral", "limit", "theorem", "proof", "function", "equation"],
+      "formulas": ["f'(x)", "∫f(x)dx", "lim(x→a)"]
+    },
+    "chemistry": {
+      "keywords": ["molecule", "reaction", "bond", "element", "compound", "catalyst", "equilibrium"],
+      "formulas": ["H₂O", "CO₂", "reaction equations"]
+    },
+    "psychology": {
+      "keywords": ["cognition", "memory", "learning", "behavior", "neural", "perception", "development"],
+      "formulas": []
+    }
+  },
+  "format_prompts": {
+    "ocr_like": "Generate text that looks like it was scanned from a PDF with slight OCR errors: occasional character misreads (like '0' instead of 'O', 'rn' instead of 'm'), inconsistent spacing, some formatting artifacts. Keep it readable but imperfect.",
+    "high_density": "Generate text with extremely high technical term density: use many domain-specific abbreviations, jargon, and technical terminology. Pack as much specialized vocabulary as possible while maintaining coherence.",
+    "simple": "Generate text in plain, accessible language. Use simple sentence structures, avoid complex jargon, and explain concepts in an easy-to-understand way. Target audience: beginners.",
+    "academic": "Generate text in formal academic writing style: complex sentence structures, citations, technical precision, formal tone. Similar to excerpts from research papers or academic textbooks."
+  }
+}
