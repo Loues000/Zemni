@@ -11,6 +11,9 @@ export type Model = {
   displayName: string;
   tokenizer: string;
   pricing: Pricing;
+  subscriptionTier?: string;
+  isAvailable?: boolean;
+  requiredTier?: string;
 };
 
 export type CostRow = {

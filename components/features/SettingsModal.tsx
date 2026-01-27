@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { IconClose } from "../ui/Icons";
+import { ModelSelector } from "@/components/ui";
 import type { Model } from "@/types";
 
 interface SettingsModalProps {
@@ -92,18 +93,12 @@ export function SettingsModal({
             <label className="field-label" htmlFor="default-model">
               Default Model
             </label>
-            <select
+            <ModelSelector
               id="default-model"
-              className="field-input"
-              value={localDefaultModel || selectedModel}
-              onChange={(e) => setLocalDefaultModel(e.target.value)}
-            >
-              {models.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.displayName}
-                </option>
-              ))}
-            </select>
+              models={models}
+              selectedModel={localDefaultModel || selectedModel}
+              onModelChange={setLocalDefaultModel}
+            />
             <p className="field-hint">This model will be selected by default when you start the app.</p>
           </div>
 

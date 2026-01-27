@@ -316,10 +316,6 @@ a {
   outline: none;
 }
 
-.wave-group .input.history-search-input {
-  /* Specific styling for history search */
-}
-
 .wave-group .label {
   color: var(--text-muted);
   font-size: 14px;
@@ -980,6 +976,210 @@ a {
 .field-hint {
   font-size: 11px;
   color: var(--text-muted);
+}
+
+/* ========== Model Selector ========== */
+.model-selector {
+  position: relative;
+  width: 100%;
+}
+
+.model-selector-button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-sm);
+  background: var(--input-bg);
+  color: var(--text-primary);
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.model-selector-button:hover {
+  border-color: var(--stroke-strong);
+}
+
+.model-selector-button:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-muted);
+}
+
+.model-selector-button-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-selector-button svg {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  color: var(--text-muted);
+  transition: transform 0.2s ease;
+}
+
+.model-selector:has(.model-selector-dropdown) .model-selector-button svg {
+  transform: rotate(180deg);
+}
+
+.model-selector-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  background: transparent;
+}
+
+.model-selector-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  padding: 4px;
+}
+
+.model-selector-group {
+  margin-bottom: 4px;
+}
+
+.model-selector-group:last-child {
+  margin-bottom: 0;
+}
+
+.model-selector-group-header {
+  padding: 6px 10px;
+  margin-bottom: 2px;
+}
+
+.model-selector-group-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+}
+
+.model-option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background-color 0.15s ease;
+}
+
+.model-option:hover,
+.model-option:focus-visible {
+  background: var(--surface-muted);
+  outline: none;
+}
+
+.model-option.selected {
+  background: var(--accent-muted);
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.model-option-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Tier Badges */
+.tier-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.tier-badge-free {
+  background: rgba(34, 197, 94, 0.15);
+  color: #16a34a;
+}
+
+[data-theme="dark"] .tier-badge-free {
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+}
+
+.tier-badge-basic {
+  background: rgba(59, 130, 246, 0.15);
+  color: #2563eb;
+}
+
+[data-theme="dark"] .tier-badge-basic {
+  background: rgba(59, 130, 246, 0.2);
+  color: #3b82f6;
+}
+
+.tier-badge-plus {
+  background: rgba(168, 85, 247, 0.15);
+  color: #9333ea;
+}
+
+[data-theme="dark"] .tier-badge-plus {
+  background: rgba(168, 85, 247, 0.2);
+  color: #a855f7;
+}
+
+.tier-badge-pro {
+  background: rgba(251, 191, 36, 0.15);
+  color: #d97706;
+}
+
+[data-theme="dark"] .tier-badge-pro {
+  background: rgba(251, 191, 36, 0.2);
+  color: #fbbf24;
+}
+
+.model-upgrade-info {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: var(--surface-muted);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+  .model-selector-dropdown {
+    max-height: 240px;
+  }
+  
+  .model-option {
+    padding: 12px;
+  }
 }
 
 .field-inline {

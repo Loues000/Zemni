@@ -1,4 +1,5 @@
 import type { Model } from "@/types";
+import { ModelSelector } from "@/components/ui";
 
 interface InputPanelProps {
   fileName: string;
@@ -68,17 +69,13 @@ export function InputPanel({
       </div>
 
       <div className="field">
-        <label className="field-label">Model</label>
-        <select
-          value={selectedModel}
-          onChange={(e) => onModelChange(e.target.value)}
-        >
-          {models.map((model) => (
-            <option key={model.id} value={model.id}>
-              {model.displayName}
-            </option>
-          ))}
-        </select>
+        <label className="field-label" htmlFor="model-selector">Model</label>
+        <ModelSelector
+          id="model-selector"
+          models={models}
+          selectedModel={selectedModel}
+          onModelChange={onModelChange}
+        />
       </div>
 
       {showStructureHints && (
