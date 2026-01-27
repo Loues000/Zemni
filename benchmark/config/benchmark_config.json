@@ -1,0 +1,52 @@
+{
+  "judge_models": [
+    "google/gemini-2.5-flash-lite",
+    "openai/gpt-oss-120b:free",
+    "x-ai/grok-4.1-fast",
+    "deepseek/deepseek-v3.2",
+    "openai/gpt-4o-mini",
+    "qwen/qwen3-embedding-8b"
+  ],
+  "free_generation_models": [
+    "mistralai/devstral-2512:free",
+    "tngtech/deepseek-r1t2-chimera:free",
+    "z-ai/glm-4.5-air:free",
+    "google/gemma-3-27b-it:free",
+    "openai/gpt-oss-120b:free",
+    "google/gemini-2.0-flash-exp:free",
+    "moonshotai/kimi-k2:free"
+  ],
+  "concurrency_limit": 30,
+  "max_retries": 2,
+  "timeout_seconds": 120,
+  "reliability_weight": 0.3,
+  "quality_weight": 0.7,
+  "adaptive_input_sizing": {
+    "free": 2000,
+    "budget": 1500,
+    "mid_tier": 1000,
+    "premium": 500
+  },
+  "token_limit_multipliers": {
+    "free": 1.0,
+    "budget": 1.0,
+    "mid_tier": 0.75,
+    "premium": 0.5
+  },
+  "test_case_formats": [
+    "ocr_like",
+    "high_density",
+    "simple",
+    "academic"
+  ],
+  "topics": [
+    "computer_science",
+    "biology",
+    "physics",
+    "economics",
+    "history",
+    "mathematics",
+    "chemistry",
+    "psychology"
+  ]
+}
