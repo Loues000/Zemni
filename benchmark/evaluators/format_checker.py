@@ -168,7 +168,21 @@ def evaluate_reliability(
     """
     score = 100.0
     all_issues = []
-    details = {}
+    details: Dict[str, Any] = {}
+
+    # Global critical check: completely empty output is always maximally unreliable
+    if not output_text or not str(output_text).strip():
+        all_issues.append("Empty output text")
+        score = 1.0  # Minimum score is 1, not 0
+        details["empty_output"] = True
+        if task_type in ["quiz", "flashcards"]:
+            details["json_parseable"] = False
+            details["parse_error"] = "Empty output text"
+        return {
+            "reliability_score": max(1.0, score),
+            "issues": all_issues,
+            "details": details,
+        }
     
     if task_type == "summary":
         # Check markdown structure
@@ -189,16 +203,6 @@ def evaluate_reliability(
         details["latex_issues"] = latex_issues
     
     elif task_type in ["quiz", "flashcards"]:
-        # Check if output_text is empty before parsing
-        if not output_text or not output_text.strip():
-            all_issues.append("Empty output text")
-            score = 1.0  # Critical: empty output (minimum score is 1, not 0)
-            return {
-                "reliability_score": max(1.0, score),
-                "issues": all_issues,
-                "details": {"json_parseable": False, "parse_error": "Empty output text"}
-            }
-        
         # Try to parse JSON
         try:
             if parsed_json is None:

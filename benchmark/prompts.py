@@ -29,7 +29,9 @@ FORMAT_CONTRACT = [
     "- Nur reines Markdown.",
     "- Ueberschriften niemals nummerieren (kein '## 1.' / '## I.' etc).",
     "- Wenn Mathe/Formeln vorkommen: nutze LaTeX (inline $...$, Display $$ ... $$) und erklaere Variablen direkt danach.",
-    "- VERBOTEN: Abschluss-Saetze wie 'Damit kann man sich gut vorbereiten' oder 'Alles kommt aus den Vorlesungsfolien'."
+    "- VERBOTEN: Abschluss-Saetze wie 'Damit kann man sich gut vorbereiten' oder 'Alles kommt aus den Vorlesungsfolien'.",
+    "- Auch wenn der Text kuerz, verrauscht (OCR) oder lueckenhaft ist: Erstelle immer die bestmoegliche fachliche Zusammenfassung des vorhandenen Inhalts.",
+    "- Gib KEINE Fehlermeldungen wie 'Fehlende Quelle', 'kein Text bereitgestellt' oder aehnliche Meta-Kommentare aus. Schreibe stattdessen immer eine inhaltliche Zusammenfassung."
 ]
 
 GUIDELINES_GENERAL = "guidelines/general.en.md"

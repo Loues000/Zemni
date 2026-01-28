@@ -2856,8 +2856,129 @@ body.flashcard-player-open {
   margin: 0 auto;
 }
 
+.benchmark-header {
+  margin-bottom: 1rem;
+}
+
+.benchmark-subtitle {
+  color: var(--text-secondary);
+  margin: 0 0 1.25rem 0;
+  max-width: 72ch;
+}
+
+.benchmark-controls {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--bg);
+  padding: 0.75rem 0 1rem 0;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid var(--stroke);
+}
+
+.benchmark-controls-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.benchmark-segment {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.benchmark-control {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 160px;
+}
+
+.benchmark-control-inline {
+  min-width: 220px;
+}
+
+.benchmark-control-grow {
+  flex: 1 1 240px;
+  min-width: 220px;
+}
+
+.benchmark-control-label {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.benchmark-control-input {
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-primary);
+}
+
+.benchmark-control-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.benchmark-control-button {
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-primary);
+  cursor: pointer;
+  height: 38px;
+}
+
+.benchmark-control-button:hover {
+  background: var(--bg-muted);
+}
+
+.benchmark-control-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.benchmark-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.benchmark-kpi {
+  background: var(--surface);
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+}
+
+.benchmark-kpi-label {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.benchmark-kpi-value {
+  font-weight: 700;
+  font-size: 1.15rem;
+  margin-top: 0.25rem;
+}
+
 .benchmark-section {
   margin-bottom: 3rem;
+}
+
+.benchmark-section-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
 }
 
 .benchmark-table {
@@ -2866,6 +2987,12 @@ body.flashcard-player-open {
   background: var(--surface);
   border-radius: var(--radius);
   overflow: hidden;
+}
+
+.benchmark-table-compact th,
+.benchmark-table-compact td {
+  padding: 10px;
+  font-size: 0.9rem;
 }
 
 .benchmark-table thead tr {
@@ -2887,6 +3014,130 @@ body.flashcard-player-open {
   border-bottom: 1px solid var(--stroke);
 }
 
+.benchmark-table tbody tr[role="button"] {
+  cursor: pointer;
+}
+
+.benchmark-table tbody tr:hover {
+  background: var(--bg-muted);
+}
+
+.benchmark-table tbody tr[tabindex="0"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.benchmark-row-selected {
+  background: var(--bg-muted);
+}
+
+.benchmark-th-right {
+  text-align: right;
+}
+
+.benchmark-td-right {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.benchmark-model-id {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.92em;
+}
+
+.benchmark-scorecell {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.benchmark-bar {
+  width: 90px;
+  height: 8px;
+  border-radius: 999px;
+  border: 1px solid var(--stroke);
+  background: var(--surface-muted);
+  overflow: hidden;
+}
+
+.benchmark-bar-fill {
+  height: 100%;
+  background: var(--accent);
+}
+
+.benchmark-empty-state {
+  padding: 1.25rem;
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text-secondary);
+}
+
+.benchmark-empty-title {
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.25rem;
+}
+
+.benchmark-empty-subtitle {
+  font-size: 0.9rem;
+}
+
+.benchmark-explorer-controls {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.benchmark-explorer-context {
+  margin-left: auto;
+}
+
+.benchmark-model-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.5rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.benchmark-output {
+  margin-top: 0.75rem;
+}
+
+.benchmark-output-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.benchmark-output-title {
+  font-weight: 600;
+}
+
+.benchmark-output-subtitle {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.benchmark-output-pre {
+  margin: 0.75rem 0 0 0;
+  padding: 0.75rem;
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius);
+  background: var(--surface-muted);
+  max-height: 320px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
 .benchmark-card {
   background: var(--surface);
   padding: 1.5rem;
@@ -2904,6 +3155,10 @@ body.flashcard-player-open {
   font-weight: normal;
   text-transform: capitalize;
   transition: background 0.2s;
+}
+
+.benchmark-segment .benchmark-button {
+  border-radius: var(--radius-sm);
 }
 
 .benchmark-button:hover {
