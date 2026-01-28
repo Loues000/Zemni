@@ -274,7 +274,7 @@ python run_benchmark.py --models "gpt-4o,claude-sonnet" --tasks summary,quiz`}
             }
           }
           return (
-            <div style={{ overflowX: "auto" }}>
+        <div style={{ overflowX: "auto" }}>
               <table className="benchmark-table">
             <thead>
               <tr>
@@ -435,17 +435,17 @@ python run_benchmark.py --models "gpt-4o,claude-sonnet" --tasks summary,quiz`}
                       return (
                         <div key={modelId} className="benchmark-topic-card">
                           <div className="benchmark-topic-header">
-                            <span style={{ fontWeight: "600" }}>#{idx + 1} {modelId}</span>
+                          <span style={{ fontWeight: "600" }}>#{idx + 1} {modelId}</span>
                             <span className={`benchmark-metric-value ${topicScoreClass}`}>
                               {topicScore.toFixed(1)}
-                            </span>
-                          </div>
-                          <div className="benchmark-topic-stats">
-                            Rel: {metrics.reliability?.mean?.toFixed(1)} | 
-                            Qual: {metrics.content_quality?.mean?.toFixed(1)} | 
-                            Tests: {metrics.test_count}
-                          </div>
+                          </span>
                         </div>
+                          <div className="benchmark-topic-stats">
+                          Rel: {metrics.reliability?.mean?.toFixed(1)} | 
+                          Qual: {metrics.content_quality?.mean?.toFixed(1)} | 
+                          Tests: {metrics.test_count}
+                        </div>
+                      </div>
                       );
                     })}
                   </div>
@@ -506,7 +506,7 @@ python run_benchmark.py --models "gpt-4o,claude-sonnet" --tasks summary,quiz`}
                     <div className="benchmark-divider">
                       <div className="benchmark-stats-text">Tasks: {comp.summary_stats.tasks_tested.join(", ")}</div>
                       <div className="benchmark-stats-text">Topics: {comp.summary_stats.topics_tested.length}</div>
-                    </div>
+                      </div>
                   )}
                 </div>
               </div>

@@ -1,11 +1,11 @@
 {
   "judge_models": [
     "google/gemini-2.5-flash-lite",
-    "openai/gpt-oss-120b:free",
+    "openai/gpt-oss-120b",
     "x-ai/grok-4.1-fast",
     "deepseek/deepseek-v3.2",
     "openai/gpt-4o-mini",
-    "qwen/qwen3-embedding-8b"
+    "openai/gpt-oss-20b"
   ],
   "free_generation_models": [
     "mistralai/devstral-2512:free",

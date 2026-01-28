@@ -370,6 +370,7 @@ async def run_benchmark(
     # Load models config
     models_config_list = load_models_config()
     models_dict = {m.get("id"): m for m in models_config_list}
+    requested_models_set: Optional[set[str]] = None
     
     # Filter to requested models
     if models:
@@ -418,9 +419,15 @@ async def run_benchmark(
             availability_results={k: v for k, v in availability.items() if k in models_dict.keys()}
         )
         
-        # Allow models to be used as generation models even if they're in judge_models
-        # They just won't evaluate their own outputs (handled in run_single_benchmark)
-        available_models = [m for m in models_dict.keys() if availability.get(m, False)]
+        # Determine which models should be used for *generation*
+        # - If the user explicitly passed --models: ONLY use those (no extra judge models)
+        # - If no --models were passed: use all non-judge models by default
+        if requested_models_set is not None:
+            generation_candidates = requested_models_set
+        else:
+            generation_candidates = {m for m in models_dict.keys() if m not in judge_models}
+
+        available_models = [m for m in generation_candidates if availability.get(m, False)]
         available_judges = [m for m in judge_models if availability.get(m, False)]
         
         if not available_models:
@@ -481,16 +488,16 @@ async def run_benchmark(
         
         # Use tqdm for progress bar (async-compatible)
         pbar = tqdm(total=len(benchmark_tasks), desc="Running benchmarks", unit="task")
-        
+
         try:
             for coro in asyncio.as_completed(benchmark_tasks):
                 result = await coro
                 results.append(result)
-                
+
                 # Track costs
                 if result.get("cost"):
                     total_cost += result.get("cost", 0)
-                
+
                 # Log individual result
                 logger.model_result(
                     model_id=result.get("model_id", "unknown"),
@@ -501,7 +508,7 @@ async def run_benchmark(
                     cost=result.get("cost", 0),
                     latency_ms=result.get("latency_ms", 0)
                 )
-                
+
                 # Update progress bar
                 pbar.update(1)
                 pbar.set_postfix({
@@ -531,7 +538,7 @@ async def run_benchmark(
                 if results_path.exists():
                     with open(results_path, "r", encoding="utf-8") as f:
                         existing_results = json.load(f)
-                break
+                    break
             except (json.JSONDecodeError, IOError) as e:
                 if attempt < max_retries - 1:
                     time.sleep(0.1 * (attempt + 1))  # Exponential backoff
@@ -627,6 +634,11 @@ def main():
         action="store_true",
         help="Skip cached results (opposite of --force)"
     )
+    parser.add_argument(
+        "--check-availability-only",
+        action="store_true",
+        help="Only check and print model availability, do not run benchmarks or write results"
+    )
     
     args = parser.parse_args()
     
@@ -645,7 +657,82 @@ def main():
     
     # Initialize logger
     logger = BenchmarkLogger(console=True)
-    
+
+    # Fast path: only check availability and exit
+    if args.check_availability_only:
+        async def _check_only():
+            models_config_list = load_models_config()
+            models_dict = {m.get("id"): m for m in models_config_list}
+
+            # Apply same model filtering logic as in run_benchmark
+            requested_models_set = None
+            if models:
+                requested_models_set = set(models)
+                available_in_config = [m for m in models if m in models_dict]
+                missing_from_config = [m for m in models if m not in models_dict]
+                if missing_from_config:
+                    logger.warning(
+                        "Some requested models not found in config",
+                        missing_models=missing_from_config,
+                        available_models=available_in_config
+                    )
+                models_dict = {k: v for k, v in models_dict.items() if k in requested_models_set}
+
+            if not models_dict:
+                logger.error(
+                    "No models found in config",
+                    requested_models=models if models else "all",
+                    available_in_config=list({m.get("id") for m in models_config_list})
+                )
+                return
+
+            judge_models = config["judge_models"]
+
+            # Add judge models to models_dict for pricing info
+            for judge_model_id in judge_models:
+                if judge_model_id not in models_dict:
+                    judge_model_config = next((m for m in models_config_list if m.get("id") == judge_model_id), None)
+                    if judge_model_config:
+                        models_dict[judge_model_id] = judge_model_config
+
+            async with ModelClient() as client:
+                logger.info("Checking model availability (availability-only mode)...")
+                all_models = list(models_dict.keys()) + judge_models
+                availability = await client.check_models_availability(all_models)
+
+                # Same generation selection logic as in run_benchmark
+                if requested_models_set is not None:
+                    generation_candidates = requested_models_set
+                else:
+                    generation_candidates = {m for m in models_dict.keys() if m not in judge_models}
+
+                available_generation = [m for m in generation_candidates if availability.get(m, False)]
+                unavailable_generation = [m for m in generation_candidates if not availability.get(m, False)]
+                available_judges = [m for m in judge_models if availability.get(m, False)]
+                unavailable_judges = [m for m in judge_models if not availability.get(m, False)]
+
+                logger.info(
+                    "Availability summary",
+                    available_generation_models=available_generation,
+                    unavailable_generation_models=unavailable_generation,
+                    available_judge_models=available_judges,
+                    unavailable_judge_models=unavailable_judges,
+                )
+
+                print("\n=== Model Availability ===")
+                print("Generation models:")
+                for m in sorted(generation_candidates):
+                    status = "available" if availability.get(m, False) else "unavailable"
+                    print(f"  - {m}: {status}")
+                print("\nJudge models:")
+                for m in sorted(set(judge_models)):
+                    status = "available" if availability.get(m, False) else "unavailable"
+                    print(f"  - {m}: {status}")
+                print("==========================\n")
+
+        asyncio.run(_check_only())
+        return
+
     asyncio.run(run_benchmark(
         models,
         tasks,

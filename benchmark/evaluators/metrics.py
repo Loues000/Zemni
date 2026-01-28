@@ -65,10 +65,10 @@ def aggregate_model_metrics(
     
     # Extract all scores
     reliability_scores = [r.get("reliability_score", 0) for r in results if "reliability_score" in r]
-    quality_scores = []
-    factual_scores = []
-    completeness_scores = []
-    quality_overall = []
+    quality_scores: List[float] = []
+    factual_scores: List[float] = []
+    completeness_scores: List[float] = []
+    quality_overall: List[float] = []
     
     costs = [r.get("cost", 0) for r in results if "cost" in r]
     latencies = [r.get("latency_ms", 0) for r in results if "latency_ms" in r]
@@ -93,7 +93,32 @@ def aggregate_model_metrics(
         
         if "completeness" in aggregated:
             completeness_scores.append(aggregated["completeness"]["mean"])
-    
+
+    # --- Backward compatibility: auto-upscale legacy 0-10 runs to 1-100 ---
+    #
+    # Early benchmark runs (especially for some moonshotai Modelle) used a 0-10 scale.
+    # All current prompts and format checks use 1-100. To avoid mixing scales inside
+    # one model, we detect obviously old runs (all scores <= 10 but > 0) and upscale.
+    #
+    # This detection is per-model (per results list) and only affects models whose
+    # data still lives entirely in the 0-10 regime.
+    all_score_values: List[float] = []
+    all_score_values.extend(reliability_scores)
+    all_score_values.extend(quality_overall)
+    all_score_values.extend(factual_scores)
+    all_score_values.extend(completeness_scores)
+
+    if all_score_values:
+        max_val = max(all_score_values)
+        min_pos = min(v for v in all_score_values if v > 0) if any(v > 0 for v in all_score_values) else 0
+        # Heuristic: treat as 0-10 scale if everything is in (0, 10] and not all zeros.
+        if 0 < max_val <= 10 and min_pos > 0:
+            scale = 10.0
+            reliability_scores = [v * scale for v in reliability_scores]
+            quality_overall = [v * scale for v in quality_overall]
+            factual_scores = [v * scale for v in factual_scores]
+            completeness_scores = [v * scale for v in completeness_scores]
+
     metrics = {
         "reliability": {
             "mean": statistics.mean(reliability_scores) if reliability_scores else 0,
