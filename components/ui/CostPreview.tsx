@@ -27,7 +27,10 @@ export function CostPreview({
 
   const formatMoney = (value: number | null, currency: string): string => {
     if (value === null || Number.isNaN(value)) return "-";
-    return value.toFixed(4) + " " + currency;
+    // Avoid misleading "everything is ~0.0001" due to hard rounding to 4 decimals.
+    const abs = Math.abs(value);
+    const digits = abs > 0 && abs < 0.01 ? 6 : 4;
+    return value.toFixed(digits) + " " + currency;
   };
 
   const formatNumber = (value: number | null, digits: number = 0): string => {
@@ -77,6 +80,13 @@ export function CostPreview({
             <span>Total</span>
             <strong>{formatMoney(currentCost.total, currentCost.currency)}</strong>
           </div>
+          {(currentCost.inPer1m !== null || currentCost.outPer1m !== null) && (
+            <div className="cost-hint">
+              Rates:{" "}
+              {currentCost.inPer1m !== null ? `${currentCost.inPer1m}/${currentCost.currency} per 1M in` : "—"}{" "}
+              · {currentCost.outPer1m !== null ? `${currentCost.outPer1m}/${currentCost.currency} per 1M out` : "—"}
+            </div>
+          )}
           {note && <div className="cost-hint">* {note}</div>}
         </div>
       )}

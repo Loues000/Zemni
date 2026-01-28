@@ -5,10 +5,21 @@ import { existsSync } from "fs";
 
 export const runtime = "nodejs";
 
+const isVercelRuntime = (): boolean => {
+  // Vercel sets this env var for both build and runtime.
+  // We only want the "public-results" path on Vercel; locally we want full-fidelity `benchmark/results/`.
+  return Boolean(process.env.VERCEL);
+};
+
+const resolveBenchmarkFilePath = (filename: string): string => {
+  const baseDir = isVercelRuntime() ? "public-results" : "results";
+  return path.join(process.cwd(), "benchmark", baseDir, filename);
+};
+
 export async function GET() {
   try {
-    const resultsPath = path.join(process.cwd(), "benchmark", "results", "benchmark_results.json");
-    const metricsPath = path.join(process.cwd(), "benchmark", "results", "benchmark_metrics.json");
+    const resultsPath = resolveBenchmarkFilePath("benchmark_results.json");
+    const metricsPath = resolveBenchmarkFilePath("benchmark_metrics.json");
     
     let results: any[] = [];
     let metrics: {
@@ -18,16 +29,20 @@ export async function GET() {
     } = { model_metrics: {}, comparative_metrics: {} };
     
     try {
-      const resultsData = await fs.readFile(resultsPath, "utf-8");
-      results = JSON.parse(resultsData);
+      if (existsSync(resultsPath)) {
+        const resultsData = await fs.readFile(resultsPath, "utf-8");
+        results = JSON.parse(resultsData);
+      }
     } catch (error) {
       // Results file doesn't exist yet or parsing failed
       console.error("Benchmark results not found or invalid:", error);
     }
     
     try {
-      const metricsData = await fs.readFile(metricsPath, "utf-8");
-      metrics = JSON.parse(metricsData);
+      if (existsSync(metricsPath)) {
+        const metricsData = await fs.readFile(metricsPath, "utf-8");
+        metrics = JSON.parse(metricsData);
+      }
     } catch (error) {
       // Metrics file doesn't exist yet or parsing failed
       console.error("Benchmark metrics not found or invalid:", error);

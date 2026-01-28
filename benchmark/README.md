@@ -22,6 +22,25 @@ OPENROUTER_API_KEY=your-api-key
 
 ## Usage
 
+## Deploy (Vercel) – Benchmark Results anzeigen
+
+Vercel bekommt keine Dateien aus `benchmark/results/`, weil dieses Verzeichnis absichtlich in `benchmark/.gitignore` ignoriert wird.
+Für Deployments wird daher ein separates, versioniertes Verzeichnis genutzt:
+
+- `benchmark/public-results/` (wird committed → wird zu Vercel deployed)
+- Lokal bleibt `benchmark/results/` die „Full-Fidelity“-Quelle
+
+### Workflow
+
+1. Benchmark lokal laufen lassen (schreibt nach `benchmark/results/`)
+2. Deploy-JSONs exportieren:
+
+```bash
+npm run bench:publish-results
+```
+
+3. Commit + Push → Vercel zeigt die Benchmarks über `/benchmarks`
+
 ### 1. Generate Test Cases
 
 Generate synthetic test cases using free models. Generated text is automatically saved and reused for future test cases.
