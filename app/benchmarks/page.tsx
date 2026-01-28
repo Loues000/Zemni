@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 interface BenchmarkResult {
   model_id: string;
@@ -65,6 +65,14 @@ interface BenchmarkData {
 
 type TaskFilter = "all" | "summary" | "quiz" | "flashcards";
 type TopicFilter = "all" | string;
+type SortKey =
+  | "score"
+  | "reliability"
+  | "content_quality"
+  | "cost_per_quality"
+  | "total_cost"
+  | "latency"
+  | "tests";
 
 export default function BenchmarksPage() {
   const [data, setData] = useState<BenchmarkData | null>(null);
@@ -72,18 +80,35 @@ export default function BenchmarksPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTask, setActiveTask] = useState<TaskFilter>("all");
   const [activeTopic, setActiveTopic] = useState<TopicFilter>("all");
+  const [selectedModelId, setSelectedModelId] = useState<string>("");
+  const [collapsedTaskSections, setCollapsedTaskSections] = useState<Record<string, boolean>>({});
+  const [sortKey, setSortKey] = useState<SortKey>("score");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [leaderboardLimit, setLeaderboardLimit] = useState<number>(20);
+  const [modelQuery, setModelQuery] = useState<string>("");
+  const [perTestFormat, setPerTestFormat] = useState<string>("all");
+  const [selectedTestKey, setSelectedTestKey] = useState<string>("");
 
   useEffect(() => {
-    fetch("/api/benchmarks")
+    const controller = new AbortController();
+
+    fetch("/api/benchmarks", { signal: controller.signal })
       .then((res) => res.json())
       .then((data) => {
         setData(data);
+        const modelIds = Object.keys(data.metrics || {});
+        if (modelIds.length > 0) {
+          setSelectedModelId(modelIds[0]);
+        }
         setLoading(false);
       })
       .catch((err) => {
+        if (err?.name === "AbortError") return;
         setError(err.message);
         setLoading(false);
       });
+
+    return () => controller.abort();
   }, []);
 
   if (loading) {
@@ -117,18 +142,24 @@ python run_benchmark.py --models "gpt-4o,claude-sonnet" --tasks summary,quiz`}
 
   const { metrics, metricsComprehensive, comparative } = data;
   const rankings = comparative.rankings || {};
-  const overallRanking = rankings.by_overall_score || rankings.by_combined_score || [];
 
-  // Get available topics from comprehensive metrics
-  const availableTopics = new Set<string>();
-  if (metricsComprehensive) {
-    Object.values(metricsComprehensive).forEach((comp) => {
-      if (comp.summary_stats?.topics_tested) {
-        comp.summary_stats.topics_tested.forEach((t) => availableTopics.add(t));
-      }
+  const modelIds = useMemo(() => Object.keys(metrics), [metrics]);
+
+  const topicsList = useMemo(() => {
+    const availableTopics = new Set<string>();
+
+    data.results.forEach((r) => {
+      if (r.test_case_topic) availableTopics.add(r.test_case_topic);
     });
-  }
-  const topicsList = Array.from(availableTopics).sort();
+
+    if (metricsComprehensive) {
+      Object.values(metricsComprehensive).forEach((comp) => {
+        comp.summary_stats?.topics_tested?.forEach((t) => availableTopics.add(t));
+      });
+    }
+
+    return Array.from(availableTopics).sort();
+  }, [data.results, metricsComprehensive]);
 
   // Get metrics for current filter
   const getFilteredMetrics = (modelId: string): ModelMetrics | null => {
@@ -159,76 +190,265 @@ python run_benchmark.py --models "gpt-4o,claude-sonnet" --tasks summary,quiz`}
     return comp.overall;
   };
 
-  const getScoreColor = (score: number) => {
-    if (score >= 80) return "#27ae60";
-    if (score >= 60) return "#f39c12";
-    return "#e74c3c";
-  };
-
-  const getRankBadge = (rank: number) => {
-    if (rank === 1) return { bg: "#ffd700", text: "🥇" };
-    if (rank === 2) return { bg: "#c0c0c0", text: "🥈" };
-    if (rank === 3) return { bg: "#cd7f32", text: "🥉" };
-    return { bg: "#ecf0f1", text: `#${rank}` };
-  };
-
   const formatTopicName = (topic: string) => {
     return topic.split("_").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
   };
 
+  const toggleTaskSection = (modelId: string, task: string) => {
+    const key = `${modelId}::${task}`;
+    setCollapsedTaskSections((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
+
+  const clamp0to100 = (n: number) => Math.max(0, Math.min(100, n));
+  const scoreFor = (m: ModelMetrics | null) => (m?.overall_score || m?.combined_score || 0);
+  const formatMoney = (n: number) => `$${(Number.isFinite(n) ? n : 0).toFixed(4)}`;
+  const formatMs = (n: number) => `${Math.round(Number.isFinite(n) ? n : 0)}ms`;
+
+  const defaultSortDirForKey = (key: SortKey): "asc" | "desc" => {
+    if (key === "cost_per_quality" || key === "total_cost" || key === "latency") return "asc";
+    return "desc";
+  };
+
+  const filteredResults = useMemo(() => {
+    return data.results.filter((r) => {
+      if (activeTask !== "all" && r.task !== activeTask) return false;
+      if (activeTopic !== "all" && r.test_case_topic !== activeTopic) return false;
+      return true;
+    });
+  }, [activeTask, activeTopic, data.results]);
+
+  const filteredSummary = useMemo(() => {
+    const models = new Set<string>();
+    const formats = new Set<string>();
+    filteredResults.forEach((r) => {
+      models.add(r.model_id);
+      if (r.test_case_format) formats.add(r.test_case_format);
+    });
+
+    const totalCost = filteredResults.reduce((sum, r) => sum + (typeof r.cost === "number" ? r.cost : 0), 0);
+    const avgLatency =
+      filteredResults.length > 0
+        ? filteredResults.reduce((sum, r) => sum + (typeof r.latency_ms === "number" ? r.latency_ms : 0), 0) /
+          filteredResults.length
+        : 0;
+    const avgReliability =
+      filteredResults.length > 0
+        ? filteredResults.reduce((sum, r) => sum + (typeof r.reliability_score === "number" ? r.reliability_score : 0), 0) /
+          filteredResults.length
+        : 0;
+    const avgQuality =
+      filteredResults.length > 0
+        ? filteredResults.reduce((sum, r) => sum + (typeof r.content_quality_score === "number" ? r.content_quality_score : 0), 0) /
+          filteredResults.length
+        : 0;
+
+    return {
+      modelCount: models.size,
+      testCount: filteredResults.length,
+      formatCount: formats.size,
+      totalCost,
+      avgLatency,
+      avgReliability,
+      avgQuality,
+    };
+  }, [filteredResults]);
+
+  const leaderboardRows = useMemo(() => {
+    const query = modelQuery.trim().toLowerCase();
+
+    const rows = modelIds
+      .map((modelId) => ({ modelId, model: getFilteredMetrics(modelId) }))
+      .filter((row) => row.model && (row.model.test_count || 0) > 0)
+      .filter((row) => (query ? row.modelId.toLowerCase().includes(query) : true));
+
+    const valueFor = (m: ModelMetrics, key: SortKey): number => {
+      if (key === "score") return scoreFor(m);
+      if (key === "reliability") return m.reliability?.mean ?? -Infinity;
+      if (key === "content_quality") return m.content_quality?.mean ?? -Infinity;
+      if (key === "cost_per_quality") return m.cost_per_quality_point ?? Infinity;
+      if (key === "total_cost") return m.cost?.total ?? Infinity;
+      if (key === "latency") return m.latency?.mean ?? Infinity;
+      return m.test_count ?? -Infinity;
+    };
+
+    const dir = sortDir === "asc" ? 1 : -1;
+    rows.sort((a, b) => {
+      if (!a.model && !b.model) return 0;
+      if (!a.model) return 1;
+      if (!b.model) return -1;
+      const av = valueFor(a.model, sortKey);
+      const bv = valueFor(b.model, sortKey);
+      if (av === bv) return a.modelId.localeCompare(b.modelId);
+      return (av - bv) * dir;
+    });
+
+    return rows;
+  }, [getFilteredMetrics, modelIds, modelQuery, sortDir, sortKey]);
+
+  const limitedLeaderboardRows = useMemo(() => {
+    if (leaderboardLimit <= 0) return leaderboardRows;
+    return leaderboardRows.slice(0, leaderboardLimit);
+  }, [leaderboardLimit, leaderboardRows]);
+
+  const availableFormatsForSelectedModel = useMemo(() => {
+    if (!selectedModelId) return [];
+    const formats = new Set<string>();
+    filteredResults.forEach((r) => {
+      if (r.model_id !== selectedModelId) return;
+      if (r.test_case_format) formats.add(r.test_case_format);
+    });
+    return Array.from(formats).sort();
+  }, [filteredResults, selectedModelId]);
+
+  const selectedTest = useMemo(() => {
+    if (!selectedTestKey) return null;
+    return (
+      filteredResults.find((r) => `${r.model_id}::${r.task}::${r.test_case_id}` === selectedTestKey) ||
+      data.results.find((r) => `${r.model_id}::${r.task}::${r.test_case_id}` === selectedTestKey) ||
+      null
+    );
+  }, [data.results, filteredResults, selectedTestKey]);
+
+  const selectedModelMetrics = getFilteredMetrics(selectedModelId);
+
   return (
     <div className="benchmark-container">
-      <h1>Model Benchmarks</h1>
-      <p style={{ color: "var(--text-secondary)", marginBottom: "2rem" }}>
-        Comprehensive evaluation of LLM models on summary, quiz, and flashcard generation tasks.
-      </p>
+      <div className="benchmark-header">
+        <h1>Model Benchmarks</h1>
+        <p className="benchmark-subtitle">Compare model performance across tasks. Scores use a 1-100 scale.</p>
+      </div>
 
-      {/* Task Tabs */}
-      <div style={{ marginBottom: "2rem", borderBottom: "2px solid var(--stroke)" }}>
-        <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
-          {(["all", "summary", "quiz", "flashcards"] as TaskFilter[]).map((task) => (
-            <button
-              key={task}
-              onClick={() => setActiveTask(task)}
-              className={`benchmark-button ${activeTask === task ? "benchmark-button-active" : ""}`}
-            >
-              {task === "all" ? "All Tasks" : task}
-            </button>
-          ))}
-        </div>
-
-        {/* Topic Filter */}
-        {topicsList.length > 0 && (
-          <div className="benchmark-topic-filter">
-            <span className="benchmark-topic-filter-label">Topic:</span>
-            <button
-              onClick={() => setActiveTopic("all")}
-              className={`benchmark-topic-button ${activeTopic === "all" ? "benchmark-topic-button-active" : ""}`}
-            >
-              All Topics
-            </button>
-            {topicsList.map((topic) => (
+      <div className="benchmark-controls" role="region" aria-label="Benchmark filters">
+        <div className="benchmark-controls-row">
+          <div className="benchmark-segment" role="tablist" aria-label="Task filter">
+            {(["all", "summary", "quiz", "flashcards"] as TaskFilter[]).map((task) => (
               <button
-                key={topic}
-                onClick={() => setActiveTopic(topic)}
-                className={`benchmark-topic-button ${activeTopic === topic ? "benchmark-topic-button-active" : ""}`}
+                key={task}
+                type="button"
+                onClick={() => setActiveTask(task)}
+                aria-pressed={activeTask === task}
+                className={`benchmark-button ${activeTask === task ? "benchmark-button-active" : ""}`}
               >
-                {formatTopicName(topic)}
+                {task === "all" ? "All" : task}
               </button>
             ))}
           </div>
-        )}
+
+          <label className="benchmark-control">
+            <span className="benchmark-control-label">Topic</span>
+            <select value={activeTopic} onChange={(e) => setActiveTopic(e.target.value)} className="benchmark-control-input">
+              <option value="all">All topics</option>
+              {topicsList.map((topic) => (
+                <option key={topic} value={topic}>
+                  {formatTopicName(topic)}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="benchmark-control">
+            <span className="benchmark-control-label">Sort</span>
+            <select
+              value={sortKey}
+              onChange={(e) => {
+                const nextKey = e.target.value as SortKey;
+                setSortKey(nextKey);
+                setSortDir(defaultSortDirForKey(nextKey));
+              }}
+              className="benchmark-control-input"
+            >
+              <option value="score">Score</option>
+              <option value="reliability">Reliability</option>
+              <option value="content_quality">Content quality</option>
+              <option value="cost_per_quality">Cost / quality</option>
+              <option value="total_cost">Total cost</option>
+              <option value="latency">Latency</option>
+              <option value="tests">Tests</option>
+            </select>
+          </label>
+
+          <label className="benchmark-control">
+            <span className="benchmark-control-label">Show</span>
+            <select
+              value={leaderboardLimit}
+              onChange={(e) => setLeaderboardLimit(Number(e.target.value))}
+              className="benchmark-control-input"
+            >
+              <option value={10}>Top 10</option>
+              <option value={20}>Top 20</option>
+              <option value={50}>Top 50</option>
+              <option value={0}>All</option>
+            </select>
+          </label>
+
+          <label className="benchmark-control benchmark-control-grow">
+            <span className="benchmark-control-label">Search</span>
+            <input
+              value={modelQuery}
+              onChange={(e) => setModelQuery(e.target.value)}
+              placeholder="Filter by model id..."
+              className="benchmark-control-input"
+            />
+          </label>
+
+          <button
+            type="button"
+            className="benchmark-control-button"
+            onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+            aria-label={`Toggle sort direction (currently ${sortDir})`}
+            title={`Sort: ${sortDir === "asc" ? "ascending" : "descending"}`}
+          >
+            {sortDir === "asc" ? "Asc" : "Desc"}
+          </button>
+        </div>
+
+        <div className="benchmark-kpi-grid" aria-label="Summary stats">
+          <div className="benchmark-kpi">
+            <div className="benchmark-kpi-label">Models</div>
+            <div className="benchmark-kpi-value">{filteredSummary.modelCount}</div>
+          </div>
+          <div className="benchmark-kpi">
+            <div className="benchmark-kpi-label">Tests</div>
+            <div className="benchmark-kpi-value">{filteredSummary.testCount}</div>
+          </div>
+          <div className="benchmark-kpi">
+            <div className="benchmark-kpi-label">Formats</div>
+            <div className="benchmark-kpi-value">{filteredSummary.formatCount}</div>
+          </div>
+          <div className="benchmark-kpi">
+            <div className="benchmark-kpi-label">Avg reliability</div>
+            <div className="benchmark-kpi-value">{filteredSummary.avgReliability.toFixed(1)}</div>
+          </div>
+          <div className="benchmark-kpi">
+            <div className="benchmark-kpi-label">Avg quality</div>
+            <div className="benchmark-kpi-value">{filteredSummary.avgQuality.toFixed(1)}</div>
+          </div>
+          <div className="benchmark-kpi">
+            <div className="benchmark-kpi-label">Total cost</div>
+            <div className="benchmark-kpi-value">{formatMoney(filteredSummary.totalCost)}</div>
+          </div>
+          <div className="benchmark-kpi">
+            <div className="benchmark-kpi-label">Avg latency</div>
+            <div className="benchmark-kpi-value">{formatMs(filteredSummary.avgLatency)}</div>
+          </div>
+        </div>
       </div>
 
       {/* Overall Rankings */}
       <section className="benchmark-section">
-        <h2>
-          {activeTask !== "all" ? `${activeTask.charAt(0).toUpperCase() + activeTask.slice(1)} ` : ""}
-          {activeTopic !== "all" ? `${formatTopicName(activeTopic)} ` : ""}
-          Rankings
-        </h2>
+        <div className="benchmark-section-header">
+          <h2>Leaderboard</h2>
+          <div className="benchmark-stats-text">
+            Showing {limitedLeaderboardRows.length} of {leaderboardRows.length} models
+            {activeTask !== "all" ? ` | Task: ${activeTask}` : ""}
+            {activeTopic !== "all" ? ` | Topic: ${formatTopicName(activeTopic)}` : ""}
+          </div>
+        </div>
         {activeTask !== "all" && metricsComprehensive && Object.keys(metricsComprehensive).length > 0 && (() => {
-          // Prüfe ob Task-Daten vorhanden sind
+          // Check if task data is present
           const hasTaskData = Object.values(metricsComprehensive).some(comp => {
             const taskMetrics = comp.by_task?.[activeTask];
             return taskMetrics && taskMetrics.test_count && taskMetrics.test_count > 0;
@@ -239,27 +459,20 @@ python run_benchmark.py --models "gpt-4o,claude-sonnet" --tasks summary,quiz`}
           
           if (!hasTaskData && !isTested && activeTask !== "summary") {
             return (
-              <div style={{ 
-                padding: "2rem", 
-                textAlign: "center", 
-                color: "var(--text-secondary)",
-                fontStyle: "italic",
-                backgroundColor: "var(--background-secondary)",
-                borderRadius: "8px"
-              }}>
-                <p style={{ fontSize: "1.1rem", marginBottom: "0.5rem" }}>
-                  {activeTask.charAt(0).toUpperCase() + activeTask.slice(1)}-Daten werden später bereitgestellt
-                </p>
-                <p style={{ fontSize: "0.9rem" }}>
-                  Bisher wurden nur Summary-Tests durchgeführt. Quiz- und Flashcard-Tests folgen in Kürze.
-                </p>
+              <div className="benchmark-empty-state" role="status">
+                <div className="benchmark-empty-title">
+                  {activeTask.charAt(0).toUpperCase() + activeTask.slice(1)} data will be available later
+                </div>
+                <div className="benchmark-empty-subtitle">
+                  So far only summary tests have been executed. Quiz and flashcard benchmarks will follow.
+                </div>
               </div>
             );
           }
           return null;
         })()}
         {(() => {
-          // Prüfe ob Daten für den aktiven Task vorhanden sind
+          // Hide the leaderboard table if the selected task has no data yet.
           if (activeTask !== "all" && metricsComprehensive && Object.keys(metricsComprehensive).length > 0) {
             const hasTaskData = Object.values(metricsComprehensive).some(comp => {
               const taskMetrics = comp.by_task?.[activeTask];
@@ -270,61 +483,103 @@ python run_benchmark.py --models "gpt-4o,claude-sonnet" --tasks summary,quiz`}
             );
             
             if (!hasTaskData && !isTested && activeTask !== "summary") {
-              return null; // Keine Tabelle anzeigen wenn keine Daten
+              return null;
             }
           }
           return (
         <div style={{ overflowX: "auto" }}>
-              <table className="benchmark-table">
+              <table className="benchmark-table" aria-label="Model leaderboard">
             <thead>
               <tr>
-                <th>Rank</th>
+                <th style={{ width: "72px" }}>Rank</th>
                 <th>Model</th>
-                <th style={{ textAlign: "right" }}>Overall Score</th>
-                <th style={{ textAlign: "right" }}>Reliability</th>
-                <th style={{ textAlign: "right" }}>Content Quality</th>
-                <th style={{ textAlign: "right" }}>Cost per Quality</th>
-                <th style={{ textAlign: "right" }}>Total Cost</th>
-                <th style={{ textAlign: "right" }}>Tests</th>
+                <th className="benchmark-th-right">Score</th>
+                <th className="benchmark-th-right">Reliability</th>
+                <th className="benchmark-th-right">Quality</th>
+                <th className="benchmark-th-right">Cost / quality</th>
+                <th className="benchmark-th-right">Total cost</th>
+                <th className="benchmark-th-right">Latency</th>
+                <th className="benchmark-th-right">Tests</th>
               </tr>
             </thead>
             <tbody>
-              {overallRanking.slice(0, 20).map((modelId, idx) => {
-                const model = getFilteredMetrics(modelId);
+              {limitedLeaderboardRows.map(({ modelId, model }, idx) => {
                 if (!model) return null;
                 const rank = idx + 1;
-                const badge = getRankBadge(rank);
-                const score = model.overall_score || model.combined_score || 0;
-                const scoreClass = score >= 80 ? "benchmark-score-high" : score >= 60 ? "benchmark-score-medium" : "benchmark-score-low";
-                const badgeClass = rank === 1 ? "benchmark-rank-badge-gold" : rank === 2 ? "benchmark-rank-badge-silver" : rank === 3 ? "benchmark-rank-badge-bronze" : "benchmark-rank-badge-default";
+                const badgeClass =
+                  rank === 1
+                    ? "benchmark-rank-badge-gold"
+                    : rank === 2
+                      ? "benchmark-rank-badge-silver"
+                      : rank === 3
+                        ? "benchmark-rank-badge-bronze"
+                        : "benchmark-rank-badge-default";
+
+                const score = scoreFor(model);
+                const scoreClass =
+                  score >= 80 ? "benchmark-score-high" : score >= 60 ? "benchmark-score-medium" : "benchmark-score-low";
+                const isSelected = selectedModelId === modelId;
+
                 return (
-                  <tr key={modelId}>
+                  <tr
+                    key={modelId}
+                    className={isSelected ? "benchmark-row-selected" : undefined}
+                    onClick={() => {
+                      setSelectedModelId(modelId);
+                      setSelectedTestKey("");
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        setSelectedModelId(modelId);
+                        setSelectedTestKey("");
+                      }
+                    }}
+                    aria-label={`Select ${modelId}`}
+                  >
                     <td>
-                      <span className={`benchmark-rank-badge ${badgeClass}`}>
-                        {badge.text}
-                      </span>
+                      <span className={`benchmark-rank-badge ${badgeClass}`}>{rank}</span>
                     </td>
-                    <td style={{ fontWeight: "600" }}>{modelId}</td>
-                    <td style={{ textAlign: "right" }}>
-                      <span className={scoreClass}>
-                        {score.toFixed(2)}
-                      </span>
+                    <td style={{ fontWeight: "600" }}>
+                      <span className="benchmark-model-id">{modelId}</span>
                     </td>
-                    <td style={{ textAlign: "right" }}>
-                      {model.reliability?.mean?.toFixed(2) || "N/A"}
+                    <td className="benchmark-td-right">
+                      <div className="benchmark-scorecell">
+                        <span className={scoreClass}>{score.toFixed(1)}</span>
+                        <div className="benchmark-bar" aria-hidden="true">
+                          <div className="benchmark-bar-fill" style={{ width: `${clamp0to100(score)}%` }} />
+                        </div>
+                      </div>
                     </td>
-                    <td style={{ textAlign: "right" }}>
-                      {model.content_quality?.mean?.toFixed(2) || "N/A"}
+                    <td className="benchmark-td-right">
+                      {model.reliability?.mean != null ? (
+                        <span title={model.reliability?.std_dev != null ? `std dev: ${model.reliability.std_dev.toFixed(2)}` : undefined}>
+                          {model.reliability.mean.toFixed(1)}
+                        </span>
+                      ) : (
+                        "N/A"
+                      )}
                     </td>
-                    <td style={{ textAlign: "right" }}>
-                      ${(model.cost_per_quality_point || 0).toFixed(4)}
+                    <td className="benchmark-td-right">
+                      {model.content_quality?.mean != null ? (
+                        <span
+                          title={
+                            model.content_quality?.std_dev != null ? `std dev: ${model.content_quality.std_dev.toFixed(2)}` : undefined
+                          }
+                        >
+                          {model.content_quality.mean.toFixed(1)}
+                        </span>
+                      ) : (
+                        "N/A"
+                      )}
                     </td>
-                    <td style={{ textAlign: "right" }}>
-                      ${(model.cost?.total || 0).toFixed(4)}
+                    <td className="benchmark-td-right">
+                      {model.cost_per_quality_point != null ? formatMoney(model.cost_per_quality_point) : "N/A"}
                     </td>
-                    <td style={{ textAlign: "right" }}>
-                      {model.test_count || 0}
-                    </td>
+                    <td className="benchmark-td-right">{model.cost?.total != null ? formatMoney(model.cost.total) : "N/A"}</td>
+                    <td className="benchmark-td-right">{model.latency?.mean != null ? formatMs(model.latency.mean) : "N/A"}</td>
+                    <td className="benchmark-td-right">{model.test_count ?? 0}</td>
                   </tr>
                 );
               })}
@@ -350,19 +605,33 @@ python run_benchmark.py --models "gpt-4o,claude-sonnet" --tasks summary,quiz`}
                       const taskMetrics = comp.by_task?.[task];
                       const hasData = taskMetrics && taskMetrics.test_count && taskMetrics.test_count > 0;
                       const isTested = comp.summary_stats?.tasks_tested?.includes(task);
+                      const key = `${modelId}::${task}`;
+                      const isCollapsible = task === "quiz" || task === "flashcards";
+                      const isCollapsed = isCollapsible && collapsedTaskSections[key];
                       
                       if (!hasData && !isTested) {
-                        // Task wurde noch nicht getestet - zeige "Coming soon" Nachricht
+                        // Task has not been tested yet.
                         return (
                           <div key={task} className="benchmark-task-section" style={{ opacity: 0.6 }}>
-                            <h4 className="benchmark-task-title">{task}</h4>
+                            <h4 className="benchmark-task-title">
+                              {task}
+                              {isCollapsible && (
+                                <button
+                                  type="button"
+                                  style={{ marginLeft: "0.5rem", fontSize: "0.8rem" }}
+                                  onClick={() => toggleTaskSection(modelId, task)}
+                                >
+                                  {isCollapsed ? "Expand" : "Collapse"}
+                                </button>
+                              )}
+                            </h4>
                             <div style={{ 
                               padding: "1rem", 
                               textAlign: "center", 
                               color: "var(--text-secondary)",
                               fontStyle: "italic"
                             }}>
-                              Daten werden später bereitgestellt
+                              Data will be added later
                             </div>
                           </div>
                         );
@@ -374,25 +643,46 @@ python run_benchmark.py --models "gpt-4o,claude-sonnet" --tasks summary,quiz`}
                       const taskScoreClass = taskScore >= 80 ? "benchmark-score-high" : taskScore >= 60 ? "benchmark-score-medium" : "benchmark-score-low";
                       return (
                         <div key={task} className="benchmark-task-section">
-                          <h4 className="benchmark-task-title">{task}</h4>
-                          <div className="benchmark-metric-row">
-                            <span className="benchmark-metric-label">Score:</span>
-                            <span className={`benchmark-metric-value ${taskScoreClass}`}>
-                              {taskScore.toFixed(2)}
-                            </span>
-                          </div>
-                          <div className="benchmark-metric-row">
-                            <span className="benchmark-metric-label">Reliability:</span>
-                            <span className="benchmark-metric-value">{taskMetrics.reliability?.mean?.toFixed(2) || "N/A"}</span>
-                          </div>
-                          <div className="benchmark-metric-row">
-                            <span className="benchmark-metric-label">Quality:</span>
-                            <span className="benchmark-metric-value">{taskMetrics.content_quality?.mean?.toFixed(2) || "N/A"}</span>
-                          </div>
-                          <div className="benchmark-metric-row">
-                            <span className="benchmark-metric-label">Tests:</span>
-                            <span className="benchmark-metric-value">{taskMetrics.test_count || 0}</span>
-                          </div>
+                          <h4 className="benchmark-task-title">
+                            {task}
+                            {isCollapsible && (
+                              <button
+                                type="button"
+                                style={{ marginLeft: "0.5rem", fontSize: "0.8rem" }}
+                                onClick={() => toggleTaskSection(modelId, task)}
+                              >
+                                {isCollapsed ? "Expand" : "Collapse"}
+                              </button>
+                            )}
+                          </h4>
+                          {!isCollapsed && (
+                            <>
+                              <div className="benchmark-metric-row">
+                                <span className="benchmark-metric-label">Score:</span>
+                                <span className={`benchmark-metric-value ${taskScoreClass}`}>
+                                  {taskScore.toFixed(2)}
+                                </span>
+                              </div>
+                              <div className="benchmark-metric-row">
+                                <span className="benchmark-metric-label">Reliability:</span>
+                                <span className="benchmark-metric-value">
+                                  {taskMetrics.reliability?.mean?.toFixed(2) || "N/A"}
+                                </span>
+                              </div>
+                              <div className="benchmark-metric-row">
+                                <span className="benchmark-metric-label">Quality:</span>
+                                <span className="benchmark-metric-value">
+                                  {taskMetrics.content_quality?.mean?.toFixed(2) || "N/A"}
+                                </span>
+                              </div>
+                              <div className="benchmark-metric-row">
+                                <span className="benchmark-metric-label">Tests:</span>
+                                <span className="benchmark-metric-value">
+                                  {taskMetrics.test_count || 0}
+                                </span>
+                              </div>
+                            </>
+                          )}
                         </div>
                       );
                     })}
@@ -455,6 +745,163 @@ python run_benchmark.py --models "gpt-4o,claude-sonnet" --tasks summary,quiz`}
           </div>
         </section>
       )}
+
+      {/* Per-test breakdown for selected model */}
+      <section className="benchmark-section">
+        <h2>Model Explorer</h2>
+        <div className="benchmark-explorer-controls">
+          <label className="benchmark-control benchmark-control-inline">
+            <span className="benchmark-control-label">Model</span>
+            <select
+              value={selectedModelId}
+              onChange={(e) => {
+                setSelectedModelId(e.target.value);
+                setSelectedTestKey("");
+                setPerTestFormat("all");
+              }}
+              className="benchmark-control-input"
+            >
+              {modelIds.map((id) => (
+                <option key={id} value={id}>
+                  {id}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="benchmark-control benchmark-control-inline">
+            <span className="benchmark-control-label">Format</span>
+            <select value={perTestFormat} onChange={(e) => setPerTestFormat(e.target.value)} className="benchmark-control-input">
+              <option value="all">All</option>
+              {availableFormatsForSelectedModel.map((f) => (
+                <option key={f} value={f}>
+                  {f}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div className="benchmark-stats-text benchmark-explorer-context">
+            {activeTask !== "all" ? `Task: ${activeTask}` : "All tasks"}
+            {activeTopic !== "all" ? ` | Topic: ${formatTopicName(activeTopic)}` : ""}
+          </div>
+        </div>
+
+        {selectedModelMetrics && (
+          <div className="benchmark-model-summary" aria-label="Selected model summary">
+            <div className="benchmark-metric-row">
+              <span className="benchmark-metric-label">Score</span>
+              <span className="benchmark-metric-value">{scoreFor(selectedModelMetrics).toFixed(1)}</span>
+            </div>
+            <div className="benchmark-metric-row">
+              <span className="benchmark-metric-label">Reliability</span>
+              <span className="benchmark-metric-value">{selectedModelMetrics.reliability?.mean?.toFixed(1) ?? "N/A"}</span>
+            </div>
+            <div className="benchmark-metric-row">
+              <span className="benchmark-metric-label">Quality</span>
+              <span className="benchmark-metric-value">{selectedModelMetrics.content_quality?.mean?.toFixed(1) ?? "N/A"}</span>
+            </div>
+            <div className="benchmark-metric-row">
+              <span className="benchmark-metric-label">Cost / quality</span>
+              <span className="benchmark-metric-value">
+                {selectedModelMetrics.cost_per_quality_point != null ? formatMoney(selectedModelMetrics.cost_per_quality_point) : "N/A"}
+              </span>
+            </div>
+            <div className="benchmark-metric-row">
+              <span className="benchmark-metric-label">Total cost</span>
+              <span className="benchmark-metric-value">
+                {selectedModelMetrics.cost?.total != null ? formatMoney(selectedModelMetrics.cost.total) : "N/A"}
+              </span>
+            </div>
+            <div className="benchmark-metric-row">
+              <span className="benchmark-metric-label">Latency</span>
+              <span className="benchmark-metric-value">{selectedModelMetrics.latency?.mean != null ? formatMs(selectedModelMetrics.latency.mean) : "N/A"}</span>
+            </div>
+          </div>
+        )}
+        {selectedModelId && (<>
+          <div style={{ overflowX: "auto" }}>
+            <table className="benchmark-table benchmark-table-compact" aria-label="Per-test results">
+              <thead>
+                <tr>
+                  <th>Test</th>
+                  <th>Task</th>
+                  <th>Topic</th>
+                  <th>Format</th>
+                  <th className="benchmark-th-right">Rel</th>
+                  <th className="benchmark-th-right">Qual</th>
+                  <th className="benchmark-th-right">Cost</th>
+                  <th className="benchmark-th-right">Latency</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.results
+                  .filter((r) => r.model_id === selectedModelId)
+                  .filter((r) => (activeTask === "all" ? true : r.task === activeTask))
+                  .filter((r) => (activeTopic === "all" ? true : r.test_case_topic === activeTopic))
+                  .filter((r) => (perTestFormat === "all" ? true : r.test_case_format === perTestFormat))
+                  .sort((a, b) => a.test_case_id.localeCompare(b.test_case_id))
+                  .map((r) => {
+                    const key = `${r.model_id}::${r.task}::${r.test_case_id}`;
+                    const isSelected = key === selectedTestKey;
+                    return (
+                      <tr
+                        key={key}
+                        className={isSelected ? "benchmark-row-selected" : undefined}
+                        onClick={() => setSelectedTestKey(key)}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") setSelectedTestKey(key);
+                        }}
+                        aria-label={`Select test ${r.test_case_id}`}
+                      >
+                        <td>{r.test_case_id}</td>
+                        <td>{r.task}</td>
+                        <td>{r.test_case_topic || "N/A"}</td>
+                        <td>{r.test_case_format || "N/A"}</td>
+                        <td className="benchmark-td-right">
+                          {typeof r.reliability_score === "number" ? r.reliability_score.toFixed(1) : "N/A"}
+                        </td>
+                        <td className="benchmark-td-right">
+                          {typeof r.content_quality_score === "number" ? r.content_quality_score.toFixed(1) : "N/A"}
+                        </td>
+                        <td className="benchmark-td-right">{typeof r.cost === "number" ? formatMoney(r.cost) : "N/A"}</td>
+                        <td className="benchmark-td-right">
+                          {typeof r.latency_ms === "number" ? formatMs(r.latency_ms) : "N/A"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="benchmark-output">
+            <div className="benchmark-output-header">
+              <div>
+                <div className="benchmark-output-title">Output</div>
+                <div className="benchmark-output-subtitle">
+                  {selectedTest ? `${selectedTest.task} - ${selectedTest.test_case_id}` : "Select a row to preview the full output"}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="benchmark-control-button"
+                disabled={!selectedTest?.output_text}
+                onClick={() => {
+                  const text = selectedTest?.output_text || "";
+                  if (!text) return;
+                  navigator.clipboard?.writeText(text);
+                }}
+              >
+                Copy
+              </button>
+            </div>
+            <pre className="benchmark-output-pre">{selectedTest?.output_text || "N/A"}</pre>
+          </div>
+        </>)}
+      </section>
 
       {/* Detailed Model Metrics */}
       <section className="benchmark-section">
