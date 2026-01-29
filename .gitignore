@@ -54,4 +54,4 @@ AGENTS.md
 # Local-only scratch/data (keep ignored)
 data/
 old_guidelines.md
-.benchmark/results/
+benchmark/results/
