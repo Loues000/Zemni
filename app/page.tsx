@@ -1,4 +1,4 @@
-import AppClient from "./components/app-client";
+import AppClient from "@/components/features/AppClient";
 
 export default function Page() {
   return <AppClient />;

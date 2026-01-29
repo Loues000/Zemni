@@ -6,6 +6,18 @@
   - Extracted handlers to `lib/handlers/` (file-handlers, tab-handlers, generation-handlers, export-handlers, quiz-handlers, summary-handlers)
   - Created custom hooks in `hooks/` (useAppState, useOutputManagement, useFileHandling, useGeneration, useExport, useQuizState, useEditing)
   - Refactored `app-client.tsx` from 1591 to ~960 lines with better structure
+  - Moved `app/components/app-client.tsx` → `components/features/AppClient.tsx` for better organization
+- ✅ Benchmarks page refactoring (Jan 2025)
+  - Refactored `app/benchmarks/page.tsx` from 1057 lines to 177 lines (83% reduction)
+  - Extracted types to `app/benchmarks/types.ts`
+  - Extracted utilities to `app/benchmarks/utils.ts`
+  - Created hooks: `useBenchmarkData`, `useBenchmarkFilters`, `useBenchmarkMetrics`
+  - Extracted 7 components: `BenchmarkControls`, `LeaderboardTable`, `TaskPerformanceSection`, `TopicPerformanceSection`, `ModelExplorer`, `DetailedMetricsSection`, `RankingsSection`
+  - Improved maintainability and code organization
+- ✅ Project structure cleanup (Jan 2025)
+  - Removed empty directories: `app/api/history/`, `data/`, `lib/parse-pdf-client/`
+  - Consolidated benchmark routes: removed `app/benchmark/page.tsx` redirect component, added Next.js redirect in `next.config.js`
+  - Cleaned up empty directories after file moves
 - ✅ Heavy usage improvement, UI/UX makeover with logic about paths between buttons etc.
   - Improved button state management with clearer navigation flows
   - Enhanced accessibility (aria-labels, titles, tooltips)

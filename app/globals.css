@@ -2969,7 +2969,7 @@ body.flashcard-player-open {
 }
 
 .benchmark-section {
-  margin-bottom: 3rem;
+  margin-bottom: 2rem;
 }
 
 .benchmark-section-header {
@@ -3140,7 +3140,7 @@ body.flashcard-player-open {
 
 .benchmark-card {
   background: var(--surface);
-  padding: 1.5rem;
+  padding: 1.25rem;
   border-radius: var(--radius);
   border: 1px solid var(--stroke);
 }
@@ -3249,13 +3249,17 @@ body.flashcard-player-open {
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
 }
 
+.benchmark-grid-300 {
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+}
+
 .benchmark-grid-400 {
   grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
 }
 
 .benchmark-task-section {
   border-left: 4px solid var(--accent);
-  padding-left: 1rem;
+  padding-left: 0.75rem;
 }
 
 .benchmark-task-title {

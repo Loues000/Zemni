@@ -55,18 +55,25 @@ App runs on http://localhost:3420
 
 ```
 app/                      # Next.js Routes (App Router)
-  api/                    # Route Handlers (models, summarize, refine, notion, ...)
-  components/app-client.tsx
+  api/                    # Route Handlers (models, summarize, refine, notion, benchmarks, ...)
+  benchmarks/             # Benchmark results display page
+    components/           # Benchmark-specific components
+    hooks/               # Benchmark-specific hooks
+    types.ts              # Benchmark TypeScript types
+    utils.ts              # Benchmark utility functions
+    page.tsx              # Main benchmarks page
+  settings/               # Settings page
   layout.tsx
-  page.tsx
+  page.tsx                # Main app page (uses AppClient)
 
 components/               # UI/feature components (shared)
-  features/
-  ui/
+  features/               # Feature components (AppClient, InputPanel, OutputTabs, ...)
+  ui/                     # Generic UI components (Buttons, Icons, etc.)
 hooks/                    # Custom React Hooks
 types/                    # Shared TypeScript Types
 lib/                      # Shared Libraries (OpenRouter, Notion, Prompts, ...)
-  parse-pdf-client.ts     # Client-side PDF Parsing (pdfjs)
+  handlers/               # Complex handler logic, context creation, wrappers
+  utils/                  # Utility functions (debounce, retry, error messages, ...)
 config/                   # Configuration (models/prices)
 docs/                     # Project docs (MVP, TODOs, ...)
 guidelines/               # AI rule sets (general + mode add-ons)
@@ -76,6 +83,9 @@ guidelines/               # AI rule sets (general + mode add-ons)
   quiz.en.md
   base.de.md              # legacy DE (kept for reference)
   base.full.de.md         # legacy DE (kept for reference)
+benchmark/                # Python-based benchmark system (separate tool)
+  results/                # Local benchmark results (gitignored)
+  public-results/         # Exported results for deployment (committed)
 ```
 
 ## Model configuration

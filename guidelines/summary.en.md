@@ -10,6 +10,7 @@ These rules apply **in addition** to `guidelines/general.en.md` and only for the
 - Prefer **more** structure over long unstructured bullet dumps:
   - Use multiple H2 blocks for major subtopics.
   - Use H3 to group bullets under a clear sub-subtopic.
+- Really try to bring a structure in the dummarie via the different headlines, a summary only using the same headline typ over and over is not allowed.
 - Do not use numbered headings.
 - Do not include page/slide numbers or explicit source references.
 
