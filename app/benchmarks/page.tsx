@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 interface BenchmarkResult {
   model_id: string;
@@ -111,58 +111,25 @@ export default function BenchmarksPage() {
     return () => controller.abort();
   }, []);
 
-  if (loading) {
-    return (
-      <div style={{ padding: "2rem", textAlign: "center" }}>
-        <p>Loading benchmark data...</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div style={{ padding: "2rem", textAlign: "center", color: "red" }}>
-        <p>Error loading benchmark data: {error}</p>
-      </div>
-    );
-  }
-
-  if (!data || !data.hasResults) {
-    return (
-      <div style={{ padding: "2rem", maxWidth: "800px", margin: "0 auto" }}>
-        <h1>Model Benchmarks</h1>
-        <p>No benchmark results found. Run the benchmark first:</p>
-        <pre style={{ background: "#f5f5f5", padding: "1rem", borderRadius: "4px", overflow: "auto" }}>
-          {`cd benchmark
-python run_benchmark.py --models "gpt-4o,claude-sonnet" --tasks summary,quiz`}
-        </pre>
-      </div>
-    );
-  }
-
-  const { metrics, metricsComprehensive, comparative } = data;
+  // Extract data properties safely
+  const metrics = data?.metrics || {};
+  const metricsComprehensive = data?.metricsComprehensive;
+  const comparative = data?.comparative || {};
   const rankings = comparative.rankings || {};
 
-  const modelIds = useMemo(() => Object.keys(metrics), [metrics]);
+  // Helper functions (must be defined before hooks that use them)
+  const clamp0to100 = (n: number) => Math.max(0, Math.min(100, n));
+  const scoreFor = (m: ModelMetrics | null) => (m?.overall_score || m?.combined_score || 0);
+  const formatMoney = (n: number) => `$${(Number.isFinite(n) ? n : 0).toFixed(4)}`;
+  const formatMs = (n: number) => `${Math.round(Number.isFinite(n) ? n : 0)}ms`;
 
-  const topicsList = useMemo(() => {
-    const availableTopics = new Set<string>();
+  const defaultSortDirForKey = (key: SortKey): "asc" | "desc" => {
+    if (key === "cost_per_quality" || key === "total_cost" || key === "latency") return "asc";
+    return "desc";
+  };
 
-    data.results.forEach((r) => {
-      if (r.test_case_topic) availableTopics.add(r.test_case_topic);
-    });
-
-    if (metricsComprehensive) {
-      Object.values(metricsComprehensive).forEach((comp) => {
-        comp.summary_stats?.topics_tested?.forEach((t) => availableTopics.add(t));
-      });
-    }
-
-    return Array.from(availableTopics).sort();
-  }, [data.results, metricsComprehensive]);
-
-  // Get metrics for current filter
-  const getFilteredMetrics = (modelId: string): ModelMetrics | null => {
+  // Get metrics for current filter - must be useCallback to use in dependency arrays
+  const getFilteredMetrics = useCallback((modelId: string): ModelMetrics | null => {
     if (!metricsComprehensive || !metricsComprehensive[modelId]) {
       return metrics[modelId] || null;
     }
@@ -188,37 +155,36 @@ python run_benchmark.py --models "gpt-4o,claude-sonnet" --tasks summary,quiz`}
 
     // Default to overall
     return comp.overall;
-  };
+  }, [activeTask, activeTopic, metrics, metricsComprehensive]);
 
-  const formatTopicName = (topic: string) => {
-    return topic.split("_").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
-  };
+  // All hooks must be called before any early returns
+  const modelIds = useMemo(() => Object.keys(metrics), [metrics]);
 
-  const toggleTaskSection = (modelId: string, task: string) => {
-    const key = `${modelId}::${task}`;
-    setCollapsedTaskSections((prev) => ({
-      ...prev,
-      [key]: !prev[key],
-    }));
-  };
+  const topicsList = useMemo(() => {
+    if (!data?.results) return [];
+    const availableTopics = new Set<string>();
 
-  const clamp0to100 = (n: number) => Math.max(0, Math.min(100, n));
-  const scoreFor = (m: ModelMetrics | null) => (m?.overall_score || m?.combined_score || 0);
-  const formatMoney = (n: number) => `$${(Number.isFinite(n) ? n : 0).toFixed(4)}`;
-  const formatMs = (n: number) => `${Math.round(Number.isFinite(n) ? n : 0)}ms`;
+    data.results.forEach((r) => {
+      if (r.test_case_topic) availableTopics.add(r.test_case_topic);
+    });
 
-  const defaultSortDirForKey = (key: SortKey): "asc" | "desc" => {
-    if (key === "cost_per_quality" || key === "total_cost" || key === "latency") return "asc";
-    return "desc";
-  };
+    if (metricsComprehensive) {
+      Object.values(metricsComprehensive).forEach((comp) => {
+        comp.summary_stats?.topics_tested?.forEach((t) => availableTopics.add(t));
+      });
+    }
+
+    return Array.from(availableTopics).sort();
+  }, [data?.results, metricsComprehensive]);
 
   const filteredResults = useMemo(() => {
+    if (!data?.results) return [];
     return data.results.filter((r) => {
       if (activeTask !== "all" && r.task !== activeTask) return false;
       if (activeTopic !== "all" && r.test_case_topic !== activeTopic) return false;
       return true;
     });
-  }, [activeTask, activeTopic, data.results]);
+  }, [activeTask, activeTopic, data?.results]);
 
   const filteredSummary = useMemo(() => {
     const models = new Set<string>();
@@ -307,12 +273,55 @@ python run_benchmark.py --models "gpt-4o,claude-sonnet" --tasks summary,quiz`}
     if (!selectedTestKey) return null;
     return (
       filteredResults.find((r) => `${r.model_id}::${r.task}::${r.test_case_id}` === selectedTestKey) ||
-      data.results.find((r) => `${r.model_id}::${r.task}::${r.test_case_id}` === selectedTestKey) ||
+      data?.results?.find((r) => `${r.model_id}::${r.task}::${r.test_case_id}` === selectedTestKey) ||
       null
     );
-  }, [data.results, filteredResults, selectedTestKey]);
+  }, [data?.results, filteredResults, selectedTestKey]);
 
   const selectedModelMetrics = getFilteredMetrics(selectedModelId);
+
+  // Early returns after all hooks
+  if (loading) {
+    return (
+      <div style={{ padding: "2rem", textAlign: "center" }}>
+        <p>Loading benchmark data...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={{ padding: "2rem", textAlign: "center", color: "red" }}>
+        <p>Error loading benchmark data: {error}</p>
+      </div>
+    );
+  }
+
+  if (!data || !data.hasResults) {
+    return (
+      <div style={{ padding: "2rem", maxWidth: "800px", margin: "0 auto" }}>
+        <h1>Model Benchmarks</h1>
+        <p>No benchmark results found. Run the benchmark first:</p>
+        <pre style={{ background: "#f5f5f5", padding: "1rem", borderRadius: "4px", overflow: "auto" }}>
+          {`cd benchmark
+python run_benchmark.py --models "gpt-4o,claude-sonnet" --tasks summary,quiz`}
+        </pre>
+      </div>
+    );
+  }
+
+  // Helper functions that don't depend on hooks
+  const formatTopicName = (topic: string) => {
+    return topic.split("_").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+  };
+
+  const toggleTaskSection = (modelId: string, task: string) => {
+    const key = `${modelId}::${task}`;
+    setCollapsedTaskSections((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
 
   return (
     <div className="benchmark-container">
