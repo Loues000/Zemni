@@ -44,6 +44,20 @@ const nextConfig = {
   output: process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.includes("YOUR_CLERK")
     ? undefined
     : undefined,
+  async redirects() {
+    return [
+      {
+        source: "/benchmark",
+        destination: "/benchmarks",
+        permanent: true,
+      },
+      {
+        source: "/benchmark/:path*",
+        destination: "/benchmarks/:path*",
+        permanent: true,
+      },
+    ];
+  },
   // Security headers
   async headers() {
     const securityHeaders = [

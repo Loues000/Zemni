@@ -1,4 +1,4 @@
-import AppClient from "./components/app-client";
+import AppClient from "@/components/features/AppClient";
 
 // Prevent static generation - uses Clerk for authentication
 export const dynamic = 'force-dynamic';

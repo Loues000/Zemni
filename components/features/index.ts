@@ -1,3 +1,4 @@
+export { default as AppClient } from "./AppClient";
 export * from "./HistorySidebar";
 export * from "./InputPanel";
 export * from "./OutputTabs";
