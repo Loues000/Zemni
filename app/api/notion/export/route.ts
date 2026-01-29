@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { exportSummary, ExportProgress } from "@/lib/notion";
+import { exportSummary, ExportProgress, createNotionClient } from "@/lib/notion";
 
 export const runtime = "nodejs";
 
@@ -9,8 +9,9 @@ export async function POST(request: Request) {
   const title = String(body.title ?? "");
   const markdown = String(body.markdown ?? "");
   const stream = body.stream === true;
+  const notionToken = body.notionToken || process.env.NOTION_TOKEN;
 
-  if (!process.env.NOTION_TOKEN) {
+  if (!notionToken) {
     return NextResponse.json({ error: "Missing Notion token" }, { status: 400 });
   }
 
@@ -20,7 +21,7 @@ export async function POST(request: Request) {
 
   // Non-streaming mode for backwards compatibility
   if (!stream) {
-    const pageId = await exportSummary(subjectId, title, markdown);
+    const pageId = await exportSummary(subjectId, title, markdown, undefined, notionToken);
     return NextResponse.json({ pageId });
   }
 
@@ -37,7 +38,7 @@ export async function POST(request: Request) {
       };
 
       try {
-        await exportSummary(subjectId, title, markdown, sendEvent);
+        await exportSummary(subjectId, title, markdown, sendEvent, notionToken);
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : String(err);
         try {

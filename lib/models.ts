@@ -59,45 +59,39 @@ export const isModelAvailable = (
   userTier: string | null = null
 ): boolean => {
   const modelTier = model.subscriptionTier;
-  
+
   // If model has no tier, make it available (fallback)
   if (!modelTier) {
     return true;
   }
 
-  // TODO: Uncomment this when auth is implemented
-  // Current implementation: all models available (return true)
-  // When ready, replace with the logic below:
-  
-  /*
   // Not logged in: only free tier models
   if (userTier === null) {
     return modelTier === "free";
   }
-  
-  // Logged in, no subscription: free and basic tier models
+
+  // Logged in, no subscription: free tier models
   if (userTier === "free") {
+    return modelTier === "free";
+  }
+
+  // Basic subscription: free and basic tier models
+  if (userTier === "basic") {
     return modelTier === "free" || modelTier === "basic";
   }
-  
-  // Basic subscription: free, basic, and plus tier models
-  if (userTier === "basic") {
+
+  // Plus subscription: free, basic, and plus tier models
+  if (userTier === "plus") {
     return modelTier === "free" || modelTier === "basic" || modelTier === "plus";
   }
-  
-  // Plus subscription: all except pro tier models
-  if (userTier === "plus") {
-    return modelTier !== "pro";
-  }
-  
+
   // Pro subscription: all models
   if (userTier === "pro") {
     return true;
   }
-  */
-  
-  // Current implementation: all models available
-  return true;
+
+  // Fallback
+  return modelTier === "free";
 };
 
 /**
@@ -105,7 +99,7 @@ export const isModelAvailable = (
  */
 const sortModelsByTier = (models: ModelSpec[]): ModelSpec[] => {
   const tierOrder = ["free", "basic", "plus", "pro"];
-  
+
   const getTierOrder = (tier?: string): number => {
     if (!tier) return 999; // Unknown tiers go to the end
     const index = tierOrder.indexOf(tier.toLowerCase());
@@ -116,11 +110,11 @@ const sortModelsByTier = (models: ModelSpec[]): ModelSpec[] => {
     const tierA = a.subscriptionTier || "";
     const tierB = b.subscriptionTier || "";
     const tierDiff = getTierOrder(tierA) - getTierOrder(tierB);
-    
+
     if (tierDiff !== 0) {
       return tierDiff;
     }
-    
+
     // Within same tier, sort alphabetically by display name
     const nameA = a.displayName || a.name;
     const nameB = b.displayName || b.name;
@@ -138,12 +132,12 @@ const parseModelsJson = (data: unknown): ModelSpec[] => {
       throw new Error(`models[${index}] must be an object`);
     }
     const record = raw as Record<string, unknown>;
-    
+
     // Support combined id field (provider/name) or separate fields
     let name: string;
     let provider: string;
     let openrouterId: string;
-    
+
     const combinedId = String(record.id ?? record.openrouter_id ?? "").trim();
     if (combinedId) {
       // Extract provider and name from combined id (e.g., "openai/gpt-4o")
@@ -180,7 +174,7 @@ const parseModelsJson = (data: unknown): ModelSpec[] => {
 
     // Read subscription_tier directly from JSON (required field)
     const subscriptionTier = record.subscription_tier ? String(record.subscription_tier).trim() : undefined;
-    
+
     if (!subscriptionTier) {
       throw new Error(`models[${index}] must have "subscription_tier" field (free, basic, plus, or pro)`);
     }
@@ -226,7 +220,7 @@ const isSubscriptionTiersEnabled = (): boolean => {
 export const loadModels = async (): Promise<ModelSpec[]> => {
   const modelsFile = await resolveModelsFile();
   let models: ModelSpec[];
-  
+
   if (!modelsFile) {
     models = DEFAULT_MODELS;
   } else {
@@ -236,7 +230,7 @@ export const loadModels = async (): Promise<ModelSpec[]> => {
 
   // Sort by tier if feature is enabled
   const tiersEnabled = isSubscriptionTiersEnabled();
-  
+
   if (tiersEnabled) {
     models = sortModelsByTier(models);
   }

@@ -9,10 +9,14 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^1.0.10",
+    "@clerk/clerk-sdk-node": "^4.13.23",
+    "@clerk/nextjs": "^6.37.0",
     "@dqbd/tiktoken": "^1.0.20",
     "@notionhq/client": "^2.2.15",
+    "@stripe/stripe-js": "^8.7.0",
     "@types/jszip": "^3.4.0",
     "ai": "^3.4.0",
+    "convex": "^1.31.6",
     "jszip": "^3.10.1",
     "katex": "^0.16.27",
     "next": "^14.2.5",
@@ -24,7 +28,8 @@
     "react-markdown": "^9.0.1",
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.0",
-    "remark-math": "^6.0.0"
+    "remark-math": "^6.0.0",
+    "stripe": "^20.3.0"
   },
   "devDependencies": {
     "@types/node": "^20.12.7",

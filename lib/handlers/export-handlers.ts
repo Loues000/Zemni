@@ -96,6 +96,10 @@ export const handleExport = async (
 
   try {
     const title = getSummaryTitle(currentSummary, fileName || "Summary");
+    
+    // Get user's Notion credentials from localStorage if available
+    const userNotionToken = typeof window !== "undefined" ? localStorage.getItem("notion_token") : null;
+    
     const res = await fetch("/api/notion/export", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -103,7 +107,8 @@ export const handleExport = async (
         subjectId,
         title,
         markdown: currentSummary,
-        stream: true
+        stream: true,
+        notionToken: userNotionToken || undefined
       })
     });
 

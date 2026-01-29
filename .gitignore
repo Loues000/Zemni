@@ -10,7 +10,7 @@ node_modules/
 *.tsbuildinfo
 
 # Env files (secrets)
-.env
+# Note: .env is deprecated, use .env.local instead
 .env.local
 .env.development.local
 .env.test.local
@@ -55,3 +55,7 @@ AGENTS.md
 data/
 old_guidelines.md
 benchmark/results/
+*.txt
+
+# User guide (setup instructions)
+user_guide.md

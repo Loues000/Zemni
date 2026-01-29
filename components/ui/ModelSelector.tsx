@@ -2,12 +2,15 @@
 
 import { useEffect, useRef, useState, useMemo } from "react";
 import type { Model } from "@/types";
-import { IconChevron } from "./Icons";
+import { IconChevron, IconLock } from "./Icons";
+import { isModelAvailable } from "@/lib/model-utils";
+import Link from "next/link";
 
 interface ModelSelectorProps {
   models: Model[];
   selectedModel: string;
   onModelChange: (value: string) => void;
+  userTier?: string | null;
   id?: string;
   className?: string;
 }
@@ -25,6 +28,7 @@ export function ModelSelector({
   models,
   selectedModel,
   onModelChange,
+  userTier = "free",
   id,
   className = ""
 }: ModelSelectorProps) {
@@ -36,7 +40,7 @@ export function ModelSelector({
   // Group models by tier
   const groupedModels = useMemo(() => {
     const groups: Record<string, Model[]> = {};
-    
+
     models.forEach(model => {
       const tier = model.subscriptionTier || "other";
       if (!groups[tier]) {
@@ -49,16 +53,16 @@ export function ModelSelector({
     const sortedGroups: Record<string, Model[]> = {};
     TIER_ORDER.forEach(tier => {
       if (groups[tier]) {
-        sortedGroups[tier] = [...groups[tier]].sort((a, b) => 
+        sortedGroups[tier] = [...groups[tier]].sort((a, b) =>
           a.displayName.localeCompare(b.displayName)
         );
       }
     });
-    
+
     // Add any remaining tiers not in the order
     Object.keys(groups).forEach(tier => {
       if (!TIER_ORDER.includes(tier)) {
-        sortedGroups[tier] = [...groups[tier]].sort((a, b) => 
+        sortedGroups[tier] = [...groups[tier]].sort((a, b) =>
           a.displayName.localeCompare(b.displayName)
         );
       }
@@ -88,7 +92,7 @@ export function ModelSelector({
 
     document.addEventListener("mousedown", handleClickOutside);
     document.addEventListener("keydown", handleEscape);
-    
+
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
       document.removeEventListener("keydown", handleEscape);
@@ -103,7 +107,7 @@ export function ModelSelector({
       const items = listRef.current?.querySelectorAll<HTMLElement>(".model-option");
       if (!items || items.length === 0) return;
 
-      const currentIndex = Array.from(items).findIndex(item => 
+      const currentIndex = Array.from(items).findIndex(item =>
         item.getAttribute("aria-selected") === "true"
       );
 
@@ -149,7 +153,8 @@ export function ModelSelector({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, onModelChange]);
 
-  const handleSelect = (modelId: string) => {
+  const handleSelect = (modelId: string, isAvailable: boolean) => {
+    if (!isAvailable) return;
     onModelChange(modelId);
     setIsOpen(false);
     buttonRef.current?.focus();
@@ -181,37 +186,63 @@ export function ModelSelector({
       {isOpen && (
         <>
           <div className="model-selector-backdrop" onClick={() => setIsOpen(false)} />
-          <div className="model-selector-dropdown" role="listbox" ref={listRef}>
-            {Object.entries(groupedModels).map(([tier, tierModels]) => (
-              <div key={tier} className="model-selector-group">
-                <div className="model-selector-group-header">
-                  <span className="model-selector-group-label">
-                    {TIER_LABELS[tier] || tier.charAt(0).toUpperCase() + tier.slice(1)}
-                  </span>
+          <div className="model-selector-dropdown custom-scrollbar" role="listbox" ref={listRef}>
+            {Object.entries(groupedModels).map(([tier, tierModels]) => {
+              const isTierAvailable = isModelAvailable(tier, userTier);
+              return (
+                <div key={tier} className={`model-selector-group${!isTierAvailable ? " tier-locked" : ""}`}>
+                  <div className="model-selector-group-header">
+                    <span className="model-selector-group-label">
+                      {!isTierAvailable && <IconLock />}
+                      {TIER_LABELS[tier] || tier.charAt(0).toUpperCase() + tier.slice(1)}
+                      {!isTierAvailable && <span className="unlock-label">Unlock</span>}
+                    </span>
+                  </div>
+                  {tierModels.map((model) => {
+                    const isSelected = model.id === selectedModel;
+                    const isAvailable = isModelAvailable(model.subscriptionTier, userTier);
+
+                    return (
+                      <button
+                        key={model.id}
+                        type="button"
+                        className={`model-option${isSelected ? " selected" : ""}${!isAvailable ? " locked" : ""}`}
+                        data-model-id={model.id}
+                        onClick={() => handleSelect(model.id, isAvailable)}
+                        aria-selected={isSelected}
+                        aria-disabled={!isAvailable}
+                        role="option"
+                      >
+                        <div className="model-option-main">
+                          <span className="model-option-name">{model.displayName}</span>
+                          {!isAvailable && (model.subscriptionTier === "pro" || model.subscriptionTier === "plus") && (
+                            <span className="premium-sparkle" title="Premium Performance">✨</span>
+                          )}
+                        </div>
+                        <div className="model-option-meta">
+                          {!isAvailable ? (
+                            <span className="upgrade-tag">Pro</span>
+                          ) : (
+                            model.subscriptionTier && model.subscriptionTier !== "free" && (
+                              <span className={`tier-badge tier-badge-${model.subscriptionTier}`}>
+                                {TIER_LABELS[model.subscriptionTier] || model.subscriptionTier}
+                              </span>
+                            )
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })}
                 </div>
-                {tierModels.map((model) => {
-                  const isSelected = model.id === selectedModel;
-                  return (
-                    <button
-                      key={model.id}
-                      type="button"
-                      className={`model-option${isSelected ? " selected" : ""}`}
-                      data-model-id={model.id}
-                      onClick={() => handleSelect(model.id)}
-                      aria-selected={isSelected}
-                      role="option"
-                    >
-                      <span className="model-option-name">{model.displayName}</span>
-                      {model.subscriptionTier && (
-                        <span className={`tier-badge tier-badge-${model.subscriptionTier}`}>
-                          {TIER_LABELS[model.subscriptionTier] || model.subscriptionTier}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
+              );
+            })}
+            {userTier !== "pro" && (
+              <div className="model-selector-upgrade-cta">
+                <Link href="/settings" onClick={() => setIsOpen(false)}>
+                  Unlock premium models in Settings →
+                </Link>
               </div>
-            ))}
+            )}
           </div>
         </>
       )}

@@ -11,6 +11,7 @@ interface InputPanelProps {
   dropzoneCorner?: React.ReactNode;
   topBarLeft?: React.ReactNode;
   topBarRight?: React.ReactNode;
+  userTier?: string | null;
   onDrop: (event: React.DragEvent<HTMLDivElement>) => void;
   onDragOver: (event: React.DragEvent<HTMLDivElement>) => void;
   onDragLeave: () => void;
@@ -30,6 +31,7 @@ export function InputPanel({
   dropzoneCorner,
   topBarLeft,
   topBarRight,
+  userTier,
   onDrop,
   onDragOver,
   onDragLeave,
@@ -73,6 +75,7 @@ export function InputPanel({
         <ModelSelector
           id="model-selector"
           models={models}
+          userTier={userTier}
           selectedModel={selectedModel}
           onModelChange={onModelChange}
         />

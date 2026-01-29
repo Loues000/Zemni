@@ -3,10 +3,12 @@
 import { useEffect, useMemo, useRef, useState, lazy, Suspense, useCallback } from "react";
 import { useChat } from "ai/react";
 import { useRouter } from "next/navigation";
-import { 
-  HistorySidebar, 
-  InputPanel, 
-  OutputTabs, 
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import {
+  HistorySidebar,
+  InputPanel,
+  OutputTabs,
   RefineBar,
   FlashcardsDensityControl,
   SubjectPickerModal,
@@ -20,16 +22,18 @@ const SummaryPreview = lazy(() => import("@/components/features/SummaryPreview.t
 const FlashcardsMode = lazy(() => import("@/components/features/FlashcardsMode.tsx").then(m => ({ default: m.FlashcardsMode })));
 const QuizMode = lazy(() => import("@/components/features/QuizMode.tsx").then(m => ({ default: m.QuizMode })));
 import { ActivityBar, CostPreview, StatsSection, IconMenu, IconSun, IconMoon, IconSettings, Footer } from "@/components/ui";
+import { ClerkSignedIn, ClerkSignedOut, ClerkSignInButton } from "@/components/auth/ClerkWrapper";
+import { UserButton } from "@clerk/nextjs";
 import type { OutputKind, UsageStats, HistoryEntry } from "@/types";
-import { 
-  useHistory, 
-  useTokenEstimate, 
-  useAppState, 
-  useOutputManagement, 
-  useFileHandling, 
-  useGeneration, 
-  useExport, 
-  useQuizState, 
+import {
+  useHistory,
+  useTokenEstimate,
+  useAppState,
+  useOutputManagement,
+  useFileHandling,
+  useGeneration,
+  useExport,
+  useQuizState,
   useEditing,
   useHistoryManagement,
   useKeyboardShortcuts,
@@ -98,6 +102,10 @@ export default function AppClient() {
   const [tabToDelete, setTabToDelete] = useState<string | null>(null);
   const [mobileView, setMobileView] = useState<"input" | "output">("input");
 
+  // User and subscription state
+  const currentUser = useQuery(api.users.getCurrentUser);
+  const subscriptionTier = currentUser?.subscriptionTier || "free";
+
   // Refs
   const previewRef1 = useRef<HTMLDivElement | null>(null);
   const previewRef2 = useRef<HTMLDivElement | null>(null);
@@ -108,10 +116,10 @@ export default function AppClient() {
 
   // History and token estimation
   const { history, updateHistoryState } = useHistory();
-  const { 
-    modelCosts, 
-    costHeuristic, 
-    isEstimating, 
+  const {
+    modelCosts,
+    costHeuristic,
+    isEstimating,
     fetchTokenEstimate,
     setModelCosts,
     setCostHeuristic
@@ -505,65 +513,71 @@ export default function AppClient() {
         onClose={() => setSidebarOpen(false)}
         onSelectEntry={loadFromHistory}
         onDeleteEntry={deleteHistoryEntry}
+        footer={
+          <>
+            <ClerkSignedIn>
+              <button
+                type="button"
+                className="sidebar-user-button"
+                onClick={() => router.push("/settings")}
+              >
+                <UserButton afterSignOutUrl="/" />
+                <span>Settings</span>
+              </button>
+            </ClerkSignedIn>
+            <ClerkSignedOut>
+              <ClerkSignInButton mode="modal">
+                <button type="button" className="sidebar-user-button">
+                  <span className="sidebar-user-avatar">?</span>
+                  <span>Login</span>
+                </button>
+              </ClerkSignInButton>
+            </ClerkSignedOut>
+          </>
+        }
       />
 
       <div className="main">
-        <header className={`header${headerCompact ? " header-compact" : ""}`}>
-          <div className="header-left">
-            <button
-              type="button"
-              className="sidebar-toggle"
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              aria-label="Open history"
-              title="History"
-            >
-              <IconMenu />
-            </button>
-            <h1 className="header-title">Zemni</h1>
-          </div>
-          <div className="header-right">
-            <div className={`settings-menu${settingsOpen ? " open" : ""}`} ref={settingsMenuRef}>
+        <div className={`settings-float${settingsOpen ? " open" : ""}`} ref={settingsMenuRef}>
+          <button
+            ref={settingsButtonRef}
+            type="button"
+            className="icon-btn settings-btn"
+            onClick={() => setSettingsOpen((prev) => !prev)}
+            aria-label="Open quick settings"
+            aria-expanded={settingsOpen}
+            title="Quick settings"
+          >
+            <IconSettings />
+          </button>
+          {settingsOpen && (
+            <div className="settings-popover" role="menu" aria-label="Quick settings">
+              <div className="settings-popover-section">Quick settings</div>
               <button
-                ref={settingsButtonRef}
                 type="button"
-                className="icon-btn"
-                onClick={() => setSettingsOpen((prev) => !prev)}
-                aria-label="Open quick settings"
-                aria-expanded={settingsOpen}
-                title="Quick settings"
+                className="settings-popover-item"
+                role="menuitem"
+                onClick={() => {
+                  setTheme(theme === "dark" ? "light" : "dark");
+                }}
               >
-                <IconSettings />
+                <span>Theme</span>
+                <span className="settings-popover-meta">{theme === "dark" ? "Dark" : "Light"}</span>
               </button>
-              {settingsOpen && (
-                <div className="settings-popover" role="menu" aria-label="Quick settings">
-                  <div className="settings-popover-section">Quick settings</div>
-                  <button
-                    type="button"
-                    className="settings-popover-item"
-                    role="menuitem"
-                    onClick={() => {
-                      setTheme(theme === "dark" ? "light" : "dark");
-                    }}
-                  >
-                    <span>Theme</span>
-                    <span className="settings-popover-meta">{theme === "dark" ? "Dark" : "Light"}</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="settings-popover-item"
-                    role="menuitem"
-                    onClick={() => {
-                      setSettingsOpen(false);
-                      router.push("/settings");
-                    }}
-                  >
-                    <span>Settings</span>
-                  </button>
-                </div>
-              )}
+              <button
+                type="button"
+                className="settings-popover-item"
+                role="menuitem"
+                onClick={() => {
+                  setSettingsOpen(false);
+                  router.push("/settings");
+                }}
+              >
+                <span>Settings</span>
+              </button>
             </div>
-          </div>
-        </header>
+          )}
+        </div>
 
         {isSmallScreen && (
           <div className="top-toolbar" role="region" aria-label="Controls">
@@ -603,7 +617,7 @@ export default function AppClient() {
             setSubjectPickerOpen(false);
             exportHook.setPendingExport(false);
           }}
-        /> 
+        />
         <DeleteOutputModal
           isOpen={tabToDelete !== null}
           outputLabel={tabToDelete ? outputs[tabToDelete]?.label ?? "Output" : "Output"}
@@ -617,6 +631,9 @@ export default function AppClient() {
         <div className={`content${isSmallScreen ? ` content-mobile view-${mobileView}` : ""}`}>
           {!isSmallScreen ? (
             <div className="input-column">
+              <div className="zemni-heading">
+                <h1>Zemni</h1>
+              </div>
               <div className="input-panel-modebar" role="region" aria-label="Output mode">
                 <ModeSwitch outputKind={outputKind} onModeChange={setOutputKind} />
               </div>
@@ -627,6 +644,17 @@ export default function AppClient() {
                 structureHints={structureHints}
                 showStructureHints={outputKind === "summary"}
                 dragActive={fileHandling.dragActive}
+                topBarLeft={
+                  <button
+                    type="button"
+                    className="sidebar-toggle-input"
+                    onClick={() => setSidebarOpen(!sidebarOpen)}
+                    aria-label="Open history"
+                    title="History"
+                  >
+                    <IconMenu />
+                  </button>
+                }
                 dropzoneCorner={
                   <span
                     className={`status-dot ${statusClass} status-dot-corner`}
@@ -640,6 +668,7 @@ export default function AppClient() {
                 onSelectFile={fileHandling.onSelectFile}
                 onModelChange={handleModelChange}
                 onStructureChange={setStructureHints}
+                userTier={subscriptionTier}
               >
                 {outputKind === "flashcards" && (
                   <div className="field">
@@ -675,6 +704,17 @@ export default function AppClient() {
               structureHints={structureHints}
               showStructureHints={outputKind === "summary"}
               dragActive={fileHandling.dragActive}
+              topBarLeft={
+                <button
+                  type="button"
+                  className="sidebar-toggle-input"
+                  onClick={() => setSidebarOpen(!sidebarOpen)}
+                  aria-label="Open history"
+                  title="History"
+                >
+                  <IconMenu />
+                </button>
+              }
               dropzoneCorner={
                 <span
                   className={`status-dot ${statusClass} status-dot-corner`}
@@ -688,6 +728,7 @@ export default function AppClient() {
               onSelectFile={fileHandling.onSelectFile}
               onModelChange={handleModelChange}
               onStructureChange={setStructureHints}
+              userTier={subscriptionTier}
             >
               {outputKind === "flashcards" && (
                 <div className="field">
@@ -829,7 +870,7 @@ export default function AppClient() {
                   onEditDraftChangeSecond={setEditDraftSecond}
                   onCopySummary={handleCopySummaryWrapper}
                   onCopySummarySecond={handleCopySummarySecondWrapper}
-                  onSyncScroll={() => {}}
+                  onSyncScroll={() => { }}
                   onCloseSplit={() => setSecondTabId(null)}
                   onRetry={selectedTabId && currentOutput?.canRetry ? () => handleRetry(selectedTabId, outputs) : undefined}
                   extractedText={fileHandling.extractedText}

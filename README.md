@@ -1,93 +1,148 @@
 # Zemni
 
-A Next.js web app that ingests lecture slides (PDF), summarizes them based on a rule set, and exports the result directly to Notion.
+Transform your lecture slides into exam-ready study materials. Upload PDFs, get AI-powered summaries, flashcards, and quizzes—all optimized for your learning style.
 
-## Features
+## What is Zemni?
 
-- PDF upload with text extraction
-- Exam-focused summaries via OpenRouter (multiple models)
-- Flashcards (fullscreen study view) + export (MD/TSV)
-- Quiz (MCQ) + feedback + export (MD/JSON)
-- Token/cost estimation before generation
-- Iterative refinement via chat
-- Export to Notion (subpage within a subject)
-- Markdown preview incl. LaTeX (KaTeX)
+Zemni is an intelligent study companion that helps you prepare for exams by converting lecture slides into structured, exam-focused content. Whether you need concise summaries, interactive flashcards, or practice quizzes, Zemni adapts to your learning needs.
 
-## Tech stack
+## Key Features
 
-- Next.js 14 (App Router), TypeScript
-- Vercel AI SDK (`ai`)
-- OpenRouter as provider
-- Notion SDK (`@notionhq/client`)
-- PDF: client-side `pdfjs-dist` + server fallback
-- Token counting: `@dqbd/tiktoken`
+### 📚 Content Generation
+- **Smart Summaries**: AI-powered summaries focused on exam-relevant content
+- **Interactive Flashcards**: Study with spaced repetition, fullscreen mode, and customizable density
+- **Practice Quizzes**: Multiple-choice questions with instant feedback and explanations
+- **Multiple AI Models**: Choose from various AI models to match your preferences
 
-## Prerequisites
+### 🎯 Study Tools
+- **PDF Processing**: Upload lecture slides and extract text automatically
+- **Markdown Preview**: Real-time preview with LaTeX math support (KaTeX)
+- **Export Options**: Export to Markdown, TSV, JSON, or directly to Notion
+- **Iterative Refinement**: Chat with AI to improve and customize your content
 
-- Node.js 18+ and npm
-- OpenRouter API Key: https://openrouter.ai
-- Notion API token + database ID: https://notion.so/my-integrations
+### 👤 User Features
+- **Secure Accounts**: Sign up and manage your account with Clerk authentication
+- **Document History**: Access all your past documents and generations
+- **Usage Tracking**: Monitor your token usage and costs
+- **Subscription Tiers**: Choose a plan that fits your needs (Free, Basic, Plus, Pro)
+- **Bring Your Own Keys**: Use your own API keys for OpenRouter, OpenAI, Anthropic, or Google
+- **Notion Integration**: Export directly to your Notion workspace
 
-## Setup
+## Getting Started
 
-```bash
-npm install
-```
+### Quick Start
 
-Create `.env.local` in the repo root:
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd Summary_Maker
+   ```
 
-```env
-OPENROUTER_API_KEY=sk-or-v1-...
-OPENROUTER_SITE_URL=http://localhost:3420
-OPENROUTER_APP_NAME=Summary Maker
+2. **Install dependencies**
+   ```bash
+   npm install
+   ```
 
-NOTION_TOKEN=secret_...
-NOTION_SUBJECTS_DATABASE_ID=...
-```
+3. **Set up your environment**
+   - See [user_guide.md](user_guide.md) for detailed setup instructions
+   - You'll need accounts for:
+     - [Convex](https://convex.dev) (free tier available)
+     - [Clerk](https://clerk.com) (free tier available)
+     - [Stripe](https://stripe.com) (for subscriptions)
+     - [OpenRouter](https://openrouter.ai) (for AI models)
 
-```bash
-npm run dev
-```
+4. **Run the development server**
+   ```bash
+   # Start Convex (in a separate terminal)
+   npx convex dev
+   
+   # Start Next.js (in another terminal)
+   npm run dev
+   ```
 
-App runs on http://localhost:3420
+5. **Open your browser**
+   - Navigate to `http://localhost:3420`
+   - Sign up for an account and start creating!
 
-## Project structure (short)
+## Tech Stack
 
-```
-app/                      # Next.js Routes (App Router)
-  api/                    # Route Handlers (models, summarize, refine, notion, ...)
-  components/app-client.tsx
-  layout.tsx
-  page.tsx
+Built with modern web technologies:
+- **Next.js 14** (App Router) with TypeScript
+- **Convex** for backend database and real-time sync
+- **Clerk** for user authentication
+- **Stripe** for subscription management
+- **OpenRouter** for AI model access
+- **Vercel AI SDK** for streaming responses
 
-components/               # UI/feature components (shared)
-  features/
-  ui/
-hooks/                    # Custom React Hooks
-types/                    # Shared TypeScript Types
-lib/                      # Shared Libraries (OpenRouter, Notion, Prompts, ...)
-  parse-pdf-client.ts     # Client-side PDF Parsing (pdfjs)
-config/                   # Configuration (models/prices)
-docs/                     # Project docs (MVP, TODOs, ...)
-guidelines/               # AI rule sets (general + mode add-ons)
-  general.en.md
-  summary.en.md
-  flashcards.en.md
-  quiz.en.md
-  base.de.md              # legacy DE (kept for reference)
-  base.full.de.md         # legacy DE (kept for reference)
-```
+## How It Works
 
-## Model configuration
+1. **Upload**: Upload your PDF lecture slides
+2. **Process**: Zemni extracts text and analyzes the content
+3. **Generate**: Choose your output type (Summary, Flashcards, or Quiz)
+4. **Customize**: Refine the content through chat or adjust settings
+5. **Study**: Use the generated materials to prepare for exams
+6. **Export**: Save to your preferred format or export to Notion
 
-Model lists/prices live in `config/`. By default, `config/openrouter-models.example.json` is used.
+## Requirements
 
-For your own models/prices, create `config/openrouter-models.json` (and optionally `config/openrouter-models.prices.json`).
+- **Node.js 18+** and npm
+- Accounts for:
+  - [Convex](https://convex.dev) - Database and backend (free tier available)
+  - [Clerk](https://clerk.com) - Authentication (free tier available)
+  - [Stripe](https://stripe.com) - Subscriptions (free to start)
+  - [OpenRouter](https://openrouter.ai) - AI model access
 
-## Development
+For detailed setup instructions, see [user_guide.md](user_guide.md).
 
-```bash
-npm run dev
-npm run build
-npm run start
-```
+## Features in Detail
+
+### Study Modes
+
+**Summary Mode**
+- Concise, exam-focused summaries
+- Structured with headings and key points
+- LaTeX math support
+- Export to Markdown or Notion
+
+**Flashcards Mode**
+- Interactive flashcard generation
+- Adjustable density (fewer/more cards)
+- Fullscreen study mode
+- Export to Markdown or TSV
+
+**Quiz Mode**
+- Multiple-choice questions
+- Instant feedback and explanations
+- Batch generation
+- Export to Markdown or JSON
+
+### User Dashboard
+
+- View all your documents
+- Search and filter by date, type, or content
+- Usage statistics (tokens, costs, documents)
+- Quick access to recent work
+
+### Settings & Customization
+
+- **Account**: Manage your profile and preferences
+- **Subscription**: View and manage your plan
+- **API Keys**: Add your own AI provider keys
+- **Notion**: Configure per-user Notion integration
+- **Models**: Choose your preferred AI models
+- **History**: Export or import your document history
+
+## Support & Documentation
+
+- **Setup Guide**: See [user_guide.md](user_guide.md) for detailed setup instructions
+- **Agent Instructions**: See [AGENTS.md](AGENTS.md) for development guidelines
+- **Project Docs**: See `docs/` folder for additional documentation
+
+## Contributing
+
+This is a private project. For development guidelines, see [AGENTS.md](AGENTS.md).
+
+## License
+
+See LICENSE file for details.
+

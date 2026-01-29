@@ -105,7 +105,21 @@ export function useAppState(): UseAppStateReturn {
 
     const fetchSubjects = async () => {
       try {
-        const res = await fetch("/api/notion/subjects");
+        // Get user's Notion credentials from localStorage if available
+        const userNotionToken = typeof window !== "undefined" ? localStorage.getItem("notion_token") : null;
+        const userDatabaseId = typeof window !== "undefined" ? localStorage.getItem("notion_database_id") : null;
+        
+        const url = new URL("/api/notion/subjects", window.location.origin);
+        if (userDatabaseId) {
+          url.searchParams.set("databaseId", userDatabaseId);
+        }
+        
+        const headers: HeadersInit = {};
+        if (userNotionToken) {
+          headers["x-notion-token"] = userNotionToken;
+        }
+        
+        const res = await fetch(url.toString(), { headers });
         if (!res.ok) return;
         const data = await res.json() as { subjects: Subject[] };
         setSubjects(data.subjects);

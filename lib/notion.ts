@@ -2,7 +2,19 @@ import { Client } from "@notionhq/client";
 import type { BlockObjectRequest, PageObjectResponse } from "@notionhq/client/build/src/api-endpoints";
 import { markdownToBlocks } from "./markdown";
 
-const notion = new Client({ auth: process.env.NOTION_TOKEN });
+/**
+ * Create a Notion client with optional token
+ * If no token is provided, uses the default from environment variables
+ */
+export function createNotionClient(token?: string) {
+  const authToken = token || process.env.NOTION_TOKEN;
+  if (!authToken) {
+    throw new Error("Notion token is required");
+  }
+  return new Client({ auth: authToken });
+}
+
+const notion = createNotionClient();
 
 export type ExportProgress = 
   | { type: "started"; totalBlocks: number; totalChunks: number }
@@ -19,8 +31,9 @@ const getPageTitle = (page: PageObjectResponse): string => {
   return titleProp.title.map((item: { plain_text: string }) => item.plain_text).join("");
 };
 
-export const listSubjects = async (databaseId: string) => {
-  const response = await notion.databases.query({
+export const listSubjects = async (databaseId: string, notionToken?: string) => {
+  const client = notionToken ? createNotionClient(notionToken) : notion;
+  const response = await client.databases.query({
     database_id: databaseId
   });
 
@@ -50,9 +63,11 @@ export const exportSummary = async (
   subjectId: string,
   title: string,
   markdown: string,
-  onProgress?: (progress: ExportProgress) => void
+  onProgress?: (progress: ExportProgress) => void,
+  notionToken?: string
 ): Promise<string> => {
   try {
+    const client = notionToken ? createNotionClient(notionToken) : notion;
     const cleanedMarkdown = stripLeadingH1(markdown);
     const blocks = markdownToBlocks(cleanedMarkdown);
     const totalChunks = Math.ceil(blocks.length / 100);
@@ -81,7 +96,7 @@ export const exportSummary = async (
 
     const firstChunk = safeBlocks.slice(0, 100);
 
-    const page = await notion.pages.create({
+    const page = await client.pages.create({
       parent: { page_id: subjectId },
       properties: {
         title: {
@@ -98,7 +113,7 @@ export const exportSummary = async (
     let chunkIndex = 2;
     while (index < safeBlocks.length) {
       const chunk = safeBlocks.slice(index, index + 100) as BlockObjectRequest[];
-      await notion.blocks.children.append({
+      await client.blocks.children.append({
         block_id: pageId,
         children: chunk
       });
