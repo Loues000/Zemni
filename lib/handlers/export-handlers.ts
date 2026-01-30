@@ -3,6 +3,12 @@ import { getSummaryTitle } from "@/lib/output-previews";
 import { getDocumentTitle } from "@/lib/document-title";
 import { createPdfId } from "@/lib/output-previews";
 
+export interface NotionConfig {
+  token: string | null;
+  databaseId: string | null;
+  exportMethod: "database" | "page";
+}
+
 export interface ExportHandlersContext {
   currentKind: OutputKind;
   currentSummary: string;
@@ -49,7 +55,8 @@ export const handleSubjectPicked = (
  */
 export const handleExport = async (
   overrideSubjectId: string | undefined,
-  context: ExportHandlersContext
+  context: ExportHandlersContext,
+  notionConfig?: NotionConfig
 ): Promise<void> => {
   const {
     currentKind,
@@ -71,6 +78,15 @@ export const handleExport = async (
     updateHistoryState
   } = context;
 
+  // Get Notion config from parameter or fallback to localStorage (for unauthenticated users)
+  const config = notionConfig || {
+    token: typeof window !== "undefined" ? localStorage.getItem("notion_token") : null,
+    databaseId: typeof window !== "undefined" ? localStorage.getItem("notion_database_id") : null,
+    exportMethod: (typeof window !== "undefined" ? localStorage.getItem("notion_export_method") : "database") as "database" | "page" || "database",
+  };
+
+  const useDatabase = config.exportMethod !== "page";
+
   const subjectId = overrideSubjectId ?? "";
   if (currentKind !== "summary") {
     setError("Only summaries can be exported to Notion.");
@@ -82,7 +98,9 @@ export const handleExport = async (
     setStatus("error");
     return;
   }
-  if (!subjectId) {
+
+  // For database export, require subjectId. For page export, skip subject picker.
+  if (useDatabase && !subjectId) {
     setError("");
     setPendingExport(true);
     setSubjectPickerOpen(true);
@@ -96,20 +114,27 @@ export const handleExport = async (
 
   try {
     const title = getSummaryTitle(currentSummary, fileName || "Summary");
-    
-    // Get user's Notion credentials from localStorage if available
-    const userNotionToken = typeof window !== "undefined" ? localStorage.getItem("notion_token") : null;
-    
+
+    // For database export, use subjectId. For page export, use pageId (or undefined to create in workspace)
+    const exportBody: any = {
+      title,
+      markdown: currentSummary,
+      stream: true,
+      notionToken: config.token || undefined
+    };
+
+    if (useDatabase && subjectId) {
+      exportBody.subjectId = subjectId;
+    } else if (!useDatabase) {
+      // For direct page export, we can optionally specify a parent pageId
+      // If not specified, it will create in workspace root
+      // For now, we'll create in workspace root (no parent)
+    }
+
     const res = await fetch("/api/notion/export", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        subjectId,
-        title,
-        markdown: currentSummary,
-        stream: true,
-        notionToken: userNotionToken || undefined
-      })
+      body: JSON.stringify(exportBody)
     });
 
     if (!res.ok) throw new Error("Notion export failed.");
@@ -132,7 +157,7 @@ export const handleExport = async (
       for (const line of lines) {
         if (!line.trim()) continue;
         try {
-          const event = JSON.parse(line) as { type: string; [key: string]: unknown };
+          const event = JSON.parse(line) as { type: string;[key: string]: unknown };
           if (event.type === "started") {
             setExportProgress({ current: 0, total: event.totalChunks as number });
           } else if (event.type === "chunk") {
@@ -189,50 +214,15 @@ const saveToHistory = (
   exportedSubjectTitle?: string,
   notionPageId?: string
 ): void => {
-  if (!extractedText || Object.keys(outputs).length === 0) return;
-
-  const { getSummaryTitle, createPdfId } = require("@/lib/output-previews");
-  const { getDocumentTitle } = require("@/lib/document-title");
-
-  const derivedTitle = getDocumentTitle(extractedText, fileName);
-  const summaryTab = Object.values(outputs).find((o) => (o.kind ?? "summary") === "summary" && (o.summary ?? "").trim().length > 0);
-  const title = summaryTab ? getSummaryTitle(summaryTab.summary ?? "", derivedTitle) : derivedTitle;
-  const pdfId = createPdfId(fileName || "untitled", extractedText);
-  const historyId = currentHistoryId || pdfId;
-  const now = Date.now();
-
-  updateHistoryState((prev) => {
-    const existingEntry = prev.find((h) => {
-      const hPdfId = createPdfId(h.fileName, h.extractedText);
-      return hPdfId === pdfId;
-    });
-
-    let finalExportedSubject: string | undefined;
-    if (exportedSubjectTitle !== undefined) {
-      finalExportedSubject = exportedSubjectTitle || undefined;
-    } else {
-      finalExportedSubject = existingEntry?.exportedSubject;
-    }
-
-    const entry = {
-      id: historyId,
-      title,
-      fileName,
-      extractedText,
-      outputs,
-      structureHints,
-      createdAt: existingEntry?.createdAt || now,
-      updatedAt: now,
-      exportedSubject: finalExportedSubject,
-      notionPageId: notionPageId || existingEntry?.notionPageId
-    };
-
-    const filtered = prev.filter((item) => {
-      if (item.id === entry.id) return false;
-      if (existingEntry && item.id === existingEntry.id) return false;
-      return true;
-    });
-
-    return [entry, ...filtered];
+  const { saveToHistoryInternal } = require("@/lib/history-utils");
+  saveToHistoryInternal({
+    outputs,
+    extractedText,
+    fileName,
+    structureHints,
+    currentHistoryId,
+    updateHistoryState,
+    exportedSubjectTitle,
+    notionPageId
   });
 };

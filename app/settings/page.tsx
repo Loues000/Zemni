@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { SettingsLayout } from "./components/SettingsLayout";
 import { ClerkSignedIn, ClerkSignedOut, ClerkSignInButton } from "@/components/auth/ClerkWrapper";
 
@@ -13,11 +14,22 @@ import { NotionTab } from "./components/NotionTab";
 import { HistorySyncTab } from "./components/HistorySyncTab";
 import { ModelsTab } from "./components/ModelsTab";
 import { CustomizationTab } from "./components/CustomizationTab";
-import { AttachmentsTab } from "./components/AttachmentsTab";
 import { ContactTab } from "./components/ContactTab";
 
-export default function SettingsRoute() {
-  const [activeTab, setActiveTab] = useState("account");
+const VALID_TABS = ["account", "subscription", "api-keys", "notion", "history", "models", "customization", "contact"];
+
+function SettingsContent() {
+  const searchParams = useSearchParams();
+  const tabFromUrl = searchParams.get("tab");
+  const initialTab = tabFromUrl && VALID_TABS.includes(tabFromUrl) ? tabFromUrl : "account";
+  const [activeTab, setActiveTab] = useState(initialTab);
+
+  // Update tab when URL changes
+  useEffect(() => {
+    if (tabFromUrl && VALID_TABS.includes(tabFromUrl)) {
+      setActiveTab(tabFromUrl);
+    }
+  }, [tabFromUrl]);
 
   const renderTab = () => {
     switch (activeTab) {
@@ -35,8 +47,6 @@ export default function SettingsRoute() {
         return <ModelsTab />;
       case "customization":
         return <CustomizationTab />;
-      case "attachments":
-        return <AttachmentsTab />;
       case "contact":
         return <ContactTab />;
       default:
@@ -69,5 +79,23 @@ export default function SettingsRoute() {
         </div>
       </ClerkSignedOut>
     </>
+  );
+}
+
+export default function SettingsRoute() {
+  return (
+    <Suspense fallback={
+      <div className="settings-page">
+        <div className="settings-shell">
+          <main className="settings-main" style={{ maxWidth: "600px", margin: "0 auto", padding: "48px 24px" }}>
+            <div className="settings-card">
+              <p>Loading settings...</p>
+            </div>
+          </main>
+        </div>
+      </div>
+    }>
+      <SettingsContent />
+    </Suspense>
   );
 }

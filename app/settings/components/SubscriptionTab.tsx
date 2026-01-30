@@ -3,10 +3,10 @@
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useState } from "react";
+import { IconCheck } from "@/components/ui/Icons";
 
 export function SubscriptionTab() {
   const currentUser = useQuery(api.users.getCurrentUser);
-  const usageStats = useQuery(api.usage.getUsageStats, {});
   const [loading, setLoading] = useState(false);
 
   const subscriptionTier = currentUser?.subscriptionTier || "free";
@@ -17,19 +17,24 @@ export function SubscriptionTab() {
     pro: "Pro",
   };
 
-  const handleUpgrade = async () => {
+  const handleUpgrade = async (tier: "basic" | "plus" | "pro") => {
     setLoading(true);
     try {
       const response = await fetch("/api/stripe/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tier }),
       });
       const data = await response.json();
       if (data.url) {
         window.location.href = data.url;
+      } else if (data.error) {
+        console.error("Failed to create checkout session:", data.error);
+        alert(`Failed to create checkout session: ${data.error}`);
       }
     } catch (error) {
       console.error("Failed to create checkout session:", error);
+      alert("Failed to create checkout session. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -66,83 +71,143 @@ export function SubscriptionTab() {
             <span className="settings-tier-badge-large" data-tier={subscriptionTier}>
               {tierLabels[subscriptionTier]}
             </span>
+            {subscriptionTier !== "pro" && (
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => {
+                  // Determine next tier to upgrade to
+                  const nextTier = subscriptionTier === "free" ? "basic" : subscriptionTier === "basic" ? "plus" : "pro";
+                  handleUpgrade(nextTier);
+                }}
+                disabled={loading}
+              >
+                {loading ? "Loading..." : "Upgrade Plan"}
+              </button>
+            )}
+            {currentUser?.stripeSubscriptionId && (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleManageSubscription}
+                disabled={loading}
+              >
+                {loading ? "Loading..." : "Manage Subscription"}
+              </button>
+            )}
           </div>
-          {subscriptionTier !== "pro" && (
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={handleUpgrade}
-              disabled={loading}
-            >
-              {loading ? "Loading..." : "Upgrade Plan"}
-            </button>
-          )}
-          {currentUser?.stripeSubscriptionId && (
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={handleManageSubscription}
-              disabled={loading}
-            >
-              {loading ? "Loading..." : "Manage Subscription"}
-            </button>
-          )}
         </div>
 
-        {usageStats && (
-          <>
-            <div className="settings-divider" />
-            <div className="field">
-              <label className="field-label">Usage Statistics</label>
-              <div className="settings-stats-grid">
-                <div className="settings-stat">
-                  <div className="settings-stat-label">Total Documents</div>
-                  <div className="settings-stat-value">{usageStats.totalDocuments}</div>
-                </div>
-                <div className="settings-stat">
-                  <div className="settings-stat-label">This Month</div>
-                  <div className="settings-stat-value">{usageStats.thisMonthDocuments}</div>
-                </div>
-                <div className="settings-stat">
-                  <div className="settings-stat-label">Total Tokens</div>
-                  <div className="settings-stat-value">
-                    {(usageStats.totalTokensIn + usageStats.totalTokensOut).toLocaleString()}
-                  </div>
-                </div>
-                <div className="settings-stat">
-                  <div className="settings-stat-label">This Month</div>
-                  <div className="settings-stat-value">
-                    {(usageStats.thisMonthTokensIn + usageStats.thisMonthTokensOut).toLocaleString()}
-                  </div>
-                </div>
-                <div className="settings-stat">
-                  <div className="settings-stat-label">Total Cost</div>
-                  <div className="settings-stat-value">${usageStats.totalCost.toFixed(2)}</div>
-                </div>
-                <div className="settings-stat">
-                  <div className="settings-stat-label">This Month</div>
-                  <div className="settings-stat-value">${usageStats.thisMonthCost.toFixed(2)}</div>
-                </div>
-              </div>
-            </div>
-          </>
-        )}
 
         <div className="settings-divider" />
         <div className="field">
-          <label className="field-label">Plan Benefits</label>
-          <div className="settings-benefits">
-            <div className="settings-benefit">
-              <strong>Free:</strong> Access to free-tier models only
+          <label className="field-label">Subscription Tiers</label>
+          <div className="settings-tiers-comparison">
+            <div className={`settings-tier-card${subscriptionTier === "free" ? " active" : ""}`} data-tier="free">
+              <div className="settings-tier-card-header">
+                <h3>Free</h3>
+                {subscriptionTier === "free" && <span className="settings-tier-badge-current">Current</span>}
+              </div>
+              <ul className="settings-tier-features">
+                <li><IconCheck /> Access to free-tier models</li>
+                <li><IconCheck /> Basic summary generation</li>
+                <li><IconCheck /> Standard support</li>
+              </ul>
+              {subscriptionTier === "free" ? (
+                <button type="button" className="btn btn-secondary btn-small" disabled>
+                  Current Plan
+                </button>
+              ) : (
+                <button type="button" className="btn btn-secondary btn-small" disabled>
+                  Downgrade
+                </button>
+              )}
             </div>
-            <div className="settings-benefit">
-              <strong>Basic:</strong> Free + basic-tier models
+
+            <div className={`settings-tier-card${subscriptionTier === "basic" ? " active" : ""}`} data-tier="basic">
+              <div className="settings-tier-card-header">
+                <h3>Basic</h3>
+                {subscriptionTier === "basic" && <span className="settings-tier-badge-current">Current</span>}
+              </div>
+              <ul className="settings-tier-features">
+                <li><IconCheck /> All free-tier models</li>
+                <li><IconCheck /> Gemini 1.5 Flash & more</li>
+                <li><IconCheck /> Enhanced generation quality</li>
+                <li><IconCheck /> Priority support</li>
+              </ul>
+              {subscriptionTier === "basic" ? (
+                <button type="button" className="btn btn-secondary btn-small" disabled>
+                  Current Plan
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-primary btn-small"
+                  onClick={() => handleUpgrade("basic")}
+                  disabled={loading || subscriptionTier !== "free"}
+                >
+                  {loading ? "Loading..." : subscriptionTier === "free" ? "Upgrade" : "Switch Plan"}
+                </button>
+              )}
             </div>
-            <div className="settings-benefit">
-              <strong>Plus:</strong> Free + basic + plus-tier models
+
+            <div className={`settings-tier-card${subscriptionTier === "plus" ? " active" : ""}`} data-tier="plus">
+              <div className="settings-tier-card-header">
+                <h3>Plus</h3>
+                {subscriptionTier === "plus" && <span className="settings-tier-badge-current">Current</span>}
+              </div>
+              <ul className="settings-tier-features">
+                <li><IconCheck /> All free & basic models</li>
+                <li><IconCheck /> Claude 3.5 Sonnet</li>
+                <li><IconCheck /> GPT-4o-mini</li>
+                <li><IconCheck /> Advanced generation features</li>
+                <li><IconCheck /> Faster processing</li>
+                <li><IconCheck /> Priority support</li>
+              </ul>
+              {subscriptionTier === "plus" ? (
+                <button type="button" className="btn btn-secondary btn-small" disabled>
+                  Current Plan
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-primary btn-small"
+                  onClick={() => handleUpgrade("plus")}
+                  disabled={loading}
+                >
+                  {loading ? "Loading..." : "Upgrade"}
+                </button>
+              )}
             </div>
-            <div className="settings-benefit">
-              <strong>Pro:</strong> Access to all models including pro-tier
+
+            <div className={`settings-tier-card${subscriptionTier === "pro" ? " active" : ""}`} data-tier="pro">
+              <div className="settings-tier-card-header">
+                <h3>Pro</h3>
+                {subscriptionTier === "pro" && <span className="settings-tier-badge-current">Current</span>}
+              </div>
+              <ul className="settings-tier-features">
+                <li><IconCheck /> Access to ALL models</li>
+                <li><IconCheck /> GPT-4o, Claude 3 Opus</li>
+                <li><IconCheck /> Gemini 1.5 Pro</li>
+                <li><IconCheck /> Maximum generation quality</li>
+                <li><IconCheck /> Fastest processing</li>
+                <li><IconCheck /> Premium support</li>
+                <li><IconCheck /> Early access to features</li>
+              </ul>
+              {subscriptionTier === "pro" ? (
+                <button type="button" className="btn btn-secondary btn-small" disabled>
+                  Current Plan
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-primary btn-small"
+                  onClick={() => handleUpgrade("pro")}
+                  disabled={loading}
+                >
+                  {loading ? "Loading..." : "Upgrade"}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -150,3 +215,4 @@ export function SubscriptionTab() {
     </section>
   );
 }
+

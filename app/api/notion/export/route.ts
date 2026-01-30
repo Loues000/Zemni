@@ -5,7 +5,8 @@ export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   const body = await request.json();
-  const subjectId = String(body.subjectId ?? "");
+  const subjectId = body.subjectId ? String(body.subjectId) : undefined;
+  const pageId = body.pageId ? String(body.pageId) : undefined;
   const title = String(body.title ?? "");
   const markdown = String(body.markdown ?? "");
   const stream = body.stream === true;
@@ -15,14 +16,18 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Missing Notion token" }, { status: 400 });
   }
 
-  if (!subjectId || !title || !markdown) {
+  if (!title || !markdown) {
     return NextResponse.json({ error: "Missing export data" }, { status: 400 });
   }
 
+  // For database export, subjectId is required
+  // For direct page export, pageId is optional (creates in workspace if not provided)
+  const targetId = subjectId || pageId;
+
   // Non-streaming mode for backwards compatibility
   if (!stream) {
-    const pageId = await exportSummary(subjectId, title, markdown, undefined, notionToken);
-    return NextResponse.json({ pageId });
+    const exportedPageId = await exportSummary(targetId, title, markdown, undefined, notionToken, pageId);
+    return NextResponse.json({ pageId: exportedPageId });
   }
 
   // Streaming mode with NDJSON progress events
@@ -38,7 +43,7 @@ export async function POST(request: Request) {
       };
 
       try {
-        await exportSummary(subjectId, title, markdown, sendEvent, notionToken);
+        await exportSummary(targetId, title, markdown, sendEvent, notionToken, pageId);
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : String(err);
         try {

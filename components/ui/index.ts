@@ -6,3 +6,4 @@ export * from "./StatsSection";
 export * from "./ExportMenu";
 export * from "./Footer";
 export * from "./ModelSelector";
+export * from "./ProviderIcon";

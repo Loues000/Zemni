@@ -1,7 +1,10 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import type { OutputKind, Status, Subject } from "@/types";
-import { handleExport as handleExportHandler, handleSubjectPicked as handleSubjectPickedHandler, type ExportHandlersContext } from "@/lib/handlers/export-handlers";
+import { handleExport as handleExportHandler, handleSubjectPicked as handleSubjectPickedHandler, type ExportHandlersContext, type NotionConfig } from "@/lib/handlers/export-handlers";
 import type { HistoryEntry } from "@/types";
+import { decryptKey } from "@/lib/encryption";
 
 export interface UseExportReturn {
   exportProgress: { current: number; total: number } | null;
@@ -35,10 +38,31 @@ export function useExport(
   setLoadedFromHistory: (loaded: boolean) => void,
   updateHistoryState: (updater: (prev: HistoryEntry[]) => HistoryEntry[]) => void
 ): UseExportReturn {
+  const currentUser = useQuery(api.users.getCurrentUser);
   const [exportProgress, setExportProgress] = useState<{ current: number; total: number } | null>(null);
   const [lastExportedPageId, setLastExportedPageId] = useState<string | null>(null);
   const [subjectPickerOpen, setSubjectPickerOpen] = useState(false);
   const [pendingExport, setPendingExport] = useState(false);
+
+  // Load Notion config from Convex
+  const notionConfig: NotionConfig | undefined = useMemo(() => {
+    if (!currentUser) return undefined;
+    
+    let token: string | null = null;
+    if (currentUser.notionToken) {
+      try {
+        token = decryptKey(currentUser.notionToken);
+      } catch (error) {
+        console.error("Failed to decrypt Notion token:", error);
+      }
+    }
+    
+    return {
+      token,
+      databaseId: currentUser.notionDatabaseId || null,
+      exportMethod: currentUser.notionExportMethod || "database",
+    };
+  }, [currentUser]);
 
   const context: ExportHandlersContext = {
     currentKind,
@@ -63,8 +87,8 @@ export function useExport(
   };
 
   const handleExport = useCallback(async (overrideSubjectId?: string) => {
-    await handleExportHandler(overrideSubjectId, context);
-  }, [context]);
+    await handleExportHandler(overrideSubjectId, context, notionConfig);
+  }, [context, notionConfig]);
 
   const handleSubjectPicked = useCallback((subjectId: string) => {
     handleSubjectPickedHandler(subjectId, context, handleExport);

@@ -96,14 +96,42 @@ export const upsert = mutation({
 
     const now = Date.now();
 
-    if (args.documentId) {
+    let idToUpdate = args.documentId;
+
+    // If no documentId provided, try to find by fileName and content to prevent duplicates
+    if (!idToUpdate) {
+      const existing = await ctx.db
+        .query("documents")
+        .withIndex("by_user_file_content", (q) =>
+          q.eq("userId", user._id).eq("fileName", args.fileName)
+        )
+        .filter((q) => q.eq(q.field("extractedText"), args.extractedText))
+        .first();
+
+      if (existing) {
+        idToUpdate = existing._id;
+      }
+    }
+
+    if (idToUpdate) {
       // Update existing
-      const existing = await ctx.db.get(args.documentId);
+      const existing = await ctx.db.get(idToUpdate);
       if (!existing || existing.userId !== user._id) {
-        throw new Error("Document not found");
+        // If it was a provided ID that doesn't exist, we might want to still create new
+        // but for safety with history IDs, let's just create new if not found
+        return await ctx.db.insert("documents", {
+          userId: user._id,
+          title: args.title,
+          fileName: args.fileName,
+          extractedText: args.extractedText,
+          outputs: args.outputs,
+          structureHints: args.structureHints,
+          createdAt: now,
+          updatedAt: now,
+        });
       }
 
-      await ctx.db.patch(args.documentId, {
+      await ctx.db.patch(idToUpdate, {
         title: args.title,
         fileName: args.fileName,
         extractedText: args.extractedText,
@@ -112,7 +140,7 @@ export const upsert = mutation({
         updatedAt: now,
       });
 
-      return args.documentId;
+      return idToUpdate;
     } else {
       // Create new
       return await ctx.db.insert("documents", {
@@ -199,5 +227,35 @@ export const search = query({
       .slice(0, limit);
 
     return filtered;
+  },
+});
+
+/**
+ * Get all documents for current user (for history loading)
+ */
+export const getAll = query({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return [];
+    }
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_user_id", (q: any) => q.eq("clerkUserId", identity.subject))
+      .first();
+
+    if (!user) {
+      return [];
+    }
+
+    const allDocs = await ctx.db
+      .query("documents")
+      .withIndex("by_user_id", (q: any) => q.eq("userId", user._id))
+      .collect();
+
+    // Sort by updatedAt descending (most recent first)
+    return allDocs.sort((a: any, b: any) => b.updatedAt - a.updatedAt);
   },
 });

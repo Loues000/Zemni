@@ -62,55 +62,18 @@ export function useHistoryManagement({
   updateHistoryState
 }: UseHistoryManagementProps) {
   const saveToHistory = useCallback((outputsToSave?: Record<string, OutputEntry>, exportedSubjectTitle?: string, notionPageId?: string): void => {
-    const outputsData = outputsToSave || outputs;
-    if (!fileHandling.extractedText || Object.keys(outputsData).length === 0) return;
-
-    const { getDocumentTitle } = require("@/lib/document-title");
-    const { createPdfId, getSummaryTitle } = require("@/lib/output-previews");
-
-    const derivedTitle = getDocumentTitle(fileHandling.extractedText, fileHandling.fileName);
-    const summaryTab = Object.values(outputsData).find((o) => (o.kind ?? "summary") === "summary" && (o.summary ?? "").trim().length > 0);
-    const title = summaryTab ? getSummaryTitle(summaryTab.summary ?? "", derivedTitle) : derivedTitle;
-    const pdfId = createPdfId(fileHandling.fileName || "untitled", fileHandling.extractedText);
-    const historyId = currentHistoryId || pdfId;
-    const now = Date.now();
-
-    updateHistoryState((prev) => {
-      const existingEntry = prev.find((h) => {
-        const hPdfId = createPdfId(h.fileName, h.extractedText);
-        return hPdfId === pdfId;
-      });
-
-      let finalExportedSubject: string | undefined;
-      if (exportedSubjectTitle !== undefined) {
-        finalExportedSubject = exportedSubjectTitle || undefined;
-      } else {
-        finalExportedSubject = existingEntry?.exportedSubject;
-      }
-
-      const entry: HistoryEntry = {
-        id: historyId,
-        title,
-        fileName: fileHandling.fileName,
-        extractedText: fileHandling.extractedText,
-        outputs: outputsData,
-        structureHints,
-        createdAt: existingEntry?.createdAt || now,
-        updatedAt: now,
-        exportedSubject: finalExportedSubject,
-        notionPageId: notionPageId || existingEntry?.notionPageId
-      };
-
-      const filtered = prev.filter((item) => {
-        if (item.id === entry.id) return false;
-        if (existingEntry && item.id === existingEntry.id) return false;
-        return true;
-      });
-
-      return [entry, ...filtered];
+    const { saveToHistoryInternal } = require("@/lib/history-utils");
+    saveToHistoryInternal({
+      outputs: outputsToSave || outputs,
+      extractedText: fileHandling.extractedText,
+      fileName: fileHandling.fileName,
+      structureHints,
+      currentHistoryId,
+      updateHistoryState,
+      exportedSubjectTitle,
+      notionPageId,
+      setCurrentHistoryId
     });
-
-    if (!currentHistoryId) setCurrentHistoryId(historyId);
   }, [outputs, fileHandling.extractedText, fileHandling.fileName, structureHints, currentHistoryId, updateHistoryState, setCurrentHistoryId]);
 
   const loadFromHistory = useCallback((entry: HistoryEntry): void => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useAppState } from "@/hooks";
-import { ModelSelector } from "@/components/ui";
+import { ModelSelector, ProviderIcon } from "@/components/ui";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 
@@ -65,16 +65,14 @@ export function ModelsTab() {
                   className={`settings-model-item${!isAvailable ? " unavailable" : ""}`}
                 >
                   <div className="settings-model-info">
-                    <div className="settings-model-name">{model.displayName}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <ProviderIcon provider={model.provider} />
+                      <div className="settings-model-name">{model.displayName}</div>
+                    </div>
                     <div className="settings-model-meta">
                       {model.subscriptionTier && (
                         <span className="settings-model-tier" data-tier={model.subscriptionTier}>
                           {model.subscriptionTier}
-                        </span>
-                      )}
-                      {model.pricing.input_per_1m !== null && (
-                        <span className="settings-model-pricing">
-                          ${model.pricing.input_per_1m}/1M input
                         </span>
                       )}
                     </div>

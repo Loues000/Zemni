@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useMemo } from "react";
+import { createPortal } from "react-dom";
 import type { Model } from "@/types";
 import { IconChevron, IconLock } from "./Icons";
 import { isModelAvailable } from "@/lib/model-utils";
@@ -33,9 +34,41 @@ export function ModelSelector({
   className = ""
 }: ModelSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
   const containerRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+
+  // Ensure portal only renders on client (for Next.js SSR)
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Calculate dropdown position when opening
+  useEffect(() => {
+    if (!isOpen || !mounted || !buttonRef.current) return;
+
+    const updatePosition = () => {
+      if (!buttonRef.current) return;
+      const rect = buttonRef.current.getBoundingClientRect();
+      setDropdownStyle({
+        position: "fixed",
+        top: `${rect.bottom + 4}px`,
+        left: `${rect.left}px`,
+        width: `${rect.width}px`
+      });
+    };
+
+    updatePosition();
+    window.addEventListener("resize", updatePosition);
+    window.addEventListener("scroll", updatePosition, true);
+
+    return () => {
+      window.removeEventListener("resize", updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+    };
+  }, [isOpen, mounted]);
 
   // Group models by tier
   const groupedModels = useMemo(() => {
@@ -78,7 +111,12 @@ export function ModelSelector({
     if (!isOpen) return;
 
     const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      // Check if click is outside both the container and the dropdown (which is portaled)
+      const isOutsideContainer = containerRef.current && !containerRef.current.contains(target);
+      const isOutsideDropdown = listRef.current && !listRef.current.contains(target);
+      
+      if (isOutsideContainer && isOutsideDropdown) {
         setIsOpen(false);
       }
     };
@@ -153,8 +191,9 @@ export function ModelSelector({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, onModelChange]);
 
-  const handleSelect = (modelId: string, isAvailable: boolean) => {
+  const handleSelect = (modelId: string, isAvailable: boolean, e: React.MouseEvent) => {
     if (!isAvailable) return;
+    e.stopPropagation(); // Prevent backdrop from closing dropdown before selection
     onModelChange(modelId);
     setIsOpen(false);
     buttonRef.current?.focus();
@@ -183,10 +222,20 @@ export function ModelSelector({
         <IconChevron />
       </button>
 
-      {isOpen && (
+      {isOpen && mounted && (
         <>
-          <div className="model-selector-backdrop" onClick={() => setIsOpen(false)} />
-          <div className="model-selector-dropdown custom-scrollbar" role="listbox" ref={listRef}>
+          {createPortal(
+            <div className="model-selector-backdrop" onClick={() => setIsOpen(false)} />,
+            document.body
+          )}
+            {createPortal(
+            <div 
+              className="model-selector-dropdown custom-scrollbar" 
+              role="listbox" 
+              ref={listRef}
+              style={dropdownStyle}
+              onClick={(e) => e.stopPropagation()}
+            >
             {Object.entries(groupedModels).map(([tier, tierModels]) => {
               const isTierAvailable = isModelAvailable(tier, userTier);
               return (
@@ -208,7 +257,7 @@ export function ModelSelector({
                         type="button"
                         className={`model-option${isSelected ? " selected" : ""}${!isAvailable ? " locked" : ""}`}
                         data-model-id={model.id}
-                        onClick={() => handleSelect(model.id, isAvailable)}
+                        onClick={(e) => handleSelect(model.id, isAvailable, e)}
                         aria-selected={isSelected}
                         aria-disabled={!isAvailable}
                         role="option"
@@ -238,12 +287,14 @@ export function ModelSelector({
             })}
             {userTier !== "pro" && (
               <div className="model-selector-upgrade-cta">
-                <Link href="/settings" onClick={() => setIsOpen(false)}>
-                  Unlock premium models in Settings →
+                <Link href="/settings?tab=models" onClick={() => setIsOpen(false)}>
+                  Unlock premium models →
                 </Link>
               </div>
             )}
-          </div>
+            </div>,
+            document.body
+          )}
         </>
       )}
     </div>

@@ -13,6 +13,13 @@ export default defineSchema({
     ),
     stripeCustomerId: v.optional(v.string()),
     stripeSubscriptionId: v.optional(v.string()),
+    preferredLanguage: v.optional(v.string()),
+    preferredName: v.optional(v.string()),
+    customGuidelines: v.optional(v.string()),
+    defaultStructureHints: v.optional(v.string()),
+    notionToken: v.optional(v.string()),
+    notionDatabaseId: v.optional(v.string()),
+    notionExportMethod: v.optional(v.union(v.literal("database"), v.literal("page"))),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -31,7 +38,8 @@ export default defineSchema({
     notionPageId: v.optional(v.string()),
   })
     .index("by_user_id", ["userId"])
-    .index("by_user_id_updated", ["userId", "updatedAt"]),
+    .index("by_user_id_updated", ["userId", "updatedAt"])
+    .index("by_user_file_content", ["userId", "fileName"]),
 
   apiKeys: defineTable({
     userId: v.id("users"),

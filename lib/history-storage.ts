@@ -77,9 +77,7 @@ export function documentToHistoryEntry(doc: {
     exportedSubject: doc.exportedSubject,
     notionPageId: doc.notionPageId,
   };
-}
-
-/**
+}/**
  * Convert HistoryEntry to Convex document format
  */
 export function historyEntryToDocument(entry: HistoryEntry, userId: string): {

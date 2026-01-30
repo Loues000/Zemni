@@ -21,9 +21,9 @@ import {
 const SummaryPreview = lazy(() => import("@/components/features/SummaryPreview.tsx").then(m => ({ default: m.SummaryPreview })));
 const FlashcardsMode = lazy(() => import("@/components/features/FlashcardsMode.tsx").then(m => ({ default: m.FlashcardsMode })));
 const QuizMode = lazy(() => import("@/components/features/QuizMode.tsx").then(m => ({ default: m.QuizMode })));
-import { ActivityBar, CostPreview, StatsSection, IconMenu, IconSun, IconMoon, IconSettings, Footer } from "@/components/ui";
+import { ActivityBar, CostPreview, StatsSection, IconMenu, IconSun, IconMoon, IconSettings } from "@/components/ui";
 import { ClerkSignedIn, ClerkSignedOut, ClerkSignInButton } from "@/components/auth/ClerkWrapper";
-import { UserButton } from "@clerk/nextjs";
+import { UserButton, useUser } from "@clerk/nextjs";
 import type { OutputKind, UsageStats, HistoryEntry } from "@/types";
 import {
   useHistory,
@@ -103,8 +103,10 @@ export default function AppClient() {
   const [mobileView, setMobileView] = useState<"input" | "output">("input");
 
   // User and subscription state
+  const { user: clerkUser } = useUser();
   const currentUser = useQuery(api.users.getCurrentUser);
   const subscriptionTier = currentUser?.subscriptionTier || "free";
+  const preferredName = currentUser?.preferredName || clerkUser?.fullName || null;
 
   // Refs
   const previewRef1 = useRef<HTMLDivElement | null>(null);
@@ -260,6 +262,32 @@ export default function AppClient() {
     exportHook.setExportProgress(tempExportProgress);
   }, [tempExportProgress, exportHook]);
 
+  // History management
+  const { saveToHistory, loadFromHistory, deleteHistoryEntry } = useHistoryManagement({
+    fileHandling,
+    outputs,
+    structureHints,
+    currentHistoryId,
+    setCurrentHistoryId,
+    setOutputs,
+    setStructureHints,
+    setLoadedFromHistory,
+    setError,
+    setSidebarOpen,
+    isSmallScreen,
+    setMobileView,
+    setIsEditing,
+    setIsEditingSecond,
+    setSecondTabId,
+    setSelectedTabId,
+    setSelectedModel,
+    exportHook,
+    setMessages,
+    setInput,
+    setData,
+    updateHistoryState
+  });
+
   // Quiz state
   const quizState = useQuizState(
     selectedTabId,
@@ -336,6 +364,32 @@ export default function AppClient() {
     setOutputs
   });
 
+  // Hide/show refine float button based on refine bar visibility
+  useEffect(() => {
+    if (!isSmallScreen || !currentSummary) return;
+
+    const refineBar = document.querySelector('.refine-bar') as HTMLElement;
+    const floatBtn = document.querySelector('.refine-float-btn') as HTMLElement;
+    if (!refineBar || !floatBtn) return;
+
+    const updateFloatButton = () => {
+      const isHidden = refineBar.classList.contains('refine-bar-hidden');
+      floatBtn.style.display = isHidden ? 'flex' : 'none';
+    };
+
+    // Initial state
+    updateFloatButton();
+
+    // Watch for class changes
+    const observer = new MutationObserver(updateFloatButton);
+    observer.observe(refineBar, {
+      attributes: true,
+      attributeFilter: ['class']
+    });
+
+    return () => observer.disconnect();
+  }, [isSmallScreen, currentSummary]);
+
   // Keyboard shortcuts
   useKeyboardShortcuts({
     sidebarOpen,
@@ -377,10 +431,16 @@ export default function AppClient() {
   }, [textForEstimate, structureHints, outputKind, flashcardsDensity, fetchTokenEstimate, setModelCosts, setCostHeuristic]);
 
   useEffect(() => {
-    if (status === "ready" && Object.keys(outputs).length > 0 && fileHandling.extractedText && !generatingTabId && !loadedFromHistory) {
-      saveToHistory();
+    // Save to history when:
+    // 1. Status is ready and we have outputs
+    // 2. Either we're not loading from history (new document) OR we have a currentHistoryId (updating existing document)
+    if (status === "ready" && Object.keys(outputs).length > 0 && fileHandling.extractedText && !generatingTabId && (!loadedFromHistory || currentHistoryId)) {
+      const timeoutId = setTimeout(() => {
+        saveToHistory();
+      }, 1000);
+      return () => clearTimeout(timeoutId);
     }
-  }, [outputs, status, fileHandling.extractedText, generatingTabId, loadedFromHistory]);
+  }, [outputs, status, fileHandling.extractedText, generatingTabId, loadedFromHistory, currentHistoryId, saveToHistory]);
 
   // Handlers
   const handleModelChange = useCallback((modelId: string): void => {
@@ -462,32 +522,6 @@ export default function AppClient() {
     handleRefineSubmitWrapper
   } = useSummaryWrappers(summaryContext);
 
-  // History management
-  const { saveToHistory, loadFromHistory, deleteHistoryEntry } = useHistoryManagement({
-    fileHandling,
-    outputs,
-    structureHints,
-    currentHistoryId,
-    setCurrentHistoryId,
-    setOutputs,
-    setStructureHints,
-    setLoadedFromHistory,
-    setError,
-    setSidebarOpen,
-    isSmallScreen,
-    setMobileView,
-    setIsEditing,
-    setIsEditingSecond,
-    setSecondTabId,
-    setSelectedTabId,
-    setSelectedModel,
-    exportHook,
-    setMessages,
-    setInput,
-    setData,
-    updateHistoryState
-  });
-
   // UI computed values
   const { statusClass, statusTitle, isGenerating, canGenerate, canExport, canViewOutput } = useUIState({
     status,
@@ -522,7 +556,10 @@ export default function AppClient() {
                 onClick={() => router.push("/settings")}
               >
                 <UserButton afterSignOutUrl="/" />
-                <span>Settings</span>
+                <div className="sidebar-user-info">
+                  <span className="sidebar-user-name">{preferredName || "User"}</span>
+                  <span className="sidebar-user-tier">{subscriptionTier}</span>
+                </div>
               </button>
             </ClerkSignedIn>
             <ClerkSignedOut>
@@ -538,46 +575,6 @@ export default function AppClient() {
       />
 
       <div className="main">
-        <div className={`settings-float${settingsOpen ? " open" : ""}`} ref={settingsMenuRef}>
-          <button
-            ref={settingsButtonRef}
-            type="button"
-            className="icon-btn settings-btn"
-            onClick={() => setSettingsOpen((prev) => !prev)}
-            aria-label="Open quick settings"
-            aria-expanded={settingsOpen}
-            title="Quick settings"
-          >
-            <IconSettings />
-          </button>
-          {settingsOpen && (
-            <div className="settings-popover" role="menu" aria-label="Quick settings">
-              <div className="settings-popover-section">Quick settings</div>
-              <button
-                type="button"
-                className="settings-popover-item"
-                role="menuitem"
-                onClick={() => {
-                  setTheme(theme === "dark" ? "light" : "dark");
-                }}
-              >
-                <span>Theme</span>
-                <span className="settings-popover-meta">{theme === "dark" ? "Dark" : "Light"}</span>
-              </button>
-              <button
-                type="button"
-                className="settings-popover-item"
-                role="menuitem"
-                onClick={() => {
-                  setSettingsOpen(false);
-                  router.push("/settings");
-                }}
-              >
-                <span>Settings</span>
-              </button>
-            </div>
-          )}
-        </div>
 
         {isSmallScreen && (
           <div className="top-toolbar" role="region" aria-label="Controls">
@@ -655,6 +652,48 @@ export default function AppClient() {
                     <IconMenu />
                   </button>
                 }
+                topBarRight={
+                  <div className={`settings-float${settingsOpen ? " open" : ""}`} ref={settingsMenuRef}>
+                    <button
+                      ref={settingsButtonRef}
+                      type="button"
+                      className="icon-btn settings-btn"
+                      onClick={() => setSettingsOpen((prev) => !prev)}
+                      aria-label="Open quick settings"
+                      aria-expanded={settingsOpen}
+                      title="Quick settings"
+                    >
+                      <IconSettings />
+                    </button>
+                    {settingsOpen && (
+                      <div className="settings-popover" role="menu" aria-label="Quick settings">
+                        <div className="settings-popover-section">Quick settings</div>
+                        <button
+                          type="button"
+                          className="settings-popover-item"
+                          role="menuitem"
+                          onClick={() => {
+                            setTheme(theme === "dark" ? "light" : "dark");
+                          }}
+                        >
+                          <span>Theme</span>
+                          <span className="settings-popover-meta">{theme === "dark" ? "Dark" : "Light"}</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="settings-popover-item"
+                          role="menuitem"
+                          onClick={() => {
+                            setSettingsOpen(false);
+                            router.push("/settings");
+                          }}
+                        >
+                          <span>Settings</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                }
                 dropzoneCorner={
                   <span
                     className={`status-dot ${statusClass} status-dot-corner`}
@@ -714,6 +753,48 @@ export default function AppClient() {
                 >
                   <IconMenu />
                 </button>
+              }
+              topBarRight={
+                <div className={`settings-float${settingsOpen ? " open" : ""}`} ref={settingsMenuRef}>
+                  <button
+                    ref={settingsButtonRef}
+                    type="button"
+                    className="icon-btn settings-btn"
+                    onClick={() => setSettingsOpen((prev) => !prev)}
+                    aria-label="Open quick settings"
+                    aria-expanded={settingsOpen}
+                    title="Quick settings"
+                  >
+                    <IconSettings />
+                  </button>
+                  {settingsOpen && (
+                    <div className="settings-popover" role="menu" aria-label="Quick settings">
+                      <div className="settings-popover-section">Quick settings</div>
+                      <button
+                        type="button"
+                        className="settings-popover-item"
+                        role="menuitem"
+                        onClick={() => {
+                          setTheme(theme === "dark" ? "light" : "dark");
+                        }}
+                      >
+                        <span>Theme</span>
+                        <span className="settings-popover-meta">{theme === "dark" ? "Dark" : "Light"}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="settings-popover-item"
+                        role="menuitem"
+                        onClick={() => {
+                          setSettingsOpen(false);
+                          router.push("/settings");
+                        }}
+                      >
+                        <span>Settings</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
               }
               dropzoneCorner={
                 <span
@@ -790,55 +871,80 @@ export default function AppClient() {
                 onCloseTab={handleCloseTabRequestWrapper}
               />
               <div className="output-actions">
-                <button
-                  type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={handleGenerate}
-                  disabled={!canGenerate}
-                  aria-label={canGenerate ? "Generate content" : "Cannot generate - missing file or model"}
-                  title={!canGenerate && !fileHandling.extractedText ? "Upload a file first" : !canGenerate && !selectedModel ? "Select a model first" : ""}
-                >
-                  {generatingTabId ? "Generating..." : "Generate"}
-                </button>
-                {outputKind === "summary" && (
-                  <>
-                    {status === "exporting" ? (
-                      <button type="button" className="btn btn-secondary btn-sm" disabled>
-                        Exporting...
-                      </button>
-                    ) : lastExportedPageId ? (
-                      <div className="export-actions-group">
-                        <a
-                          href={`https://notion.so/${lastExportedPageId.replace(/-/g, "")}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="btn btn-primary btn-sm"
-                        >
-                          Open in Notion
-                        </a>
-                        <button
-                          type="button"
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => void handleExport()}
-                          disabled={!canExport}
-                        >
-                          Retry
-                        </button>
-                      </div>
-                    ) : (
+                <div className="desktop-only">
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={handleGenerate}
+                    disabled={!canGenerate}
+                    aria-label={canGenerate ? "Generate content" : "Cannot generate - missing file or model"}
+                    title={!canGenerate && !fileHandling.extractedText ? "Upload a file first" : !canGenerate && !selectedModel ? "Select a model first" : ""}
+                  >
+                    {generatingTabId ? "Generating..." : "Generate"}
+                  </button>
+                </div>
+                {outputKind === "summary" && (() => {
+                  const isNotionConfigured = !!(currentUser?.notionToken && currentUser?.notionDatabaseId);
+
+                  if (!isNotionConfigured) {
+                    return (
                       <button
                         type="button"
                         className="btn btn-primary btn-sm"
-                        onClick={() => void handleExport()}
-                        disabled={!canExport}
-                        aria-label={canExport ? "Export summary to Notion" : "Cannot export - no summary available"}
-                        title={!canExport ? "Generate a summary first" : ""}
+                        onClick={() => router.push("/settings?tab=notion")}
+                        aria-label="Set up Notion integration"
+                        title="Configure Notion integration to export summaries"
                       >
-                        Export to Notion
+                        Set up Notion
                       </button>
-                    )}
-                  </>
-                )}
+                    );
+                  }
+
+                  // Only show export buttons if there's output
+                  if (!canExport && !lastExportedPageId) {
+                    return null;
+                  }
+
+                  return (
+                    <>
+                      {status === "exporting" ? (
+                        <button type="button" className="btn btn-secondary btn-sm" disabled>
+                          Exporting...
+                        </button>
+                      ) : lastExportedPageId ? (
+                        <div className="export-actions-group">
+                          <a
+                            href={`https://notion.so/${lastExportedPageId.replace(/-/g, "")}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn btn-primary btn-sm"
+                          >
+                            Open in Notion
+                          </a>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => void handleExport()}
+                            disabled={!canExport}
+                          >
+                            Retry
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-sm"
+                          onClick={() => void handleExport()}
+                          disabled={!canExport}
+                          aria-label={canExport ? "Export summary to Notion" : "Cannot export - no summary available"}
+                          title={!canExport ? "Generate a summary first" : ""}
+                        >
+                          Export to Notion
+                        </button>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             </div>
             <ActivityBar status={status} exportProgress={exportProgress} />
@@ -908,18 +1014,58 @@ export default function AppClient() {
             )}
 
             {outputKind === "summary" && (
-              <RefineBar
-                input={chatConfig.input}
-                isRefining={chatConfig.isLoading}
-                hasCurrentSummary={!!currentSummary}
-                onInputChange={chatConfig.handleInputChange}
-                onSubmit={handleRefineSubmitWrapper}
-              />
+              <>
+                <RefineBar
+                  input={chatConfig.input}
+                  isRefining={chatConfig.isLoading}
+                  hasCurrentSummary={!!currentSummary}
+                  onInputChange={chatConfig.handleInputChange}
+                  onSubmit={handleRefineSubmitWrapper}
+                  isMobile={isSmallScreen}
+                  onClose={isSmallScreen ? () => {
+                    const refineBar = document.querySelector('.refine-bar') as HTMLElement;
+                    const floatBtn = document.querySelector('.refine-float-btn') as HTMLElement;
+                    if (refineBar) {
+                      refineBar.classList.add('refine-bar-hidden');
+                      if (floatBtn) floatBtn.style.display = 'flex';
+                    }
+                  } : undefined}
+                />
+                {isSmallScreen && currentSummary && (
+                  <button
+                    type="button"
+                    className="refine-float-btn mobile-only"
+                    onClick={() => {
+                      // Toggle refine bar visibility on mobile
+                      const refineBar = document.querySelector('.refine-bar') as HTMLElement;
+                      if (refineBar) {
+                        const isHidden = refineBar.classList.contains('refine-bar-hidden');
+                        if (isHidden) {
+                          refineBar.classList.remove('refine-bar-hidden');
+                          const refineInput = refineBar.querySelector('input') as HTMLInputElement;
+                          if (refineInput) {
+                            setTimeout(() => {
+                              refineInput.focus();
+                            }, 100);
+                          }
+                        } else {
+                          refineBar.classList.add('refine-bar-hidden');
+                        }
+                      }
+                    }}
+                    aria-label="Request changes"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                      <path d="M13 8H3" />
+                      <path d="M17 12H3" />
+                    </svg>
+                  </button>
+                )}
+              </>
             )}
           </div>
         </div>
-
-        <Footer />
       </div>
     </div>
   );

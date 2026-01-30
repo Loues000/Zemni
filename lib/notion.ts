@@ -14,7 +14,14 @@ export function createNotionClient(token?: string) {
   return new Client({ auth: authToken });
 }
 
-const notion = createNotionClient();
+// Lazy initialization - only create client when actually needed
+let notionInstance: Client | null = null;
+function getNotionClient(): Client {
+  if (!notionInstance) {
+    notionInstance = createNotionClient();
+  }
+  return notionInstance;
+}
 
 export type ExportProgress = 
   | { type: "started"; totalBlocks: number; totalChunks: number }
@@ -31,18 +38,44 @@ const getPageTitle = (page: PageObjectResponse): string => {
   return titleProp.title.map((item: { plain_text: string }) => item.plain_text).join("");
 };
 
-export const listSubjects = async (databaseId: string, notionToken?: string) => {
-  const client = notionToken ? createNotionClient(notionToken) : notion;
-  const response = await client.databases.query({
-    database_id: databaseId
-  });
+/**
+ * Wraps a promise with a timeout
+ */
+const withTimeout = <T>(promise: Promise<T>, timeoutMs: number, errorMessage: string): Promise<T> => {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(errorMessage)), timeoutMs)
+    )
+  ]);
+};
 
-  return response.results
-    .filter((page): page is PageObjectResponse => "properties" in page)
-    .map((page) => ({
-      id: page.id,
-      title: getPageTitle(page)
-    }));
+export const listSubjects = async (databaseId: string, notionToken?: string) => {
+  const client = notionToken ? createNotionClient(notionToken) : getNotionClient();
+  
+  try {
+    const response = await withTimeout(
+      client.databases.query({
+        database_id: databaseId
+      }),
+      10000, // 10 second timeout
+      "Request to Notion API timed out. Please check your connection and try again."
+    );
+
+    return response.results
+      .filter((page): page is PageObjectResponse => "properties" in page)
+      .map((page) => ({
+        id: page.id,
+        title: getPageTitle(page)
+      }));
+  } catch (error) {
+    // Re-throw with more context if it's a timeout
+    if (error instanceof Error && error.message.includes("timed out")) {
+      throw error;
+    }
+    // Re-throw other errors as-is
+    throw error;
+  }
 };
 
 /**
@@ -60,14 +93,15 @@ const stripLeadingH1 = (markdown: string): string => {
 };
 
 export const exportSummary = async (
-  subjectId: string,
+  subjectIdOrPageId: string | undefined,
   title: string,
   markdown: string,
   onProgress?: (progress: ExportProgress) => void,
-  notionToken?: string
+  notionToken?: string,
+  parentPageId?: string
 ): Promise<string> => {
   try {
-    const client = notionToken ? createNotionClient(notionToken) : notion;
+    const client = notionToken ? createNotionClient(notionToken) : getNotionClient();
     const cleanedMarkdown = stripLeadingH1(markdown);
     const blocks = markdownToBlocks(cleanedMarkdown);
     const totalChunks = Math.ceil(blocks.length / 100);
@@ -96,8 +130,29 @@ export const exportSummary = async (
 
     const firstChunk = safeBlocks.slice(0, 100);
 
+    // Determine parent based on what's provided
+    let parent: { page_id: string } | { database_id: string } | { workspace: true };
+    
+    if (parentPageId) {
+      // Direct page export: use provided pageId as parent
+      parent = { page_id: parentPageId };
+    } else if (subjectIdOrPageId) {
+      // Try as database first (for subjects database export)
+      try {
+        await client.databases.retrieve({ database_id: subjectIdOrPageId });
+        parent = { database_id: subjectIdOrPageId };
+      } catch {
+        // Not a database, treat as page parent
+        parent = { page_id: subjectIdOrPageId };
+      }
+    } else {
+      // No parent specified - create in workspace root
+      // Note: This requires the integration to have workspace access
+      parent = { workspace: true };
+    }
+
     const page = await client.pages.create({
-      parent: { page_id: subjectId },
+      parent: parent as any,
       properties: {
         title: {
           title: [{ text: { content: title } }]

@@ -1,5 +1,8 @@
 import { useState, useEffect } from "react";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import type { Model, Subject, Status } from "@/types";
+import { decryptKey } from "@/lib/encryption";
 
 export interface UseAppStateReturn {
   theme: "light" | "dark";
@@ -32,7 +35,20 @@ export interface UseAppStateReturn {
  * Manages core application state: theme, models, subjects, status, error, and UI state
  */
 export function useAppState(): UseAppStateReturn {
-  const [theme, setTheme] = useState<"light" | "dark">("light");
+  const currentUser = useQuery(api.users.getCurrentUser);
+  // Initialize theme synchronously from localStorage or system preference
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    if (typeof window !== "undefined") {
+      const saved = window.localStorage.getItem("theme");
+      if (saved === "dark" || saved === "light") {
+        return saved;
+      }
+      if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+        return "dark";
+      }
+    }
+    return "light";
+  });
   const [models, setModels] = useState<Model[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("");
@@ -67,22 +83,19 @@ export function useAppState(): UseAppStateReturn {
   }, []);
 
   useEffect(() => {
-    const saved = window.localStorage.getItem("theme");
-    if (saved === "dark" || saved === "light") {
-      setTheme(saved);
-    } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-      setTheme("dark");
-    }
+    // Theme is already initialized in useState, just ensure it's applied to DOM
+    document.documentElement.dataset.theme = theme;
 
     if (window.innerWidth >= 769) {
       setStatsOpen(true);
     }
 
     // Load user settings
+    // defaultModel stays in localStorage (device-specific)
     const savedDefaultModel = window.localStorage.getItem("defaultModel");
-    const savedDefaultStructureHints = window.localStorage.getItem("defaultStructureHints");
     if (savedDefaultModel) setDefaultModel(savedDefaultModel);
-    if (savedDefaultStructureHints) setDefaultStructureHints(savedDefaultStructureHints);
+    
+    // defaultStructureHints will be loaded from Convex in useEffect below
 
     const fetchModels = async () => {
       try {
@@ -105,21 +118,36 @@ export function useAppState(): UseAppStateReturn {
 
     const fetchSubjects = async () => {
       try {
-        // Get user's Notion credentials from localStorage if available
-        const userNotionToken = typeof window !== "undefined" ? localStorage.getItem("notion_token") : null;
-        const userDatabaseId = typeof window !== "undefined" ? localStorage.getItem("notion_database_id") : null;
+        // Get user's Notion credentials from Convex if available
+        // This will be called after currentUser is loaded
+        if (!currentUser) return;
+        
+        let userNotionToken: string | null = null;
+        let userDatabaseId: string | null = null;
+        
+        if (currentUser.notionToken) {
+          try {
+            userNotionToken = decryptKey(currentUser.notionToken);
+          } catch (err) {
+            console.error("Failed to decrypt Notion token:", err);
+            return;
+          }
+        }
+        
+        if (currentUser.notionDatabaseId) {
+          userDatabaseId = currentUser.notionDatabaseId;
+        }
+        
+        if (!userNotionToken || !userDatabaseId) return;
         
         const url = new URL("/api/notion/subjects", window.location.origin);
-        if (userDatabaseId) {
-          url.searchParams.set("databaseId", userDatabaseId);
-        }
+        url.searchParams.set("databaseId", userDatabaseId);
         
-        const headers: HeadersInit = {};
-        if (userNotionToken) {
-          headers["x-notion-token"] = userNotionToken;
-        }
-        
-        const res = await fetch(url.toString(), { headers });
+        const res = await fetch(url.toString(), {
+          headers: {
+            "x-notion-token": userNotionToken,
+          },
+        });
         if (!res.ok) return;
         const data = await res.json() as { subjects: Subject[] };
         setSubjects(data.subjects);
@@ -129,12 +157,57 @@ export function useAppState(): UseAppStateReturn {
     };
 
     fetchModels();
-    fetchSubjects();
   }, []);
 
+  // Fetch subjects when user data is available
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    window.localStorage.setItem("theme", theme);
+    if (currentUser) {
+      const fetchSubjects = async () => {
+        try {
+          let userNotionToken: string | null = null;
+          let userDatabaseId: string | null = null;
+          
+          if (currentUser.notionToken) {
+            try {
+              userNotionToken = decryptKey(currentUser.notionToken);
+            } catch (err) {
+              console.error("Failed to decrypt Notion token:", err);
+              return;
+            }
+          }
+          
+          if (currentUser.notionDatabaseId) {
+            userDatabaseId = currentUser.notionDatabaseId;
+          }
+          
+          if (!userNotionToken || !userDatabaseId) return;
+          
+          const url = new URL("/api/notion/subjects", window.location.origin);
+          url.searchParams.set("databaseId", userDatabaseId);
+          
+          const res = await fetch(url.toString(), {
+            headers: {
+              "x-notion-token": userNotionToken,
+            },
+          });
+          if (!res.ok) return;
+          const data = await res.json() as { subjects: Subject[] };
+          setSubjects(data.subjects);
+        } catch (err) {
+          // Ignore
+        }
+      };
+      
+      fetchSubjects();
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    // Apply theme to DOM and save to localStorage
+    if (typeof window !== "undefined") {
+      document.documentElement.setAttribute("data-theme", theme);
+      window.localStorage.setItem("theme", theme);
+    }
   }, [theme]);
 
   useEffect(() => {
@@ -142,6 +215,13 @@ export function useAppState(): UseAppStateReturn {
       window.localStorage.setItem("defaultModel", defaultModel);
     }
   }, [defaultModel]);
+
+  // Load defaultStructureHints from Convex when user data is available
+  useEffect(() => {
+    if (currentUser?.defaultStructureHints !== undefined) {
+      setDefaultStructureHints(currentUser.defaultStructureHints || "");
+    }
+  }, [currentUser]);
 
   useEffect(() => {
     window.localStorage.setItem("defaultStructureHints", defaultStructureHints);

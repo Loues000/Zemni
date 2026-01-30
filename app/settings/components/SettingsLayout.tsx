@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
@@ -28,7 +28,6 @@ const TABS = [
   { id: "history", label: "History & Sync" },
   { id: "models", label: "Models" },
   { id: "customization", label: "Customization" },
-  { id: "attachments", label: "Attachments" },
   { id: "contact", label: "Contact Us" },
 ] as const;
 
@@ -36,6 +35,7 @@ export function SettingsLayout({ children, activeTab, onTabChange }: SettingsLay
   const { user, isLoaded } = useUser();
   const currentUser = useQuery(api.users.getCurrentUser);
   const usageStats = useQuery(api.usage.getUsageStats, {});
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
   const subscriptionTier = currentUser?.subscriptionTier || "free";
   const tierLabels: Record<string, string> = {
@@ -49,7 +49,7 @@ export function SettingsLayout({ children, activeTab, onTabChange }: SettingsLay
     <div className="settings-page">
       <header className="settings-header-bar">
         <div className="settings-header-left">
-          <Link href="/" className="btn btn-text btn-small" style={{ opacity: 0.7, fontWeight: 500 }}>
+          <Link href="/" className="btn btn-text btn-small settings-back-link">
             ← Back to Chat
           </Link>
         </div>
@@ -57,12 +57,12 @@ export function SettingsLayout({ children, activeTab, onTabChange }: SettingsLay
           <div className="settings-sidebar-actions">
             {isClerkConfigured ? (
               <SignOutButton>
-                <button type="button" className="btn btn-text btn-small" style={{ opacity: 0.6, fontSize: "12px" }}>
+                <button type="button" className="btn btn-text btn-small settings-sign-out-btn">
                   Sign out
                 </button>
               </SignOutButton>
             ) : (
-              <button type="button" className="btn btn-text btn-small" disabled style={{ opacity: 0.4, fontSize: "12px" }}>
+              <button type="button" className="btn btn-text btn-small settings-sign-out-btn" disabled>
                 Sign out
               </button>
             )}
@@ -74,22 +74,22 @@ export function SettingsLayout({ children, activeTab, onTabChange }: SettingsLay
         <aside className="settings-sidebar">
           {/* Persistent Profile Section */}
           <div className="settings-sidebar-profile">
-            <div className="settings-avatar" style={{ width: "80px", height: "80px", borderRadius: "50%", marginBottom: "12px", boxShadow: "0 4px 12px rgba(0,0,0,0.2)", fontSize: "32px" }}>
+            <div className="settings-avatar-large">
               {user?.imageUrl ? (
-                <img src={user.imageUrl} alt={user.fullName || "User"} style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }} />
+                <img src={user.imageUrl} alt={user.fullName || "User"} />
               ) : (
-                <div style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <div className="settings-avatar-initial">
                   {user?.firstName?.[0] || user?.emailAddresses[0]?.emailAddress[0] || "U"}
                 </div>
               )}
             </div>
-            <h2 style={{ fontSize: "18px", fontWeight: "700", margin: "0 0 2px", color: "var(--text-primary)" }}>
+            <h2 className="settings-profile-name">
               {user?.fullName || "User"}
             </h2>
-            <p style={{ fontSize: "12px", color: "var(--text-secondary)", margin: "0 0 12px", overflow: "hidden", textOverflow: "ellipsis", width: "100%" }}>
+            <p className="settings-profile-email">
               {user?.emailAddresses[0]?.emailAddress}
             </p>
-            <div className="tier-badge tier-badge-pro" style={{ fontSize: "11px", padding: "2px 8px" }}>
+            <div className={`tier-badge tier-badge-${subscriptionTier} settings-tier-badge-inline`}>
               {tierLabels[subscriptionTier]} Plan
             </div>
           </div>
@@ -97,65 +97,61 @@ export function SettingsLayout({ children, activeTab, onTabChange }: SettingsLay
           {/* Persistent Usage Section */}
           {usageStats && (
             <div className="settings-sidebar-usage">
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                <span style={{ fontSize: "12px", fontWeight: "700", color: "var(--text-primary)" }}>Usage</span>
-                <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>Monthly credits</span>
+              <div className="settings-usage-header">
+                <span className="settings-usage-title">Usage</span>
+                <span className="settings-usage-subtitle">This month</span>
               </div>
 
-              <div style={{ marginBottom: "16px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", marginBottom: "4px" }}>
-                  <span style={{ fontWeight: "500", opacity: 0.8 }}>Standard</span>
-                  <span>{usageStats.totalDocuments}/1,500</span>
-                </div>
-                <div className="usage-bar-container" style={{ margin: "4px 0" }}>
-                  <div
-                    className="usage-bar-fill standard"
-                    style={{ width: `${Math.min((usageStats.totalDocuments / 1500) * 100, 100)}%` }}
-                  />
+              <div className="settings-usage-metric">
+                <div className="settings-usage-metric-row">
+                  <span className="settings-usage-metric-label">Documents</span>
+                  <span>{usageStats.thisMonthDocuments}</span>
                 </div>
               </div>
 
-              <div style={{ marginBottom: "20px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", marginBottom: "4px" }}>
-                  <span style={{ fontWeight: "500", opacity: 0.8 }}>Premium</span>
-                  <span>{Math.floor(usageStats.thisMonthTokensIn / 1000)}/100</span>
-                </div>
-                <div className="usage-bar-container" style={{ margin: "4px 0" }}>
-                  <div
-                    className="usage-bar-fill premium"
-                    style={{ width: `${Math.min((usageStats.thisMonthTokensIn / 100000) * 100, 100)}%` }}
-                  />
+              <div className="settings-usage-metric">
+                <div className="settings-usage-metric-row">
+                  <span className="settings-usage-metric-label">Tokens</span>
+                  <span>{(usageStats.thisMonthTokensIn + usageStats.thisMonthTokensOut).toLocaleString()}</span>
                 </div>
               </div>
 
               <button
                 type="button"
-                className="settings-buy-credits-btn"
+                className="settings-buy-credits-btn accent"
                 onClick={() => onTabChange("subscription")}
-                style={{ background: "var(--accent)", color: "white" }}
               >
-                Top up credits →
+                View subscription →
               </button>
             </div>
           )}
 
-          <div className="settings-sidebar-footer" style={{ marginTop: "auto", paddingTop: "24px" }}>
-            <div className="settings-sidebar-section-title" style={{ fontSize: "11px", fontWeight: "700", opacity: 0.6, marginBottom: "12px" }}>Keyboard Shortcuts</div>
-            <div className="settings-shortcut" style={{ padding: "6px 0", fontSize: "12px", display: "flex", justifyContent: "space-between", color: "var(--text-secondary)" }}>
-              <span>Search</span>
-              <kbd style={{ background: "transparent", border: "1px solid var(--stroke)", padding: "2px 6px", borderRadius: "4px", fontSize: "10px" }}>Ctrl K</kbd>
-            </div>
-            <div className="settings-shortcut" style={{ padding: "6px 0", fontSize: "12px", display: "flex", justifyContent: "space-between", color: "var(--text-secondary)" }}>
-              <span>New Chat</span>
-              <kbd style={{ background: "transparent", border: "1px solid var(--stroke)", padding: "2px 6px", borderRadius: "4px", fontSize: "10px" }}>Ctrl Shift O</kbd>
-            </div>
-            <div className="settings-shortcut" style={{ padding: "6px 0", fontSize: "12px", display: "flex", justifyContent: "space-between", color: "var(--text-secondary)" }}>
-              <span>Toggle Sidebar</span>
-              <kbd style={{ background: "transparent", border: "1px solid var(--stroke)", padding: "2px 6px", borderRadius: "4px", fontSize: "10px" }}>Ctrl B</kbd>
-            </div>
-            <div className="settings-shortcut" style={{ padding: "6px 0", fontSize: "12px", display: "flex", justifyContent: "space-between", color: "var(--text-secondary)" }}>
-              <span>Open Model Picker</span>
-              <kbd style={{ background: "transparent", border: "1px solid var(--stroke)", padding: "2px 6px", borderRadius: "4px", fontSize: "10px" }}>Ctrl /</kbd>
+          <div className="settings-sidebar-footer">
+            <button
+              type="button"
+              className="settings-shortcuts-toggle"
+              onClick={() => setShortcutsOpen(!shortcutsOpen)}
+            >
+              <span>Keyboard Shortcuts</span>
+              <span className={`settings-shortcuts-toggle-icon${shortcutsOpen ? " open" : ""}`}>▼</span>
+            </button>
+            <div className={`settings-shortcuts-content${shortcutsOpen ? " open" : ""}`}>
+              <div className="settings-shortcut">
+                <span>Generate</span>
+                <kbd>Ctrl G</kbd>
+              </div>
+              <div className="settings-shortcut">
+                <span>Toggle Sidebar</span>
+                <kbd>Ctrl B</kbd>
+              </div>
+              <div className="settings-shortcut">
+                <span>Search History</span>
+                <kbd>Ctrl K</kbd>
+              </div>
+              <div className="settings-shortcut">
+                <span>Copy Summary</span>
+                <kbd>Ctrl C</kbd>
+              </div>
             </div>
           </div>
         </aside>

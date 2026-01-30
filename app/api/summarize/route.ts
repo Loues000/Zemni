@@ -49,7 +49,10 @@ export async function POST(request: Request) {
     );
   }
 
-  const { systemPrompt, userPrompt } = await buildSummaryPrompts(text, structure);
+  // Get user preferences for language and custom guidelines
+  const userLanguage = userContext?.preferredLanguage || "en";
+  const customGuidelines = userContext?.customGuidelines;
+  const { systemPrompt, userPrompt } = await buildSummaryPrompts(text, structure, userLanguage, customGuidelines);
   const start = Date.now();
 
   const openrouterClient = createOpenRouterClient(apiKey);

@@ -31,6 +31,23 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${display.variable} ${body.variable}`}>
       <body suppressHydrationWarning>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  const saved = localStorage.getItem('theme');
+                  const theme = saved === 'dark' || saved === 'light' 
+                    ? saved 
+                    : window.matchMedia('(prefers-color-scheme: dark)').matches 
+                      ? 'dark' 
+                      : 'light';
+                  document.documentElement.setAttribute('data-theme', theme);
+                } catch (e) {}
+              })();
+            `,
+          }}
+        />
         <ConvexClientProvider>
           {isClerkConfigured && <UserSync />}
           {children}

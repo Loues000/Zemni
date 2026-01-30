@@ -16,6 +16,7 @@ These rules apply **in addition** to `guidelines/general.en.md` and only for the
 ## Forbidden meta / outro
 - Do not add closing sentences like "Damit kann man sich gut vorbereiten." / "Alles kommt aus den Vorlesungsfolien." / "Diese Zusammenfassung basiert auf ..." or any other self-referential filler.
 - Do not mention that you are an AI, that you summarized, or how the summary can be used.
+- Do not reference an Example that you dont display on the summary.
 
 ## Format contract (strict)
 - Output must be **pure Markdown**.

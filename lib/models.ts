@@ -15,6 +15,7 @@ export type ModelSpec = {
   pricing: Pricing;
   openrouterId: string;
   subscriptionTier?: string;
+  available?: boolean;
 };
 
 const DEFAULT_MODELS: ModelSpec[] = [
@@ -179,6 +180,9 @@ const parseModelsJson = (data: unknown): ModelSpec[] => {
       throw new Error(`models[${index}] must have "subscription_tier" field (free, basic, plus, or pro)`);
     }
 
+    // Read available field (defaults to true if not present)
+    const available = record.available !== undefined ? Boolean(record.available) : true;
+
     const modelSpec: ModelSpec = {
       name,
       provider,
@@ -186,7 +190,8 @@ const parseModelsJson = (data: unknown): ModelSpec[] => {
       tokenizer: tokenizerEncoding,
       pricing,
       openrouterId,
-      subscriptionTier
+      subscriptionTier,
+      available
     };
 
     return modelSpec;
@@ -227,6 +232,9 @@ export const loadModels = async (): Promise<ModelSpec[]> => {
     const raw = await fs.readFile(modelsFile, "utf8");
     models = parseModelsJson(JSON.parse(raw));
   }
+
+  // Filter out models with available: false
+  models = models.filter((model) => model.available !== false);
 
   // Sort by tier if feature is enabled
   const tiersEnabled = isSubscriptionTiersEnabled();

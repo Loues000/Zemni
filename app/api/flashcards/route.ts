@@ -6,7 +6,7 @@ import { buildUsageStats } from "@/lib/usage";
 import { buildFlashcardsPrompts } from "@/lib/study-prompts";
 import { estimateFlashcardsPerSection } from "@/lib/study-heuristics";
 import { parseJsonFromModelText } from "@/lib/parse-model-json";
-import { createTimeoutController, isAbortError, mapWithConcurrency, splitTextIntoChunks, sumUsage } from "@/lib/ai-performance";
+import { createTimeoutController, isAbortError, mapWithConcurrency, splitTextIntoChunks, sumUsage, getModelPerformanceConfig } from "@/lib/ai-performance";
 import type { DocumentSection, Flashcard, UsageStats } from "@/types";
 
 export const runtime = "nodejs";
@@ -16,7 +16,6 @@ const CHUNK_CHARS = 7_500;
 const CHUNK_OVERLAP_CHARS = 350;
 const MAX_CHUNKS = 4;
 const FLASHCARDS_PER_SECTION_HARD_CAP = 20;
-const MODEL_CALL_TIMEOUT_MS = 45_000;
 
 const toSections = (value: unknown): DocumentSection[] => {
   if (!Array.isArray(value)) return [];
@@ -107,18 +106,20 @@ export async function POST(request: Request) {
     }
   }
 
+  const perfConfig = getModelPerformanceConfig(modelId);
   const results = await mapWithConcurrency(tasks, 2, async (task) => {
     const { systemPrompt, userPrompt } = await buildFlashcardsPrompts(
       [{ id: task.sectionMeta.id, title: task.sectionMeta.title, text: task.chunkText, page: task.sectionMeta.page }],
       task.cardsWanted
     );
 
-    const timeout = createTimeoutController(MODEL_CALL_TIMEOUT_MS);
+    const timeout = createTimeoutController(perfConfig.timeoutMs);
     try {
-      const maxTokens = Math.min(4096, Math.max(900, task.cardsWanted * 190));
+      const baseMaxTokens = Math.min(4096, Math.max(900, task.cardsWanted * 190));
+      const adjustedMaxTokens = Math.floor(baseMaxTokens * perfConfig.maxTokensMultiplier);
       const result = await generateText({
         model: openrouter(modelId) as any,
-        maxTokens,
+        maxTokens: adjustedMaxTokens,
         temperature: 0.2,
         maxRetries: 1,
         abortSignal: timeout.signal,
@@ -131,7 +132,9 @@ export async function POST(request: Request) {
       try {
         const parsed = parseJsonFromModelText<FlashcardsResult>(result.text);
         return { flashcards: parsed.flashcards ?? [], usage: result.usage };
-      } catch {
+      } catch (parseErr) {
+        // Log parsing error for debugging, but still return empty array to not break the flow
+        console.error(`[Flashcards] JSON parse error for model ${modelId}:`, parseErr instanceof Error ? parseErr.message : String(parseErr));
         return { flashcards: [], usage: result.usage };
       }
     } catch (err) {

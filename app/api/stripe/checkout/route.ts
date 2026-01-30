@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { auth, currentUser } from "@clerk/nextjs/server";
 import { stripe, TIER_PRICE_IDS } from "@/lib/stripe";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
@@ -14,6 +14,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // Get user from Clerk to get email
+    const clerkUser = await currentUser();
+    if (!clerkUser) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    const userEmail = clerkUser.emailAddresses[0]?.emailAddress || `${userId}@clerk.user`;
+
     const body = await request.json();
     const { tier } = body;
 
@@ -26,12 +34,47 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Price ID not configured" }, { status: 500 });
     }
 
-    // Get user from Convex
-    // Note: This is a simplified approach. In production, you'd want to use authenticated Convex calls
-    // For now, we'll create the checkout session and handle user sync in the webhook
+    // Ensure user exists in Convex
+    await convex.mutation(api.users.getOrCreateUser, {
+      clerkUserId: userId,
+      email: userEmail,
+    });
 
+    // Get user from Convex to check for existing Stripe customer
+    // Use getUserByClerkUserId since getCurrentUser requires auth context
+    const user = await convex.query(api.users.getUserByClerkUserId, {
+      clerkUserId: userId,
+    });
+    if (!user) {
+      return NextResponse.json({ error: "User not found in database" }, { status: 404 });
+    }
+
+    // Get or create Stripe customer
+    let customerId = user.stripeCustomerId;
+
+    if (!customerId) {
+      // Create new Stripe customer
+      const customer = await stripe.customers.create({
+        email: user.email,
+        metadata: {
+          clerkUserId: userId,
+        },
+      });
+      customerId = customer.id;
+
+      // Update user in Convex with Stripe customer ID
+      await convex.mutation(api.stripe.updateSubscriptionByClerkUserId, {
+        clerkUserId: userId,
+        tier: user.subscriptionTier,
+        stripeCustomerId: customerId,
+        stripeSubscriptionId: user.stripeSubscriptionId,
+      });
+    }
+
+    // Create checkout session with customer
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
+      customer: customerId,
       payment_method_types: ["card"],
       line_items: [
         {

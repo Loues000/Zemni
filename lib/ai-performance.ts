@@ -5,6 +5,35 @@ export type TimeoutController = {
   cancel: () => void;
 };
 
+/**
+ * Determines if a model needs extended timeout and token limits.
+ * Large/slow models (like 120B parameter models) need more time and tokens.
+ */
+export const getModelPerformanceConfig = (modelId: string): {
+  timeoutMs: number;
+  maxTokensMultiplier: number;
+} => {
+  // Models that are known to be slower/larger and need extended timeouts
+  const slowModelPatterns = [
+    "gpt-oss-120b",
+    "gpt-oss-20b"
+  ];
+  
+  const isSlowModel = slowModelPatterns.some(pattern => modelId.includes(pattern));
+  
+  if (isSlowModel) {
+    return {
+      timeoutMs: 120_000, // 120 seconds for large models
+      maxTokensMultiplier: 1.5 // 50% more tokens for proper JSON generation
+    };
+  }
+  
+  return {
+    timeoutMs: 45_000, // Default 45 seconds
+    maxTokensMultiplier: 1.0
+  };
+};
+
 export const createTimeoutController = (timeoutMs: number): TimeoutController => {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), Math.max(0, timeoutMs));

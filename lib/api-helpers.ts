@@ -11,6 +11,8 @@ export interface UserContext {
   userTier: "free" | "basic" | "plus" | "pro";
   useOwnKey: boolean;
   apiKey?: string;
+  preferredLanguage?: string;
+  customGuidelines?: string;
 }
 
 /**
@@ -52,6 +54,8 @@ export async function getUserContext(): Promise<UserContext | null> {
     userTier: user.subscriptionTier,
     useOwnKey: useOwnKeyPreference ?? false,
     apiKey,
+    preferredLanguage: user.preferredLanguage,
+    customGuidelines: user.customGuidelines,
   };
 }
 
