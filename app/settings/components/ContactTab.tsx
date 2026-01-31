@@ -8,12 +8,35 @@ export function ContactTab() {
     message: "",
   });
   const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: Implement contact form submission
-    setSubmitted(true);
-    setTimeout(() => setSubmitted(false), 3000);
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(formData),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to send message");
+      }
+
+      setSubmitted(true);
+      setFormData({ subject: "", message: "" });
+      setTimeout(() => setSubmitted(false), 5000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to send message");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -55,9 +78,15 @@ export function ContactTab() {
             />
           </div>
 
+          {error && (
+            <div className="settings-notice error" style={{ marginBottom: "12px" }}>
+              {error}
+            </div>
+          )}
+
           <div className="settings-row">
-            <button type="submit" className="btn btn-primary" disabled={submitted}>
-              {submitted ? "Submitted!" : "Send Message"}
+            <button type="submit" className="btn btn-primary" disabled={loading || submitted}>
+              {loading ? "Sending..." : submitted ? "Submitted!" : "Send Message"}
             </button>
           </div>
 

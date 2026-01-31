@@ -7,6 +7,7 @@ import { buildFlashcardsPrompts } from "@/lib/study-prompts";
 import { estimateFlashcardsPerSection } from "@/lib/study-heuristics";
 import { parseJsonFromModelText } from "@/lib/parse-model-json";
 import { createTimeoutController, isAbortError, mapWithConcurrency, splitTextIntoChunks, sumUsage, getModelPerformanceConfig } from "@/lib/ai-performance";
+import { getUserContext, checkModelAvailability } from "@/lib/api-helpers";
 import type { DocumentSection, Flashcard, UsageStats } from "@/types";
 
 export const runtime = "nodejs";
@@ -58,6 +59,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Missing OpenRouter key" }, { status: 400 });
   }
 
+  const userContext = await getUserContext();
+
   const body = await request.json();
   const sections = toSections(body.sections);
   const modelId = String(body.modelId ?? "");
@@ -80,6 +83,19 @@ export async function POST(request: Request) {
 
   const models = await loadModels();
   const model = models.find((item) => item.openrouterId === modelId) ?? null;
+
+  if (!model) {
+    return NextResponse.json({ error: "Model not found" }, { status: 400 });
+  }
+
+  // Check if user has access to this model
+  if (userContext && !checkModelAvailability(model, userContext.userTier)) {
+    return NextResponse.json(
+      { error: "This model is not available for your subscription tier" },
+      { status: 403 }
+    );
+  }
+
   const start = Date.now();
 
   const tasks: Array<{

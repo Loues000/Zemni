@@ -2,14 +2,35 @@
 
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { IconCheck } from "@/components/ui/Icons";
+import { useToastContext } from "./ToastProvider";
 
 export function SubscriptionTab() {
   const currentUser = useQuery(api.users.getCurrentUser);
   const [loading, setLoading] = useState(false);
+  const [tierChangeNotification, setTierChangeNotification] = useState<string | null>(null);
+  const previousTierRef = useRef<string | undefined>(undefined);
+  const toast = useToastContext();
 
   const subscriptionTier = currentUser?.subscriptionTier || "free";
+
+  // Detect tier changes and show notification (Convex queries are reactive, so this will trigger on webhook updates)
+  useEffect(() => {
+    if (previousTierRef.current !== undefined && previousTierRef.current !== subscriptionTier) {
+      const tierLabels: Record<string, string> = {
+        free: "Free",
+        basic: "Basic",
+        plus: "Plus",
+        pro: "Pro",
+      };
+      const message = `Subscription updated to ${tierLabels[subscriptionTier]} plan`;
+      setTierChangeNotification(message);
+      toast.success(message);
+      setTimeout(() => setTierChangeNotification(null), 5000);
+    }
+    previousTierRef.current = subscriptionTier;
+  }, [subscriptionTier, toast]);
   const tierLabels: Record<string, string> = {
     free: "Free",
     basic: "Basic",
@@ -17,8 +38,13 @@ export function SubscriptionTab() {
     pro: "Pro",
   };
 
+  const [error, setError] = useState<string | null>(null);
+
   const handleUpgrade = async (tier: "basic" | "plus" | "pro") => {
     setLoading(true);
+    setError(null);
+    // Show loading message
+    toast.info("Redirecting to checkout...", 3000);
     try {
       const response = await fetch("/api/stripe/checkout", {
         method: "POST",
@@ -27,14 +53,28 @@ export function SubscriptionTab() {
       });
       const data = await response.json();
       if (data.url) {
-        window.location.href = data.url;
+        // Small delay to show the loading message
+        setTimeout(() => {
+          window.location.href = data.url;
+        }, 100);
       } else if (data.error) {
         console.error("Failed to create checkout session:", data.error);
-        alert(`Failed to create checkout session: ${data.error}`);
+        // Provide user-friendly error messages
+        const errorMessage = data.error.includes("Price ID")
+          ? "Subscription pricing is not configured. Please contact support."
+          : data.error.includes("Unauthorized")
+          ? "Please sign in to upgrade your subscription."
+          : data.error.includes("not found")
+          ? "Account not found. Please try signing out and back in."
+          : "Unable to start checkout. Please try again or contact support if the problem persists.";
+        setError(errorMessage);
+        toast.error(errorMessage);
       }
     } catch (error) {
       console.error("Failed to create checkout session:", error);
-      alert("Failed to create checkout session. Please try again.");
+      const errorMessage = "Network error. Please check your connection and try again.";
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -42,16 +82,31 @@ export function SubscriptionTab() {
 
   const handleManageSubscription = async () => {
     setLoading(true);
+    setError(null);
+    toast.info("Opening subscription management...", 3000);
     try {
       const response = await fetch("/api/stripe/portal", {
         method: "POST",
       });
       const data = await response.json();
       if (data.url) {
-        window.location.href = data.url;
+        setTimeout(() => {
+          window.location.href = data.url;
+        }, 100);
+      } else if (data.error) {
+        const errorMessage = data.error.includes("No active subscription")
+          ? "You don't have an active subscription to manage."
+          : data.error.includes("Unauthorized")
+          ? "Please sign in to manage your subscription."
+          : "Unable to open subscription management. Please try again or contact support.";
+        setError(errorMessage);
+        toast.error(errorMessage);
       }
     } catch (error) {
       console.error("Failed to create portal session:", error);
+      const errorMessage = "Network error. Please check your connection and try again.";
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -63,6 +118,18 @@ export function SubscriptionTab() {
         <h2>Subscription</h2>
         <p>Manage your subscription tier and view usage statistics</p>
       </div>
+
+      {tierChangeNotification && (
+        <div className="settings-notice success" style={{ marginBottom: "16px" }}>
+          {tierChangeNotification}
+        </div>
+      )}
+
+      {error && (
+        <div className="settings-notice error" style={{ marginBottom: "16px" }}>
+          {error}
+        </div>
+      )}
 
       <div className="settings-card">
         <div className="field">

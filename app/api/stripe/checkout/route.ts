@@ -31,7 +31,12 @@ export async function POST(request: Request) {
 
     const priceId = TIER_PRICE_IDS[tier];
     if (!priceId) {
-      return NextResponse.json({ error: "Price ID not configured" }, { status: 500 });
+      return NextResponse.json(
+        { 
+          error: `Price ID not configured for ${tier} tier. Please check STRIPE_PRICE_ID_${tier.toUpperCase()} environment variable.` 
+        },
+        { status: 500 }
+      );
     }
 
     // Ensure user exists in Convex
@@ -94,8 +99,20 @@ export async function POST(request: Request) {
     return NextResponse.json({ url: session.url });
   } catch (error) {
     console.error("Stripe checkout error:", error);
+    const errorMessage = error instanceof Error ? error.message : "Internal server error";
+    
+    // Provide more user-friendly error messages
+    let userFriendlyError = "Unable to start checkout. Please try again.";
+    if (errorMessage.includes("Price ID")) {
+      userFriendlyError = "Subscription pricing is not configured. Please contact support.";
+    } else if (errorMessage.includes("Unauthorized")) {
+      userFriendlyError = "Please sign in to upgrade your subscription.";
+    } else if (errorMessage.includes("not found")) {
+      userFriendlyError = "Account not found. Please try signing out and back in.";
+    }
+    
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Internal server error" },
+      { error: userFriendlyError },
       { status: 500 }
     );
   }

@@ -44,12 +44,14 @@ Zemni is an intelligent study companion that helps you prepare for exams by conv
    ```
 
 3. **Set up your environment**
-   - See [user_guide.md](user_guide.md) for detailed setup instructions
+   - Copy `.env.example` to `.env.local`
+   - Fill in the required variables (see [Environment Variables Guide](docs/environment-variables.md))
    - You'll need accounts for:
-     - [Convex](https://convex.dev) (free tier available)
-     - [Clerk](https://clerk.com) (free tier available)
-     - [Stripe](https://stripe.com) (for subscriptions)
-     - [OpenRouter](https://openrouter.ai) (for AI models)
+     - [Convex](https://convex.dev) (free tier available) - Database
+     - [Clerk](https://clerk.com) (free tier available) - Authentication
+     - [OpenRouter](https://openrouter.ai) - AI model access
+     - [Stripe](https://stripe.com) (optional) - Only if using subscriptions
+   - See [user_guide.md](user_guide.md) for detailed setup instructions
 
 4. **Run the development server**
    ```bash

@@ -4,11 +4,13 @@ import { IconChevron } from "./Icons";
 export function StatsSection({ 
   currentUsage, 
   isOpen, 
-  onToggle 
+  onToggle,
+  showCost = false
 }: { 
   currentUsage: UsageStats | null; 
   isOpen: boolean; 
   onToggle: () => void;
+  showCost?: boolean;
 }) {
   if (!currentUsage) return null;
 
@@ -57,14 +59,16 @@ export function StatsSection({
             <div className="stat-label">Duration</div>
             <div className="stat-value">{formatSeconds(currentUsage.durationMs)}</div>
           </div>
-          <div className="stat">
-            <div className="stat-label">Cost</div>
-            <div className="stat-value">
-              {currentUsage.currency
-                ? formatMoney(currentUsage.costTotal, currentUsage.currency)
-                : "-"}
+          {showCost && (
+            <div className="stat">
+              <div className="stat-label">Cost</div>
+              <div className="stat-value">
+                {currentUsage.currency
+                  ? formatMoney(currentUsage.costTotal, currentUsage.currency)
+                  : "-"}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>

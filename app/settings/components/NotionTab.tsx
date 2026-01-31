@@ -7,7 +7,6 @@ import { decryptKey } from "@/lib/encryption";
 
 export function NotionTab() {
   const currentUser = useQuery(api.users.getCurrentUser);
-  const updateNotionConfig = useMutation(api.users.updateNotionConfig);
   const clearNotionConfig = useMutation(api.users.clearNotionConfig);
   
   const [notionToken, setNotionToken] = useState("");
@@ -41,13 +40,22 @@ export function NotionTab() {
     setMessage(null);
 
     try {
-      // Save to Convex
+      // Save to API endpoint (encrypts server-side)
       if (notionToken) {
-        await updateNotionConfig({
-          token: notionToken,
-          databaseId: exportMethod === "database" ? databaseId : undefined,
-          exportMethod: exportMethod,
+        const response = await fetch("/api/user/notion", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            token: notionToken,
+            databaseId: exportMethod === "database" ? databaseId : undefined,
+            exportMethod: exportMethod,
+          }),
         });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || "Failed to save configuration");
+        }
 
         // Test the connection
         if (exportMethod === "database" && databaseId) {
@@ -74,8 +82,16 @@ export function NotionTab() {
           setMessage({ type: "success", text: "Configuration saved. Token only - you can export to new pages." });
         }
       } else {
-        // Clear configuration
-        await clearNotionConfig({});
+        // Clear configuration via API endpoint
+        const response = await fetch("/api/user/notion", {
+          method: "DELETE",
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || "Failed to clear configuration");
+        }
+
         setMessage({ type: "success", text: "Configuration cleared." });
       }
     } catch (error) {

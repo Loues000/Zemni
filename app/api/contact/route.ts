@@ -1,0 +1,65 @@
+import { NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
+import { ConvexHttpClient } from "convex/browser";
+import { api } from "@/convex/_generated/api";
+
+export const runtime = "nodejs";
+
+const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+
+export async function POST(request: Request) {
+  try {
+    const { userId } = await auth();
+    const body = await request.json();
+    const { subject, message } = body;
+
+    if (!subject || !message) {
+      return NextResponse.json(
+        { error: "Subject and message are required" },
+        { status: 400 }
+      );
+    }
+
+    // Get user info if logged in
+    let userEmail = "anonymous@user";
+    let userName = "Anonymous User";
+    
+    if (userId) {
+      const user = await convex.query(api.users.getUserByClerkUserId, {
+        clerkUserId: userId,
+      });
+      if (user) {
+        userEmail = user.email;
+        userName = user.preferredName || userEmail.split("@")[0];
+      }
+    }
+
+    // TODO: In production, send email via service like SendGrid, Resend, or store in database
+    // For now, log the contact form submission
+    console.log("Contact form submission:", {
+      userEmail,
+      userName,
+      subject,
+      message: message.substring(0, 200) + (message.length > 200 ? "..." : ""),
+      timestamp: new Date().toISOString(),
+    });
+
+    // In production, you would:
+    // 1. Store in a database table (e.g., convex/contact.ts)
+    // 2. Send email notification to support team
+    // 3. Send confirmation email to user
+
+    return NextResponse.json({
+      success: true,
+      message: "Thank you for your message! We'll get back to you soon.",
+    });
+  } catch (error) {
+    console.error("Failed to process contact form:", error);
+    return NextResponse.json(
+      {
+        error: error instanceof Error ? error.message : "Internal server error",
+      },
+      { status: 500 }
+    );
+  }
+}

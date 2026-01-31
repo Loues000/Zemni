@@ -12,6 +12,7 @@ export function HistorySyncTab() {
 
   const documents = useQuery(api.documents.list, { limit: 100 });
   const deleteDoc = useMutation(api.documents.remove);
+  const upsertDoc = useMutation(api.documents.upsert);
 
   const handleExportJson = useCallback(() => {
     if (!documents?.documents) return;
@@ -76,15 +77,57 @@ export function HistorySyncTab() {
         return;
       }
 
-      // TODO: Implement import logic using Convex mutations
-      alert(`Would import ${entries.length} entries (import functionality to be implemented)`);
+      let imported = 0;
+      let skipped = 0;
+      let errors = 0;
+
+      for (const entry of entries) {
+        try {
+          // Validate entry structure
+          if (!entry || typeof entry !== "object") {
+            errors++;
+            continue;
+          }
+
+          const entryObj = entry as Record<string, unknown>;
+          const title = String(entryObj.title ?? "Imported Document");
+          const fileName = String(entryObj.fileName ?? "imported.txt");
+          const extractedText = String(entryObj.extractedText ?? "");
+          const outputs = entryObj.outputs ?? {};
+          const structureHints = String(entryObj.structureHints ?? "");
+
+          // Skip entries without text content
+          if (!extractedText.trim()) {
+            skipped++;
+            continue;
+          }
+
+          // Import the document (upsert will handle duplicates)
+          await upsertDoc({
+            title,
+            fileName,
+            extractedText,
+            outputs,
+            structureHints,
+          });
+
+          imported++;
+        } catch (err) {
+          console.error("Failed to import entry:", err);
+          errors++;
+        }
+      }
+
+      // Show results
+      const message = `Imported ${imported} document(s)${skipped > 0 ? `, skipped ${skipped}` : ""}${errors > 0 ? `, ${errors} errors` : ""}`;
+      alert(message);
     } catch (err) {
       console.error("Failed to import:", err);
-      alert("Failed to import history");
+      alert("Failed to import history. Please check the file format.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [upsertDoc]);
 
   const handleDeleteSelected = useCallback(async () => {
     if (selectedDocs.size === 0) return;

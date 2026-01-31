@@ -17,6 +17,7 @@ export function CustomizationTab() {
   const updateDefaultStructureHints = useMutation(api.users.updateDefaultStructureHints);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [showNerdStats, setShowNerdStats] = useState(false);
 
   // Load from Convex on mount
   useEffect(() => {
@@ -24,6 +25,14 @@ export function CustomizationTab() {
       setDefaultStructureHints(currentUser.defaultStructureHints || "");
     }
   }, [currentUser, setDefaultStructureHints]);
+
+  // Load nerd stats preference from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = window.localStorage.getItem("showNerdStats");
+      setShowNerdStats(saved === "true");
+    }
+  }, []);
 
   const handleSave = async () => {
     setSaving(true);
@@ -84,6 +93,32 @@ export function CustomizationTab() {
             </button>
           </div>
           <p className="field-hint">Choose your preferred color scheme</p>
+        </div>
+
+        <div className="settings-divider" />
+
+        <div className="field">
+          <label className="field-label">Show Nerd Stats</label>
+          <div className="settings-toggle">
+            <input
+              type="checkbox"
+              id="show-nerd-stats"
+              checked={showNerdStats}
+              onChange={(e) => {
+                const value = e.target.checked;
+                setShowNerdStats(value);
+                if (typeof window !== "undefined") {
+                  window.localStorage.setItem("showNerdStats", String(value));
+                }
+              }}
+            />
+            <label htmlFor="show-nerd-stats">
+              Show technical stats like tokens, tokens/sec, and duration after generation
+            </label>
+          </div>
+          <p className="field-hint">
+            Enable to see detailed OpenRouter statistics after each generation
+          </p>
         </div>
 
         <div className="settings-divider" />

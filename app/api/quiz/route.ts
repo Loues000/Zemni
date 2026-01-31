@@ -6,6 +6,7 @@ import { buildUsageStats } from "@/lib/usage";
 import { buildQuizPrompts } from "@/lib/study-prompts";
 import { parseJsonFromModelText } from "@/lib/parse-model-json";
 import { createTimeoutController, isAbortError, getModelPerformanceConfig } from "@/lib/ai-performance";
+import { getUserContext, checkModelAvailability } from "@/lib/api-helpers";
 import type { DocumentSection, QuizQuestion, UsageStats } from "@/types";
 
 export const runtime = "nodejs";
@@ -43,6 +44,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Missing OpenRouter key" }, { status: 400 });
   }
 
+  const userContext = await getUserContext();
+
   const body = await request.json();
   const section = toSection(body.section);
   const modelId = String(body.modelId ?? "");
@@ -61,6 +64,19 @@ export async function POST(request: Request) {
 
   const models = await loadModels();
   const model = models.find((item) => item.openrouterId === modelId) ?? null;
+
+  if (!model) {
+    return NextResponse.json({ error: "Model not found" }, { status: 400 });
+  }
+
+  // Check if user has access to this model
+  if (userContext && !checkModelAvailability(model, userContext.userTier)) {
+    return NextResponse.json(
+      { error: "This model is not available for your subscription tier" },
+      { status: 403 }
+    );
+  }
+
   const { systemPrompt, userPrompt } = await buildQuizPrompts(section, questionsCount, avoidQuestions);
   const start = Date.now();
 

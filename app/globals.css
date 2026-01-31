@@ -2769,6 +2769,100 @@ body.flashcard-player-open {
   margin-top: 14px;
 }
 
+/* ========== Toast Notifications ========== */
+.toast-container {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 400px;
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--stroke);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  pointer-events: auto;
+  animation: toast-slide-in 0.2s ease-out;
+}
+
+@keyframes toast-slide-in {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.toast-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.toast-message {
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-primary);
+}
+
+.toast-close {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: var(--text-muted);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.toast-close:hover {
+  background: var(--surface-muted);
+  color: var(--text-primary);
+}
+
+.toast-success {
+  border-left: 3px solid var(--success);
+}
+
+.toast-error {
+  border-left: 3px solid var(--error-text);
+}
+
+.toast-info {
+  border-left: 3px solid var(--accent);
+}
+
+.toast-warning {
+  border-left: 3px solid var(--warning);
+}
+
+@media (max-width: 768px) {
+  .toast-container {
+    top: 12px;
+    right: 12px;
+    left: 12px;
+    max-width: none;
+  }
+
+  .toast {
+    padding: 10px 14px;
+  }
+}
+
 .export-progress {
   display: flex;
   align-items: center;
@@ -4153,7 +4247,7 @@ body.flashcard-player-open {
 
 @media (max-width: 768px) {
   .settings-page {
-    padding: 16px 0 32px;
+    padding: 12px 0 24px;
   }
 
   .settings-header {
@@ -4171,6 +4265,82 @@ body.flashcard-player-open {
 
   .settings-card-split {
     grid-template-columns: 1fr;
+  }
+
+  .settings-card {
+    padding: 14px;
+  }
+
+  .settings-section-header {
+    margin-bottom: 16px;
+  }
+
+  .settings-section-header h2 {
+    font-size: 18px;
+  }
+
+  .settings-tabs-horizontal {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+  }
+
+  .settings-tabs-horizontal::-webkit-scrollbar {
+    display: none;
+  }
+
+  .settings-tab-horizontal {
+    min-width: auto;
+    padding: 10px 14px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+
+  .field {
+    margin-bottom: 16px;
+  }
+
+  .field-label {
+    font-size: 13px;
+    margin-bottom: 6px;
+  }
+
+  .field-input,
+  .settings-textarea {
+    font-size: 14px;
+    padding: 10px 12px;
+    min-height: 44px;
+  }
+
+  .btn {
+    min-height: 44px;
+    padding: 10px 16px;
+    font-size: 14px;
+  }
+
+  .btn-small {
+    min-height: 36px;
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+
+  .settings-row {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .settings-row .btn {
+    width: 100%;
+  }
+
+  .settings-toggle {
+    gap: 10px;
+  }
+
+  .settings-toggle input[type="checkbox"] {
+    min-width: 44px;
+    min-height: 44px;
   }
 
   .mode-select {

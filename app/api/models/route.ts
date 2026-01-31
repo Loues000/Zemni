@@ -1,24 +1,27 @@
 import { NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { loadModels, isSubscriptionTiersEnabled, isModelAvailable } from "@/lib/models";
+import { ConvexHttpClient } from "convex/browser";
+import { api } from "@/convex/_generated/api";
 
 export const runtime = "nodejs";
 
+const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+
 /**
  * Gets the current user's subscription tier
- * TODO: Replace with actual user authentication/subscription check
  * 
  * @returns User's subscription tier (null = not logged in, "free" = logged in no sub, "basic" = basic sub, "plus" = plus sub, "pro" = pro sub)
  */
 const getCurrentUserTier = async (): Promise<string | null> => {
-  // TODO: Implement actual user authentication
-  // Example implementation:
-  // const session = await getSession(request);
-  // if (!session) return null; // Not logged in
-  // const user = await getUserFromDB(session.userId);
-  // return user.subscriptionTier || "free"; // Logged in but no subscription = "free"
-
-  // Current implementation: return null (not logged in) - all models available
-  return null;
+  const { userId } = await auth();
+  if (!userId) return null; // Not logged in = free tier (null)
+  
+  const user = await convex.query(api.users.getUserByClerkUserId, {
+    clerkUserId: userId,
+  });
+  
+  return user?.subscriptionTier || "free";
 };
 
 export async function GET() {

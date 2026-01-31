@@ -49,18 +49,17 @@ const toNumber = (value: unknown): number | null => {
 };
 
 /**
- * Determines if a model is available for the current user based on subscription tier
+ * Core logic to determine if a model tier is available for a user tier.
+ * This is the unified implementation used by both server and client.
  * 
- * @param model - The model to check
+ * @param modelTier - The tier required by the model (undefined = no tier restriction)
  * @param userTier - Current user's subscription tier (null = not logged in, "free" = logged in no sub, "basic" = basic sub, "plus" = plus sub, "pro" = pro sub)
  * @returns true if the model is available, false otherwise
  */
-export const isModelAvailable = (
-  model: { subscriptionTier?: string },
-  userTier: string | null = null
-): boolean => {
-  const modelTier = model.subscriptionTier;
-
+function checkModelTierAvailability(
+  modelTier: string | undefined,
+  userTier: string | null
+): boolean {
   // If model has no tier, make it available (fallback)
   if (!modelTier) {
     return true;
@@ -93,6 +92,21 @@ export const isModelAvailable = (
 
   // Fallback
   return modelTier === "free";
+}
+
+/**
+ * Determines if a model is available for the current user based on subscription tier.
+ * Server-side version that accepts a model object.
+ * 
+ * @param model - The model to check
+ * @param userTier - Current user's subscription tier (null = not logged in, "free" = logged in no sub, "basic" = basic sub, "plus" = plus sub, "pro" = pro sub)
+ * @returns true if the model is available, false otherwise
+ */
+export const isModelAvailable = (
+  model: { subscriptionTier?: string },
+  userTier: string | null = null
+): boolean => {
+  return checkModelTierAvailability(model.subscriptionTier, userTier);
 };
 
 /**

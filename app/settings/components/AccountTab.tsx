@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useUser } from "@clerk/nextjs";
+import { ConfirmModal } from "@/components/ui";
 
 /**
  * AccountTab displays the current user's account information from Clerk and Convex.
@@ -22,6 +23,7 @@ export function AccountTab() {
   const [customGuidelines, setCustomGuidelines] = useState<string>("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // Load user preferences
   useEffect(() => {
@@ -226,14 +228,37 @@ export function AccountTab() {
       </div>
       <div className="settings-card settings-card-danger">
         <div className="field">
-          <button type="button" className="btn btn-danger btn-small">
+          <button
+            type="button"
+            className="btn btn-danger btn-small"
+            onClick={() => setShowDeleteConfirm(true)}
+          >
             Delete Account
           </button>
           <p className="field-hint field-hint-error">
-            Permanently delete your account and all data.
+            Permanently delete your account and all data. This action cannot be undone.
           </p>
         </div>
       </div>
+
+      <ConfirmModal
+        isOpen={showDeleteConfirm}
+        title="Delete Account"
+        message="Are you sure you want to permanently delete your account? This will remove all your data, documents, and settings. This action cannot be undone."
+        confirmLabel="Delete Account"
+        cancelLabel="Cancel"
+        variant="danger"
+        onCancel={() => setShowDeleteConfirm(false)}
+        onConfirm={async () => {
+          setShowDeleteConfirm(false);
+          // TODO: Implement account deletion via Clerk and Convex
+          // For now, show a message that this feature is not yet implemented
+          setMessage({
+            type: "error",
+            text: "Account deletion is not yet implemented. Please contact support if you need to delete your account.",
+          });
+        }}
+      />
     </section>
   );
 }

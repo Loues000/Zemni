@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { useToastContext } from "./ToastProvider";
 
 const PROVIDERS = [
   { id: "openrouter", label: "OpenRouter", placeholder: "sk-or-v1-..." },
@@ -16,11 +17,11 @@ export function ApiKeysTab() {
   const [keyValues, setKeyValues] = useState<Record<string, string>>({});
   const [useOwnKey, setUseOwnKey] = useState(false);
   const [loading, setLoading] = useState(false);
+  const toast = useToastContext();
 
   const userKeys = useQuery(api.apiKeys.getUserKeys);
   const useOwnKeyPreference = useQuery(api.apiKeys.getUseOwnKeyPreference);
   const setUseOwnKeyPref = useMutation(api.apiKeys.setUseOwnKeyPreference);
-  const upsertKey = useMutation(api.apiKeys.upsertKey);
   const deleteKey = useMutation(api.apiKeys.deleteKey);
 
   const handleToggleUseOwnKey = async (value: boolean) => {
@@ -28,8 +29,10 @@ export function ApiKeysTab() {
     try {
       await setUseOwnKeyPref({ useOwnKey: value });
       setUseOwnKey(value);
+      toast.success(value ? "Using your own API keys enabled" : "Using system API keys");
     } catch (error) {
       console.error("Failed to update preference:", error);
+      toast.error("Failed to update preference");
     } finally {
       setLoading(false);
     }
@@ -43,16 +46,24 @@ export function ApiKeysTab() {
 
     setLoading(true);
     try {
-      // In production, encrypt the key before sending
-      // For now, we'll send it as-is (encryption should happen server-side)
-      await upsertKey({
-        provider: provider as any,
-        keyHash: keyValue, // TODO: Encrypt this
+      const response = await fetch("/api/user/keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider, key: keyValue }),
       });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to save key");
+      }
+      
       setEditingProvider(null);
       setKeyValues((prev) => ({ ...prev, [provider]: "" }));
+      toast.success(`${PROVIDERS.find(p => p.id === provider)?.label || provider} API key saved`);
     } catch (error) {
       console.error("Failed to save key:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to save API key";
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -66,8 +77,10 @@ export function ApiKeysTab() {
     setLoading(true);
     try {
       await deleteKey({ keyId: keyId as any });
+      toast.success("API key deleted");
     } catch (error) {
       console.error("Failed to delete key:", error);
+      toast.error("Failed to delete API key");
     } finally {
       setLoading(false);
     }

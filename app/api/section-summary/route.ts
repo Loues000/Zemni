@@ -6,6 +6,7 @@ import { buildUsageStats } from "@/lib/usage";
 import { enforceOutputFormat } from "@/lib/format-output";
 import { buildChunkNotesPrompts, buildSectionSummaryPrompts } from "@/lib/study-prompts";
 import { createTimeoutController, isAbortError, mapWithConcurrency, splitTextIntoChunks, sumUsage } from "@/lib/ai-performance";
+import { getUserContext, checkModelAvailability } from "@/lib/api-helpers";
 import type { DocumentSection, UsageStats } from "@/types";
 import type { LanguageModelUsage } from "ai";
 
@@ -42,6 +43,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Missing OpenRouter key" }, { status: 400 });
   }
 
+  const userContext = await getUserContext();
+
   const body = await request.json();
   const sections = toSections(body.sections);
   const modelId = String(body.modelId ?? "");
@@ -54,6 +57,19 @@ export async function POST(request: Request) {
 
   const models = await loadModels();
   const model = models.find((item) => item.openrouterId === modelId) ?? null;
+
+  if (!model) {
+    return NextResponse.json({ error: "Model not found" }, { status: 400 });
+  }
+
+  // Check if user has access to this model
+  if (userContext && !checkModelAvailability(model, userContext.userTier)) {
+    return NextResponse.json(
+      { error: "This model is not available for your subscription tier" },
+      { status: 403 }
+    );
+  }
+
   const start = Date.now();
 
   const totalChars = sections.reduce((acc, s) => acc + (s.text?.length ?? 0), 0);

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useUser, SignOutButton } from "@clerk/nextjs";
+import { ToastProvider } from "./ToastProvider";
 
 // Safely check if Clerk is configured
 const clerkKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
@@ -46,8 +47,9 @@ export function SettingsLayout({ children, activeTab, onTabChange }: SettingsLay
   };
 
   return (
-    <div className="settings-page">
-      <header className="settings-header-bar">
+    <ToastProvider>
+      <div className="settings-page">
+        <header className="settings-header-bar">
         <div className="settings-header-left">
           <Link href="/" className="btn btn-text btn-small settings-back-link">
             ← Back to Chat
@@ -174,6 +176,6 @@ export function SettingsLayout({ children, activeTab, onTabChange }: SettingsLay
           <div className="settings-content">{children}</div>
         </main>
       </div>
-    </div>
+    </ToastProvider>
   );
 }

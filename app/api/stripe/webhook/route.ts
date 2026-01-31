@@ -4,6 +4,7 @@ import { stripe, getTierFromPriceId } from "@/lib/stripe";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import Stripe from "stripe";
+import { trackWebhookError, trackEvent } from "@/lib/error-tracking";
 
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
@@ -24,7 +25,10 @@ export async function POST(request: Request) {
       process.env.STRIPE_WEBHOOK_SECRET!
     );
   } catch (err) {
-    console.error("Webhook signature verification failed:", err);
+    const error = err instanceof Error ? err : new Error(String(err));
+    trackWebhookError(error, "stripe", undefined, {
+      action: "signature_verification",
+    });
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
@@ -36,11 +40,19 @@ export async function POST(request: Request) {
         const tier = session.metadata?.tier as "basic" | "plus" | "pro";
 
         if (!clerkUserId || !tier) {
-          console.error("Missing metadata in checkout session", {
-            clerkUserId,
-            tier,
-            metadata: session.metadata,
-          });
+          trackWebhookError(
+            new Error("Missing metadata in checkout session"),
+            "stripe",
+            session,
+            {
+              action: "checkout_session_completed",
+              metadata: {
+                sessionId: session.id,
+                clerkUserId,
+                tier,
+              },
+            }
+          );
           break;
         }
 
@@ -48,11 +60,34 @@ export async function POST(request: Request) {
         const subscriptionId = session.subscription as string;
 
         // Update user subscription using the correct mutation
-        await convex.mutation(api.stripe.updateSubscriptionByClerkUserId, {
-          clerkUserId,
-          tier,
-          stripeCustomerId: customerId,
-          stripeSubscriptionId: subscriptionId,
+        try {
+          await convex.mutation(api.stripe.updateSubscriptionByClerkUserId, {
+            clerkUserId,
+            tier,
+            stripeCustomerId: customerId,
+            stripeSubscriptionId: subscriptionId,
+          });
+        } catch (mutationError) {
+          const error = mutationError instanceof Error ? mutationError : new Error(String(mutationError));
+          trackWebhookError(error, "stripe", session, {
+            userId: clerkUserId,
+            userTier: tier,
+            action: "checkout_session_completed",
+            metadata: {
+              customerId,
+              subscriptionId,
+            },
+          });
+          throw mutationError; // Re-throw to be caught by outer try-catch
+        }
+
+        trackEvent("subscription_created", {
+          userId: clerkUserId,
+          userTier: tier,
+          metadata: {
+            customerId,
+            subscriptionId,
+          },
         });
 
         break;
@@ -66,21 +101,67 @@ export async function POST(request: Request) {
         // Get the price ID from the subscription to determine tier
         const priceId = subscription.items.data[0]?.price.id;
         if (!priceId) {
-          console.error("No price ID found in subscription");
+          trackWebhookError(
+            new Error("No price ID found in subscription"),
+            "stripe",
+            subscription,
+            {
+              action: "customer_subscription_created",
+              metadata: {
+                subscriptionId: subscription.id,
+                customerId,
+                itemsCount: subscription.items.data.length,
+              },
+            }
+          );
           break;
         }
 
         const tier = getTierFromPriceId(priceId);
         if (!tier || tier === "free") {
-          console.error("Invalid tier from price ID", { priceId, tier });
+          trackWebhookError(
+            new Error("Invalid tier from price ID"),
+            "stripe",
+            subscription,
+            {
+              action: "customer_subscription_created",
+              metadata: {
+                priceId,
+                tier,
+                subscriptionId: subscription.id,
+                customerId,
+              },
+            }
+          );
           break;
         }
 
         // Update user subscription by customer ID
-        await convex.mutation(api.stripe.updateSubscriptionByCustomerId, {
-          stripeCustomerId: customerId,
-          tier,
-          stripeSubscriptionId: subscriptionId,
+        try {
+          await convex.mutation(api.stripe.updateSubscriptionByCustomerId, {
+            stripeCustomerId: customerId,
+            tier,
+            stripeSubscriptionId: subscriptionId,
+          });
+        } catch (mutationError) {
+          const error = mutationError instanceof Error ? mutationError : new Error(String(mutationError));
+          trackWebhookError(error, "stripe", subscription, {
+            userTier: tier,
+            action: "customer_subscription_created",
+            metadata: {
+              customerId,
+              subscriptionId,
+            },
+          });
+          throw mutationError; // Re-throw to be caught by outer try-catch
+        }
+
+        trackEvent("subscription_created", {
+          userTier: tier,
+          metadata: {
+            customerId,
+            subscriptionId,
+          },
         });
 
         break;
@@ -94,31 +175,81 @@ export async function POST(request: Request) {
         // Determine tier from price ID
         const priceId = subscription.items.data[0]?.price.id;
         if (!priceId) {
-          console.error("No price ID found in subscription");
+          trackWebhookError(
+            new Error("No price ID found in subscription"),
+            "stripe",
+            subscription,
+            {
+              action: "customer_subscription_updated",
+              metadata: {
+                subscriptionId: subscription.id,
+                customerId,
+                status: subscription.status,
+                itemsCount: subscription.items.data.length,
+              },
+            }
+          );
           break;
         }
 
         const tier = getTierFromPriceId(priceId);
         if (!tier || tier === "free") {
-          console.error("Invalid tier from price ID", { priceId, tier });
+          trackWebhookError(
+            new Error("Invalid tier from price ID"),
+            "stripe",
+            subscription,
+            {
+              action: "customer_subscription_updated",
+              metadata: {
+                priceId,
+                tier,
+                subscriptionId: subscription.id,
+                customerId,
+                status: subscription.status,
+              },
+            }
+          );
           break;
         }
 
         // Only update if subscription is active
-        if (subscription.status === "active") {
-          await convex.mutation(api.stripe.updateSubscriptionByCustomerId, {
-            stripeCustomerId: customerId,
-            tier,
-            stripeSubscriptionId: subscriptionId,
+        try {
+          if (subscription.status === "active") {
+            await convex.mutation(api.stripe.updateSubscriptionByCustomerId, {
+              stripeCustomerId: customerId,
+              tier,
+              stripeSubscriptionId: subscriptionId,
+            });
+          } else {
+            // If subscription is not active, set to free
+            await convex.mutation(api.stripe.updateSubscriptionByCustomerId, {
+              stripeCustomerId: customerId,
+              tier: "free",
+              stripeSubscriptionId: subscriptionId,
+            });
+          }
+        } catch (mutationError) {
+          const error = mutationError instanceof Error ? mutationError : new Error(String(mutationError));
+          trackWebhookError(error, "stripe", subscription, {
+            userTier: tier,
+            action: "customer_subscription_updated",
+            metadata: {
+              customerId,
+              subscriptionId,
+              status: subscription.status,
+            },
           });
-        } else {
-          // If subscription is not active, set to free
-          await convex.mutation(api.stripe.updateSubscriptionByCustomerId, {
-            stripeCustomerId: customerId,
-            tier: "free",
-            stripeSubscriptionId: subscriptionId,
-          });
+          throw mutationError; // Re-throw to be caught by outer try-catch
         }
+
+        trackEvent("subscription_updated", {
+          userTier: tier,
+          metadata: {
+            customerId,
+            subscriptionId,
+            status: subscription.status,
+          },
+        });
 
         break;
       }
@@ -128,22 +259,53 @@ export async function POST(request: Request) {
         const customerId = subscription.customer as string;
 
         // Set tier to free when subscription is deleted
-        await convex.mutation(api.stripe.updateSubscriptionByCustomerId, {
-          stripeCustomerId: customerId,
-          tier: "free",
-          stripeSubscriptionId: undefined,
+        try {
+          await convex.mutation(api.stripe.updateSubscriptionByCustomerId, {
+            stripeCustomerId: customerId,
+            tier: "free",
+            stripeSubscriptionId: undefined,
+          });
+        } catch (mutationError) {
+          const error = mutationError instanceof Error ? mutationError : new Error(String(mutationError));
+          trackWebhookError(error, "stripe", subscription, {
+            action: "customer_subscription_deleted",
+            metadata: {
+              customerId,
+            },
+          });
+          throw mutationError; // Re-throw to be caught by outer try-catch
+        }
+
+        trackEvent("subscription_deleted", {
+          metadata: {
+            customerId,
+          },
         });
 
         break;
       }
 
       default:
-        console.log(`Unhandled event type: ${event.type}`);
+        trackEvent("webhook_unhandled_event", {
+          metadata: {
+            eventId: event.id,
+            eventType: event.type,
+          },
+        });
     }
 
     return NextResponse.json({ received: true });
   } catch (error) {
-    console.error("Webhook handler error:", error);
+    const errorObj = error instanceof Error ? error : new Error(String(error));
+    trackWebhookError(errorObj, "stripe", event, {
+      action: "webhook_handler",
+      metadata: {
+        eventType: event?.type,
+        eventId: event?.id,
+      },
+    });
+    // In production, you might want to return 200 to prevent Stripe from retrying
+    // if the error is non-recoverable, or 500 to trigger retries for transient errors
     return NextResponse.json(
       { error: "Webhook handler failed" },
       { status: 500 }

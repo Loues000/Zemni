@@ -260,16 +260,10 @@ export const updateNotionConfig = mutation({
       throw new Error("User not found");
     }
 
-    // Encrypt the token before storing (simple base64 encoding as placeholder)
-    // Note: This is a placeholder implementation. In production, use proper encryption.
-    // Using web-standard APIs (TextEncoder + btoa) instead of Node.js Buffer
-    const encoder = new TextEncoder();
-    const bytes = encoder.encode(args.token);
-    const binaryString = Array.from(bytes, byte => String.fromCharCode(byte)).join('');
-    const encryptedToken = btoa(binaryString);
-
+    // Token is already encrypted by the API endpoint before reaching this mutation
+    // We store it directly as-is
     await ctx.db.patch(user._id, {
-      notionToken: encryptedToken,
+      notionToken: args.token,
       notionDatabaseId: args.databaseId || undefined,
       notionExportMethod: args.exportMethod || undefined,
       updatedAt: Date.now(),

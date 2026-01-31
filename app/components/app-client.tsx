@@ -107,6 +107,27 @@ export default function AppClient() {
   const currentUser = useQuery(api.users.getCurrentUser);
   const subscriptionTier = currentUser?.subscriptionTier || "free";
   const preferredName = currentUser?.preferredName || clerkUser?.fullName || null;
+  const useOwnKeyPreference = useQuery(api.apiKeys.getUseOwnKeyPreference);
+  
+  // Nerd stats preference from localStorage
+  const [showNerdStats, setShowNerdStats] = useState(false);
+  
+  // Load nerd stats preference from localStorage on mount and listen for changes
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = window.localStorage.getItem("showNerdStats");
+      setShowNerdStats(saved === "true");
+      
+      // Listen for storage events to sync across tabs
+      const handleStorageChange = (e: StorageEvent) => {
+        if (e.key === "showNerdStats") {
+          setShowNerdStats(e.newValue === "true");
+        }
+      };
+      window.addEventListener("storage", handleStorageChange);
+      return () => window.removeEventListener("storage", handleStorageChange);
+    }
+  }, []);
 
   // Refs
   const previewRef1 = useRef<HTMLDivElement | null>(null);
@@ -722,17 +743,14 @@ export default function AppClient() {
                     </div>
                   </div>
                 )}
-                <CostPreview
-                  currentCost={currentCost}
-                  isEstimating={isEstimating}
-                  costHeuristic={costHeuristic}
-                  defaultCollapsed={isCoarsePointer}
-                />
-                <StatsSection
-                  currentUsage={currentUsage}
-                  isOpen={statsOpen}
-                  onToggle={() => setStatsOpen(!statsOpen)}
-                />
+                {showNerdStats && (
+                  <StatsSection
+                    currentUsage={currentUsage}
+                    isOpen={statsOpen}
+                    onToggle={() => setStatsOpen(!statsOpen)}
+                    showCost={useOwnKeyPreference === true}
+                  />
+                )}
               </InputPanel>
             </div>
           ) : (
@@ -824,17 +842,14 @@ export default function AppClient() {
                   </div>
                 </div>
               )}
-              <CostPreview
-                currentCost={currentCost}
-                isEstimating={isEstimating}
-                costHeuristic={costHeuristic}
-                defaultCollapsed={isCoarsePointer}
-              />
-              <StatsSection
-                currentUsage={currentUsage}
-                isOpen={statsOpen}
-                onToggle={() => setStatsOpen(!statsOpen)}
-              />
+              {showNerdStats && (
+                <StatsSection
+                  currentUsage={currentUsage}
+                  isOpen={statsOpen}
+                  onToggle={() => setStatsOpen(!statsOpen)}
+                  showCost={useOwnKeyPreference === true}
+                />
+              )}
               {isSmallScreen && (
                 <div className="mobile-actions">
                   <button

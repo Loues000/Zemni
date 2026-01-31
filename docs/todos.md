@@ -20,6 +20,13 @@
 - ✅ Implemented Subscription Tiers logic for models (Free, Basic, Plus, Pro)
 - ✅ Added "Zemni" header and integrated history access into InputPanel
 - ✅ Advanced Account tab with usage stats and user information display
+- ✅ Unified duplicate `isModelAvailable()` logic between server and client
+- ✅ Account deletion confirmation modal
+- ✅ Toast notification system for user feedback
+- ✅ Loading states for Stripe checkout redirects
+- ✅ Improved mobile responsiveness for settings pages
+- ✅ Testing infrastructure foundation (Vitest + initial tests)
+- ✅ Error tracking utility foundation
 
 ## Next Steps (Prioritized)
 
@@ -44,7 +51,7 @@
    - Add "Save" feedback for guidelines in AccountTab
 
 4. **User settings (localStorage + Cloud sync)**
-   - Language preference (UI language)
+   - Language preference (UI language) (guidlines hardcode to german)
    - Per-mode defaults (e.g., flashcard density, quiz batch sizes)
    - More customization presets / templates
    - Export format preferences and templates
@@ -60,6 +67,7 @@
    - Estimated time remaining
    - Cancel operations mid-generation
    - Background generation with notifications
+
 
 ### Low Priority - Nice to Have
 

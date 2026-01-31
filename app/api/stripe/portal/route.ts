@@ -21,7 +21,10 @@ export async function POST() {
     }
 
     if (!user.stripeCustomerId) {
-      return NextResponse.json({ error: "No active subscription" }, { status: 400 });
+      return NextResponse.json(
+        { error: "No active subscription found. Please upgrade to a paid plan first." },
+        { status: 400 }
+      );
     }
 
     const session = await stripe.billingPortal.sessions.create({
@@ -32,8 +35,18 @@ export async function POST() {
     return NextResponse.json({ url: session.url });
   } catch (error) {
     console.error("Stripe portal error:", error);
+    const errorMessage = error instanceof Error ? error.message : "Internal server error";
+    
+    // Provide user-friendly error messages
+    let userFriendlyError = "Unable to open subscription management. Please try again.";
+    if (errorMessage.includes("No active subscription")) {
+      userFriendlyError = "You don't have an active subscription to manage.";
+    } else if (errorMessage.includes("Unauthorized")) {
+      userFriendlyError = "Please sign in to manage your subscription.";
+    }
+    
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Internal server error" },
+      { error: userFriendlyError },
       { status: 500 }
     );
   }
