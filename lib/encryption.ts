@@ -1,36 +1,76 @@
 /**
- * Simple encryption/decryption utilities for API keys
- * In production, use a more robust encryption library like crypto-js or node:crypto
+ * Encryption/decryption utilities for API keys using AES-256-GCM
+ * Provides authenticated encryption with integrity protection
  */
 
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || "default-key-change-in-production";
+import crypto from "node:crypto";
+
+const ALGORITHM = "aes-256-gcm";
+const KEY_LENGTH = 32; // 256 bits
+const IV_LENGTH = 16; // 128 bits
 
 /**
- * Encrypt a string (simple XOR for now - replace with proper encryption in production)
- * WARNING: This is a placeholder. Use proper encryption like AES-256 in production.
+ * Get encryption key from environment variable
+ * Derives a 32-byte key using scrypt for key stretching
  */
-export function encryptKey(key: string): string {
-  // In production, use proper encryption:
-  // import crypto from "node:crypto";
-  // const cipher = crypto.createCipheriv("aes-256-gcm", encryptionKey, iv);
-  // return cipher.update(key, "utf8", "hex") + cipher.final("hex");
-
-  // Placeholder: simple base64 encoding (NOT secure - replace in production)
-  return Buffer.from(key).toString("base64");
+function getEncryptionKey(): Buffer {
+  const envKey = process.env.ENCRYPTION_KEY;
+  
+  if (!envKey) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("ENCRYPTION_KEY environment variable is required in production");
+    }
+    // Development fallback (warn but allow)
+    console.warn("WARNING: ENCRYPTION_KEY not set, using insecure default. Set ENCRYPTION_KEY in production!");
+    return crypto.scryptSync("default-key-change-in-production", "salt", KEY_LENGTH);
+  }
+  
+  // Derive 32-byte key from environment variable using scrypt
+  return crypto.scryptSync(envKey, "salt", KEY_LENGTH);
 }
 
 /**
- * Decrypt a string
- * WARNING: This is a placeholder. Use proper decryption in production.
+ * Encrypt a string using AES-256-GCM
+ * Returns format: iv:tag:encrypted (all hex-encoded)
+ */
+export function encryptKey(key: string): string {
+  const encryptionKey = getEncryptionKey();
+  const iv = crypto.randomBytes(IV_LENGTH);
+  
+  const cipher = crypto.createCipheriv(ALGORITHM, encryptionKey, iv);
+  
+  let encrypted = cipher.update(key, "utf8", "hex");
+  encrypted += cipher.final("hex");
+  const tag = cipher.getAuthTag();
+  
+  // Return: iv:tag:encrypted (all hex-encoded)
+  return `${iv.toString("hex")}:${tag.toString("hex")}:${encrypted}`;
+}
+
+/**
+ * Decrypt a string using AES-256-GCM
+ * Expects format: iv:tag:encrypted (all hex-encoded)
  */
 export function decryptKey(encryptedKey: string): string {
-  // In production, use proper decryption:
-  // import crypto from "node:crypto";
-  // const decipher = crypto.createDecipheriv("aes-256-gcm", encryptionKey, iv);
-  // return decipher.update(encryptedKey, "hex", "utf8") + decipher.final("utf8");
-
-  // Placeholder: simple base64 decoding (NOT secure - replace in production)
-  return Buffer.from(encryptedKey, "base64").toString("utf8");
+  const encryptionKey = getEncryptionKey();
+  
+  // Split the stored format: iv:tag:encrypted
+  const parts = encryptedKey.split(":");
+  if (parts.length !== 3) {
+    throw new Error("Invalid encrypted key format");
+  }
+  
+  const [ivHex, tagHex, encrypted] = parts;
+  
+  const iv = Buffer.from(ivHex, "hex");
+  const tag = Buffer.from(tagHex, "hex");
+  
+  const decipher = crypto.createDecipheriv(ALGORITHM, encryptionKey, iv);
+  decipher.setAuthTag(tag);
+  
+  let decrypted = decipher.update(encrypted, "hex", "utf8");
+  decrypted += decipher.final("utf8");
+  return decrypted;
 }
 
 /**

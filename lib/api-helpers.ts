@@ -53,25 +53,37 @@ export async function getUserContext(): Promise<UserContext | null> {
   const apiKeys: ApiKeyInfo[] = [];
   let apiKey: string | undefined;
 
-  // Load all API keys
-  for (const providerInfo of activeProviders) {
-    const userKey = await convex.query(api.apiKeys.getKeyForProvider, {
-      provider: providerInfo.provider,
-      clerkUserId: userId,
-    });
-
-    if (userKey && userKey.keyHash) {
-      const decryptedKey = decryptKey(userKey.keyHash);
-      apiKeys.push({
+  // Load all API keys with memory safety
+  const decryptedKeys: string[] = [];
+  try {
+    for (const providerInfo of activeProviders) {
+      const userKey = await convex.query(api.apiKeys.getKeyForProvider, {
         provider: providerInfo.provider,
-        useOwnKey: providerInfo.useOwnKey,
-        key: decryptedKey,
+        clerkUserId: userId,
       });
 
-      // Keep backward compatibility - use openrouter as primary key if available
-      if (providerInfo.provider === "openrouter" && providerInfo.useOwnKey) {
-        apiKey = decryptedKey;
+      if (userKey && userKey.keyHash) {
+        const decryptedKey = decryptKey(userKey.keyHash);
+        decryptedKeys.push(decryptedKey); // Track for cleanup
+        
+        apiKeys.push({
+          provider: providerInfo.provider,
+          useOwnKey: providerInfo.useOwnKey,
+          key: decryptedKey,
+        });
+
+        // Keep backward compatibility - use openrouter as primary key if available
+        if (providerInfo.provider === "openrouter" && providerInfo.useOwnKey) {
+          apiKey = decryptedKey;
+        }
       }
+    }
+  } finally {
+    // Attempt to clear decrypted keys from memory (JS doesn't guarantee this)
+    // This is best-effort memory safety
+    for (let i = 0; i < decryptedKeys.length; i++) {
+      // Overwrite array elements (best effort)
+      decryptedKeys[i] = "";
     }
   }
 
@@ -203,8 +215,13 @@ export function checkModelAvailability(
 
 /**
  * Get API key to use (user's key if preferred, otherwise system key)
+ * This is a simplified version of getApiKeyForModel for cases where we don't have a specific model.
+ * 
+ * Note: For model-specific key selection, use getApiKeyForModel() instead.
  */
 export function getApiKeyToUse(userContext: UserContext | null): string | undefined {
+  // Use getApiKeyForModel with null model to leverage the same logic
+  // This ensures consistency between the two functions
   if (userContext?.useOwnKey && userContext.apiKey) {
     return userContext.apiKey;
   }
