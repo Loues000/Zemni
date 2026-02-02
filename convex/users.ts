@@ -299,3 +299,42 @@ export const clearNotionConfig = mutation({
     });
   },
 });
+
+/**
+ * Anonymize user account - removes personal info but keeps usage data
+ */
+export const anonymizeAccount = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_user_id", (q: any) => q.eq("clerkUserId", identity.subject))
+      .first();
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    const anonymousId = `anon_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    await ctx.db.patch(user._id, {
+      email: `${anonymousId}@anonymized.local`,
+      preferredName: "Anonymous User",
+      customGuidelines: undefined,
+      defaultStructureHints: undefined,
+      notionToken: undefined,
+      notionDatabaseId: undefined,
+      notionExportMethod: undefined,
+      isAnonymized: true,
+      anonymizedAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    return { success: true, anonymousId };
+  },
+});

@@ -20,6 +20,8 @@ export default defineSchema({
     notionToken: v.optional(v.string()),
     notionDatabaseId: v.optional(v.string()),
     notionExportMethod: v.optional(v.union(v.literal("database"), v.literal("page"))),
+    isAnonymized: v.optional(v.boolean()),
+    anonymizedAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

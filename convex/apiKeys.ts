@@ -3,18 +3,30 @@ import { v } from "convex/values";
 
 /**
  * Get user's API keys
+ * Note: This uses clerkUserId from the client instead of ctx.auth for API route compatibility
  */
 export const getUserKeys = query({
-  args: {},
-  handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      return [];
+  args: {
+    clerkUserId: v.optional(v.string()), // Optional: when provided, bypasses ctx.auth
+  },
+  handler: async (ctx, args) => {
+    let clerkUserId: string | null = null;
+    
+    // If clerkUserId is provided (from API route), use it directly
+    if (args.clerkUserId) {
+      clerkUserId = args.clerkUserId;
+    } else {
+      // Otherwise use ctx.auth (for client-side calls)
+      const identity = await ctx.auth.getUserIdentity();
+      if (!identity) {
+        return [];
+      }
+      clerkUserId = identity.subject;
     }
 
     const user = await ctx.db
       .query("users")
-      .withIndex("by_clerk_user_id", (q: any) => q.eq("clerkUserId", identity.subject))
+      .withIndex("by_clerk_user_id", (q: any) => q.eq("clerkUserId", clerkUserId))
       .first();
 
     if (!user) {
@@ -107,9 +119,11 @@ export const setUseOwnKeyPreference = mutation({
 
 /**
  * Add or update API key
+ * Note: This uses clerkUserId from the client instead of ctx.auth for compatibility
  */
 export const upsertKey = mutation({
   args: {
+    clerkUserId: v.string(), // Clerk user ID from authenticated client
     provider: v.union(
       v.literal("openrouter"),
       v.literal("openai"),
@@ -119,14 +133,10 @@ export const upsertKey = mutation({
     keyHash: v.string(), // Encrypted key
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Not authenticated");
-    }
-
+    // Find user by Clerk ID (passed from authenticated API route)
     const user = await ctx.db
       .query("users")
-      .withIndex("by_clerk_user_id", (q: any) => q.eq("clerkUserId", identity.subject))
+      .withIndex("by_clerk_user_id", (q: any) => q.eq("clerkUserId", args.clerkUserId))
       .first();
 
     if (!user) {
@@ -166,19 +176,20 @@ export const upsertKey = mutation({
 /**
  * Delete API key
  */
+/**
+ * Delete API key
+ * Note: This uses clerkUserId from the client instead of ctx.auth for compatibility
+ */
 export const deleteKey = mutation({
   args: {
+    clerkUserId: v.string(), // Clerk user ID from authenticated client
     keyId: v.id("apiKeys"),
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      throw new Error("Not authenticated");
-    }
-
+    // Find user by Clerk ID (passed from authenticated API route)
     const user = await ctx.db
       .query("users")
-      .withIndex("by_clerk_user_id", (q: any) => q.eq("clerkUserId", identity.subject))
+      .withIndex("by_clerk_user_id", (q: any) => q.eq("clerkUserId", args.clerkUserId))
       .first();
 
     if (!user) {
@@ -196,6 +207,7 @@ export const deleteKey = mutation({
 
 /**
  * Get API key for a specific provider (server-side only, returns encrypted hash)
+ * Note: This uses clerkUserId from the client instead of ctx.auth for API route compatibility
  */
 export const getKeyForProvider = query({
   args: {
@@ -205,16 +217,26 @@ export const getKeyForProvider = query({
       v.literal("anthropic"),
       v.literal("google")
     ),
+    clerkUserId: v.optional(v.string()), // Optional: when provided, bypasses ctx.auth
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      return null;
+    let clerkUserId: string | null = null;
+    
+    // If clerkUserId is provided (from API route), use it directly
+    if (args.clerkUserId) {
+      clerkUserId = args.clerkUserId;
+    } else {
+      // Otherwise use ctx.auth (for client-side calls)
+      const identity = await ctx.auth.getUserIdentity();
+      if (!identity) {
+        return null;
+      }
+      clerkUserId = identity.subject;
     }
 
     const user = await ctx.db
       .query("users")
-      .withIndex("by_clerk_user_id", (q: any) => q.eq("clerkUserId", identity.subject))
+      .withIndex("by_clerk_user_id", (q: any) => q.eq("clerkUserId", clerkUserId))
       .first();
 
     if (!user) {
@@ -236,5 +258,53 @@ export const getKeyForProvider = query({
       keyHash: key.keyHash,
       useOwnKey: key.useOwnKey ?? false,
     };
+  },
+});
+
+/**
+ * Get all active API key providers for the current user
+ * Returns a list of providers that have active keys (without the actual keys)
+ * Note: This uses clerkUserId from the client instead of ctx.auth for API route compatibility
+ */
+export const getActiveProviders = query({
+  args: {
+    clerkUserId: v.optional(v.string()), // Optional: when provided, bypasses ctx.auth
+  },
+  handler: async (ctx, args) => {
+    let clerkUserId: string | null = null;
+    
+    // If clerkUserId is provided (from API route), use it directly
+    if (args.clerkUserId) {
+      clerkUserId = args.clerkUserId;
+    } else {
+      // Otherwise use ctx.auth (for client-side calls)
+      const identity = await ctx.auth.getUserIdentity();
+      if (!identity) {
+        return [];
+      }
+      clerkUserId = identity.subject;
+    }
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_user_id", (q: any) => q.eq("clerkUserId", clerkUserId))
+      .first();
+
+    if (!user) {
+      return [];
+    }
+
+    const keys = await ctx.db
+      .query("apiKeys")
+      .withIndex("by_user_id", (q: any) => q.eq("userId", user._id))
+      .collect();
+
+    // Return only active providers (without key hashes for security)
+    return keys
+      .filter(key => key.isActive)
+      .map(key => ({
+        provider: key.provider,
+        useOwnKey: key.useOwnKey ?? false,
+      }));
   },
 });

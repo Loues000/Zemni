@@ -4,19 +4,21 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useUser } from "@clerk/nextjs";
-import { ConfirmModal } from "@/components/ui";
+import { useRouter } from "next/navigation";
 
 /**
  * AccountTab displays the current user's account information from Clerk and Convex.
  * Assumes it's rendered within a ClerkProvider and that the user is signed in.
  */
 export function AccountTab() {
+  const router = useRouter();
   const { user, isLoaded } = useUser();
   const currentUser = useQuery(api.users.getCurrentUser);
   const updateLanguage = useMutation(api.users.updatePreferredLanguage);
   const updateName = useMutation(api.users.updatePreferredName);
   const updateGuidelines = useMutation(api.users.updateCustomGuidelines);
   const clearGuidelines = useMutation(api.users.clearCustomGuidelines);
+  const anonymizeAccount = useMutation(api.users.anonymizeAccount);
 
   const [language, setLanguage] = useState<string>("en");
   const [preferredName, setPreferredName] = useState<string>("");
@@ -93,6 +95,23 @@ export function AccountTab() {
       setMessage({ type: "success", text: "Reverted to default guidelines." });
     } catch (error) {
       setMessage({ type: "error", text: "Failed to revert guidelines." });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    setSaving(true);
+    setMessage(null);
+    try {
+      await anonymizeAccount({});
+      setMessage({ type: "success", text: "Account anonymized successfully. Redirecting..." });
+      setTimeout(() => {
+        router.push("/");
+      }, 2000);
+    } catch (error) {
+      setMessage({ type: "error", text: "Failed to anonymize account. Please try again." });
+      setShowDeleteConfirm(false);
     } finally {
       setSaving(false);
     }
@@ -223,42 +242,52 @@ export function AccountTab() {
       </div>
 
       <div className="settings-section-header settings-section-header-spaced">
-        <h2>Danger Zone</h2>
-        <p>Irreversible account actions</p>
+        <h2>Account Management</h2>
+        <p>Data privacy and account options</p>
       </div>
       <div className="settings-card settings-card-danger">
         <div className="field">
-          <button
-            type="button"
-            className="btn btn-danger btn-small"
-            onClick={() => setShowDeleteConfirm(true)}
-          >
-            Delete Account
-          </button>
-          <p className="field-hint field-hint-error">
-            Permanently delete your account and all data. This action cannot be undone.
+          <h3 className="settings-card-title" style={{ marginBottom: "8px", color: "var(--error-text)" }}>Danger Zone</h3>
+          <p className="field-hint" style={{ marginBottom: "12px" }}>
+            Delete your account and anonymize your data. This action cannot be undone.
+            Your personal information (email, name, guidelines) will be permanently removed.
           </p>
+          {!showDeleteConfirm ? (
+            <button
+              type="button"
+              className="btn btn-danger"
+              onClick={() => setShowDeleteConfirm(true)}
+              disabled={saving}
+            >
+              Delete Account
+            </button>
+          ) : (
+            <div className="settings-delete-confirm">
+              <p className="field-hint" style={{ marginBottom: "12px", color: "var(--error-text)" }}>
+                Are you sure? This will anonymize your account and cannot be undone.
+              </p>
+              <div className="settings-row">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowDeleteConfirm(false)}
+                  disabled={saving}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-danger"
+                  onClick={handleDeleteAccount}
+                  disabled={saving}
+                >
+                  {saving ? "Processing..." : "Yes, Delete My Account"}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
-
-      <ConfirmModal
-        isOpen={showDeleteConfirm}
-        title="Delete Account"
-        message="Are you sure you want to permanently delete your account? This will remove all your data, documents, and settings. This action cannot be undone."
-        confirmLabel="Delete Account"
-        cancelLabel="Cancel"
-        variant="danger"
-        onCancel={() => setShowDeleteConfirm(false)}
-        onConfirm={async () => {
-          setShowDeleteConfirm(false);
-          // TODO: Implement account deletion via Clerk and Convex
-          // For now, show a message that this feature is not yet implemented
-          setMessage({
-            type: "error",
-            text: "Account deletion is not yet implemented. Please contact support if you need to delete your account.",
-          });
-        }}
-      />
     </section>
   );
 }

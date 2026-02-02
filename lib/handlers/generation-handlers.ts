@@ -140,9 +140,9 @@ export const handleGenerate = async (context: GenerationHandlersContext): Promis
       quizState:
         outputKind === "quiz"
           ? {
-              questionCursor: 0,
-              revealAnswer: false
-            }
+            questionCursor: 0,
+            revealAnswer: false
+          }
           : undefined
     }
   }));
@@ -166,7 +166,7 @@ export const handleGenerate = async (context: GenerationHandlersContext): Promis
             structure: structureHints,
             titleHint: fileName
           },
-          75_000
+          240_000
         ),
         { maxRetries: 2, initialDelayMs: 1000 }
       );
@@ -204,7 +204,7 @@ export const handleGenerate = async (context: GenerationHandlersContext): Promis
             modelId: selectedModel,
             coverageLevel: flashcardsDensity
           },
-          75_000
+          240_000
         ),
         { maxRetries: 2, initialDelayMs: 1000 }
       );
@@ -245,7 +245,7 @@ export const handleGenerate = async (context: GenerationHandlersContext): Promis
             questionsCount: Math.min(QUIZ_INITIAL_BATCH_CAP, estimateQuizQuestions(extractedText.length)),
             avoidQuestions: []
           },
-          75_000
+          240_000
         ),
         { maxRetries: 2, initialDelayMs: 1000 }
       );
@@ -263,7 +263,7 @@ export const handleGenerate = async (context: GenerationHandlersContext): Promis
           kind: "quiz"
         };
         next.summary = renderQuizPreview(next, fileName);
-        
+
         // Cache the result
         setCachedResult(cacheKeyStr, next, {
           docHash,
@@ -271,7 +271,7 @@ export const handleGenerate = async (context: GenerationHandlersContext): Promis
           modelId: selectedModel,
           params: cacheParams
         });
-        
+
         return { ...prev, [tabId]: next };
       });
     }
@@ -283,7 +283,7 @@ export const handleGenerate = async (context: GenerationHandlersContext): Promis
   } catch (err) {
     const errorInfo = getErrorInfo(err);
     const isRetryable = errorInfo.retryable || (err instanceof Error && isRetryableError(err));
-    
+
     // Keep the tab with error state for retry
     setOutputs((prev) => {
       const existing = prev[tabId];
@@ -299,12 +299,12 @@ export const handleGenerate = async (context: GenerationHandlersContext): Promis
         }
       };
     });
-    
+
     setSelectedTabId(tabId); // Keep the failed tab selected
     setGeneratingTabId(null);
     setError(errorInfo.message);
     setStatus("error");
-    
+
     // Don't switch to input view on error - let user see the error and retry
   }
 };

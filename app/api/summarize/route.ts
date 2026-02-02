@@ -6,7 +6,9 @@ import { loadModels } from "@/lib/models";
 import { buildUsageStats } from "@/lib/usage";
 import { enforceOutputFormat } from "@/lib/format-output";
 import { createTimeoutController, isAbortError } from "@/lib/ai-performance";
-import { getUserContext, checkModelAvailability, getApiKeyToUse } from "@/lib/api-helpers";
+import { getUserContext, checkModelAvailability, getApiKeyToUse, getApiKeyForModel } from "@/lib/api-helpers";
+import { generateWithProvider, type ProviderInfo } from "@/lib/providers";
+import { isModelAvailable } from "@/lib/models";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 
@@ -41,12 +43,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Model not found" }, { status: 400 });
   }
 
-  // Check if user has access to this model
-  if (userContext && !checkModelAvailability(model, userContext.userTier)) {
+  // Check if user has access to this model (subscription OR API key)
+  const hasModelAccess = checkModelAvailability(
+    { id: model.openrouterId, subscriptionTier: model.subscriptionTier },
+    userContext
+  );
+
+  if (!hasModelAccess) {
     return NextResponse.json(
       { error: "This model is not available for your subscription tier" },
       { status: 403 }
     );
+  }
+
+  // Determine which API key to use (system key for subscription models, user key for own-cost models)
+  const modelApiKeyInfo = getApiKeyForModel(modelId, userContext, model);
+  const finalApiKey = modelApiKeyInfo?.key || apiKey;
+  const isOwnKey = !!modelApiKeyInfo?.isOwnKey;
+
+  // Debug logging (only when using own key)
+  if (isOwnKey) {
+    console.log(`[summarize] Using own ${modelApiKeyInfo?.provider || "openrouter"} key for ${modelId}`);
   }
 
   // Get user preferences for language and custom guidelines
@@ -55,21 +72,52 @@ export async function POST(request: Request) {
   const { systemPrompt, userPrompt } = await buildSummaryPrompts(text, structure, userLanguage, customGuidelines);
   const start = Date.now();
 
-  const openrouterClient = createOpenRouterClient(apiKey);
+  let result: { text: string; usage: any; costInUsd?: number };
   const timeout = createTimeoutController(MODEL_CALL_TIMEOUT_MS);
-  let result: Awaited<ReturnType<typeof generateText>>;
+
   try {
-    result = await generateText({
-      model: openrouterClient(modelId) as any,
-      maxTokens: 2800,
-      temperature: 0.2,
-      maxRetries: 1,
-      abortSignal: timeout.signal,
-      messages: [
+    if (isOwnKey && modelApiKeyInfo) {
+      // Use direct provider API for user's own key
+      const providerInfo: ProviderInfo = {
+        provider: modelApiKeyInfo.provider,
+        key: modelApiKeyInfo.key,
+        isOwnKey: true,
+      };
+
+      const apiKeys = userContext?.apiKeys.map(k => ({
+        provider: k.provider,
+        key: k.key || "",
+        isOwnKey: k.useOwnKey,
+      })) || [];
+
+      result = await generateWithProvider(modelId, [
         { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ]
-    });
+        { role: "user", content: userPrompt },
+      ], apiKeys, {
+        maxTokens: 2800,
+        temperature: 0.2,
+        maxRetries: 1,
+      });
+    } else {
+      // Use OpenRouter (system key)
+      const openrouterClient = createOpenRouterClient(finalApiKey);
+      const genResult = await generateText({
+        model: openrouterClient(modelId) as any,
+        maxTokens: 2800,
+        temperature: 0.2,
+        maxRetries: 1,
+        abortSignal: timeout.signal,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+      });
+
+      result = {
+        text: genResult.text,
+        usage: genResult.usage,
+      };
+    }
   } catch (err) {
     if (isAbortError(err)) {
       return NextResponse.json({ error: "Summary generation timed out. Try a faster model or shorter input." }, { status: 504 });
@@ -82,6 +130,7 @@ export async function POST(request: Request) {
   // Post-process to enforce format (no metadata, starts with H1)
   const summary = enforceOutputFormat(result.text, titleHint || undefined);
 
+  // Build usage stats
   const usage = buildUsageStats(result.usage, Date.now() - start, model, "summarize");
 
   // Save usage to Convex if user is authenticated
@@ -100,5 +149,15 @@ export async function POST(request: Request) {
     }
   }
 
-  return NextResponse.json({ summary, usage });
+  // Add own key info to response
+  const response: any = { summary, usage };
+  if (isOwnKey) {
+    response.ownKeyInfo = {
+      provider: modelApiKeyInfo?.provider,
+      costUsd: result.costInUsd,
+      note: "Charges apply to your API account",
+    };
+  }
+
+  return NextResponse.json(response);
 }

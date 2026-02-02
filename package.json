@@ -11,11 +11,14 @@
     "test:ui": "vitest --ui"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.35",
+    "@ai-sdk/google": "^3.0.20",
     "@ai-sdk/openai": "^1.0.10",
     "@clerk/clerk-sdk-node": "^4.13.23",
     "@clerk/nextjs": "^6.37.0",
     "@dqbd/tiktoken": "^1.0.20",
     "@notionhq/client": "^2.2.15",
+    "@sentry/nextjs": "^10.38.0",
     "@stripe/stripe-js": "^8.7.0",
     "@types/jszip": "^3.4.0",
     "ai": "^3.4.0",
@@ -23,6 +26,7 @@
     "jszip": "^3.10.1",
     "katex": "^0.16.27",
     "next": "^14.2.5",
+    "openai": "^4.104.0",
     "pdf-parse": "^1.1.1",
     "pdfjs-dist": "^5.4.530",
     "pg": "^8.17.1",

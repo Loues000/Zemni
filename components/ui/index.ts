@@ -9,3 +9,4 @@ export * from "./ModelSelector";
 export * from "./ProviderIcon";
 export * from "./ConfirmModal";
 export * from "./Toast";
+export * from "./SentryErrorBoundary";

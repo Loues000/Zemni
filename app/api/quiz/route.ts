@@ -6,11 +6,14 @@ import { buildUsageStats } from "@/lib/usage";
 import { buildQuizPrompts } from "@/lib/study-prompts";
 import { parseJsonFromModelText } from "@/lib/parse-model-json";
 import { createTimeoutController, isAbortError, getModelPerformanceConfig } from "@/lib/ai-performance";
-import { getUserContext, checkModelAvailability } from "@/lib/api-helpers";
+import { getUserContext, checkModelAvailability, getApiKeyToUse, getApiKeyForModel } from "@/lib/api-helpers";
+import { isModelAvailable } from "@/lib/models";
+import { createOpenRouterClient } from "@/lib/openrouter";
+import { generateWithProvider, type ProviderInfo } from "@/lib/providers";
 import type { DocumentSection, QuizQuestion, UsageStats } from "@/types";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 const toSection = (value: unknown): DocumentSection | null => {
   if (!value || typeof value !== "object") return null;
@@ -40,11 +43,12 @@ type QuizResult = {
 };
 
 export async function POST(request: Request) {
-  if (!process.env.OPENROUTER_API_KEY) {
+  const userContext = await getUserContext();
+  const apiKey = getApiKeyToUse(userContext);
+
+  if (!apiKey) {
     return NextResponse.json({ error: "Missing OpenRouter key" }, { status: 400 });
   }
-
-  const userContext = await getUserContext();
 
   const body = await request.json();
   const section = toSection(body.section);
@@ -69,12 +73,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Model not found" }, { status: 400 });
   }
 
-  // Check if user has access to this model
-  if (userContext && !checkModelAvailability(model, userContext.userTier)) {
+  // Check if user has access to this model (subscription OR API key)
+  const hasModelAccess = checkModelAvailability(
+    { id: model.openrouterId, subscriptionTier: model.subscriptionTier },
+    userContext
+  );
+
+  if (!hasModelAccess) {
     return NextResponse.json(
       { error: "This model is not available for your subscription tier" },
       { status: 403 }
     );
+  }
+
+  // Determine which API key to use (system key for subscription models, user key for own-cost models)
+  const modelApiKeyInfo = getApiKeyForModel(modelId, userContext, model);
+  const finalApiKey = modelApiKeyInfo?.key || apiKey;
+  const isOwnKey = !!modelApiKeyInfo?.isOwnKey;
+
+  // Debug logging (only when using own key)
+  if (isOwnKey) {
+    console.log(`[quiz] Using own ${modelApiKeyInfo?.provider || "openrouter"} key for ${modelId}`);
   }
 
   const { systemPrompt, userPrompt } = await buildQuizPrompts(section, questionsCount, avoidQuestions);
@@ -84,20 +103,48 @@ export async function POST(request: Request) {
   const timeout = createTimeoutController(perfConfig.timeoutMs);
   const baseMaxTokens = Math.min(3200, Math.max(900, questionsCount * 220));
   const adjustedMaxTokens = Math.floor(baseMaxTokens * perfConfig.maxTokensMultiplier);
-  
-  let result: Awaited<ReturnType<typeof generateText>>;
+
+  let result: { text: string; usage: any };
   try {
-    result = await generateText({
-      model: openrouter(modelId) as any,
-      maxTokens: adjustedMaxTokens,
-      temperature: 0.2,
-      maxRetries: 1,
-      abortSignal: timeout.signal,
-      messages: [
+    if (isOwnKey && modelApiKeyInfo) {
+      // Use direct provider API for user's own key
+      const apiKeys = userContext?.apiKeys.map(k => ({
+        provider: k.provider,
+        key: k.key || "",
+        isOwnKey: k.useOwnKey,
+      })) || [];
+
+      const providerResult = await generateWithProvider(modelId, [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt }
-      ]
-    });
+      ], apiKeys, {
+        maxTokens: adjustedMaxTokens,
+        temperature: 0.2,
+        maxRetries: 1,
+      });
+      result = {
+        text: providerResult.text,
+        usage: providerResult.usage,
+      };
+    } else {
+      // Use OpenRouter (system key)
+      const openrouterClient = createOpenRouterClient(finalApiKey);
+      const genResult = await generateText({
+        model: openrouterClient(modelId) as any,
+        maxTokens: adjustedMaxTokens,
+        temperature: 0.2,
+        maxRetries: 1,
+        abortSignal: timeout.signal,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ]
+      });
+      result = {
+        text: genResult.text,
+        usage: genResult.usage,
+      };
+    }
   } catch (err) {
     if (isAbortError(err)) {
       return NextResponse.json({ error: "Quiz generation timed out. Try a faster model or fewer questions." }, { status: 504 });
@@ -113,8 +160,8 @@ export async function POST(request: Request) {
   } catch (parseErr) {
     const errorMsg = parseErr instanceof Error ? parseErr.message : String(parseErr);
     console.error(`[Quiz] JSON parse error for model ${modelId}:`, errorMsg);
-    return NextResponse.json({ 
-      error: `Model returned invalid JSON. ${errorMsg.length > 200 ? errorMsg.slice(0, 200) + "..." : errorMsg}` 
+    return NextResponse.json({
+      error: `Model returned invalid JSON. ${errorMsg.length > 200 ? errorMsg.slice(0, 200) + "..." : errorMsg}`
     }, { status: 502 });
   }
   const questions: QuizQuestion[] = [];

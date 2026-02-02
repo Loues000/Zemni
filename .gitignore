@@ -50,6 +50,7 @@ Thumbs.db
 
 # Local AI/agent notes (personal)
 AGENTS.md
+CLAUDE.md
 
 # Local-only scratch/data (keep ignored)
 data/

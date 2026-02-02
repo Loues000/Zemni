@@ -14,6 +14,8 @@ export type Model = {
   subscriptionTier?: string;
   isAvailable?: boolean;
   requiredTier?: string;
+  isCoveredBySubscription?: boolean;
+  requiresOwnKey?: boolean;
 };
 
 export type CostRow = {

@@ -1,42 +1,63 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { loadModels, isSubscriptionTiersEnabled, isModelAvailable } from "@/lib/models";
+import { loadModels, isSubscriptionTiersEnabled } from "@/lib/models";
+import { getModelAvailability, type ApiProvider } from "@/lib/model-availability";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 
 export const runtime = "nodejs";
 
+// Create unauthenticated Convex client (auth happens via clerkUserId param)
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
 /**
- * Gets the current user's subscription tier
+ * Gets the current user's subscription tier and API keys
  * 
- * @returns User's subscription tier (null = not logged in, "free" = logged in no sub, "basic" = basic sub, "plus" = plus sub, "pro" = pro sub)
+ * @returns Object with user's subscription tier and API key providers
  */
-const getCurrentUserTier = async (): Promise<string | null> => {
+const getCurrentUserContext = async (): Promise<{ 
+  userTier: string | null; 
+  apiKeyProviders: ApiProvider[];
+}> => {
   const { userId } = await auth();
-  if (!userId) return null; // Not logged in = free tier (null)
+  if (!userId) return { userTier: null, apiKeyProviders: [] }; // Not logged in
   
   const user = await convex.query(api.users.getUserByClerkUserId, {
     clerkUserId: userId,
   });
   
-  return user?.subscriptionTier || "free";
+  // Get user's active API key providers
+  const activeProviders = await convex.query(api.apiKeys.getActiveProviders, { 
+    clerkUserId: userId 
+  });
+  const apiKeyProviders = activeProviders.map((p: { provider: ApiProvider }) => p.provider);
+  
+  return { 
+    userTier: user?.subscriptionTier || "free",
+    apiKeyProviders 
+  };
 };
 
 export async function GET() {
   const models = await loadModels();
   const tiersEnabled = isSubscriptionTiersEnabled();
 
-  // Get current user's tier (TODO: implement actual auth)
-  const userTier = await getCurrentUserTier();
+  // Get current user's tier and API keys
+  const { userTier, apiKeyProviders } = await getCurrentUserContext();
 
   const mappedModels = models.map((model) => {
-    // Check if model is available for current user
-    const isAvailable = isModelAvailable(model, userTier);
+    // Check full model availability (subscription + API keys)
+    const availability = getModelAvailability(
+      { 
+        id: model.openrouterId, 
+        subscriptionTier: model.subscriptionTier 
+      }, 
+      userTier,
+      apiKeyProviders
+    );
 
     // Determine required tier for locked models
-    const requiredTier = !isAvailable && model.subscriptionTier
+    const requiredTier = !availability.isAvailable && model.subscriptionTier
       ? model.subscriptionTier
       : undefined;
 
@@ -48,7 +69,9 @@ export async function GET() {
       tokenizer: model.tokenizer,
       pricing: model.pricing,
       subscriptionTier: model.subscriptionTier,
-      isAvailable,
+      isAvailable: availability.isAvailable,
+      isCoveredBySubscription: availability.isCoveredBySubscription,
+      requiresOwnKey: availability.requiresOwnKey && availability.isAvailable,
       requiredTier
     };
   });

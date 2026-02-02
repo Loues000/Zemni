@@ -1,5 +1,9 @@
 import fs from "fs/promises";
 import path from "path";
+import { isModelAvailable, isSubscriptionTiersEnabled } from "./model-availability";
+
+// Re-export client-safe functions for backward compatibility
+export { isModelAvailable, isSubscriptionTiersEnabled };
 
 export type Pricing = {
   currency: string;
@@ -46,67 +50,6 @@ const toNumber = (value: unknown): number | null => {
   }
   const num = Number(value);
   return Number.isNaN(num) ? null : num;
-};
-
-/**
- * Core logic to determine if a model tier is available for a user tier.
- * This is the unified implementation used by both server and client.
- * 
- * @param modelTier - The tier required by the model (undefined = no tier restriction)
- * @param userTier - Current user's subscription tier (null = not logged in, "free" = logged in no sub, "basic" = basic sub, "plus" = plus sub, "pro" = pro sub)
- * @returns true if the model is available, false otherwise
- */
-function checkModelTierAvailability(
-  modelTier: string | undefined,
-  userTier: string | null
-): boolean {
-  // If model has no tier, make it available (fallback)
-  if (!modelTier) {
-    return true;
-  }
-
-  // Not logged in: only free tier models
-  if (userTier === null) {
-    return modelTier === "free";
-  }
-
-  // Logged in, no subscription: free tier models
-  if (userTier === "free") {
-    return modelTier === "free";
-  }
-
-  // Basic subscription: free and basic tier models
-  if (userTier === "basic") {
-    return modelTier === "free" || modelTier === "basic";
-  }
-
-  // Plus subscription: free, basic, and plus tier models
-  if (userTier === "plus") {
-    return modelTier === "free" || modelTier === "basic" || modelTier === "plus";
-  }
-
-  // Pro subscription: all models
-  if (userTier === "pro") {
-    return true;
-  }
-
-  // Fallback
-  return modelTier === "free";
-}
-
-/**
- * Determines if a model is available for the current user based on subscription tier.
- * Server-side version that accepts a model object.
- * 
- * @param model - The model to check
- * @param userTier - Current user's subscription tier (null = not logged in, "free" = logged in no sub, "basic" = basic sub, "plus" = plus sub, "pro" = pro sub)
- * @returns true if the model is available, false otherwise
- */
-export const isModelAvailable = (
-  model: { subscriptionTier?: string },
-  userTier: string | null = null
-): boolean => {
-  return checkModelTierAvailability(model.subscriptionTier, userTier);
 };
 
 /**
@@ -225,17 +168,6 @@ const resolveModelsFile = async (): Promise<string | null> => {
   return null;
 };
 
-/**
- * Checks if subscription tiers feature is enabled via environment variable
- */
-const isSubscriptionTiersEnabled = (): boolean => {
-  if (typeof process !== "undefined" && process.env) {
-    const value = process.env.NEXT_PUBLIC_ENABLE_SUBSCRIPTION_TIERS;
-    return value === "true" || value === "1";
-  }
-  return false;
-};
-
 export const loadModels = async (): Promise<ModelSpec[]> => {
   const modelsFile = await resolveModelsFile();
   let models: ModelSpec[];
@@ -259,6 +191,3 @@ export const loadModels = async (): Promise<ModelSpec[]> => {
 
   return models;
 };
-
-// Export for use in API routes
-export { isSubscriptionTiersEnabled };

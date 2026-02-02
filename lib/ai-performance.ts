@@ -16,18 +16,19 @@ export const getModelPerformanceConfig = (modelId: string): {
   // Models that are known to be slower/larger and need extended timeouts
   const slowModelPatterns = [
     "gpt-oss-120b",
-    "gpt-oss-20b"
+    "gpt-oss-20b",
+    "anthropic"
   ];
-  
+
   const isSlowModel = slowModelPatterns.some(pattern => modelId.includes(pattern));
-  
+
   if (isSlowModel) {
     return {
-      timeoutMs: 120_000, // 120 seconds for large models
+      timeoutMs: 180_000, // 180 seconds for large models
       maxTokensMultiplier: 1.5 // 50% more tokens for proper JSON generation
     };
   }
-  
+
   return {
     timeoutMs: 45_000, // Default 45 seconds
     maxTokensMultiplier: 1.0

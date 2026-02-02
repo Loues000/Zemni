@@ -4,6 +4,7 @@ import "./globals.css";
 import "katex/dist/katex.min.css";
 import ConvexClientProvider from "@/lib/convex-client-provider";
 import { UserSync } from "@/components/auth/UserSync";
+import { SentryErrorBoundary } from "@/components/ui";
 
 const display = Bricolage_Grotesque({
   subsets: ["latin"],
@@ -50,7 +51,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
         <ConvexClientProvider>
           {isClerkConfigured && <UserSync />}
-          {children}
+          <SentryErrorBoundary>{children}</SentryErrorBoundary>
         </ConvexClientProvider>
       </body>
     </html>

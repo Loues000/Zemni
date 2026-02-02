@@ -1,25 +1,83 @@
 import { NextResponse } from "next/server";
-import { generateText } from "ai";
-import { openrouter } from "@/lib/openrouter";
 import { loadModels } from "@/lib/models";
 import { buildUsageStats } from "@/lib/usage";
 import { enforceOutputFormat } from "@/lib/format-output";
 import { buildChunkNotesPrompts, buildSectionSummaryPrompts } from "@/lib/study-prompts";
-import { createTimeoutController, isAbortError, mapWithConcurrency, splitTextIntoChunks, sumUsage } from "@/lib/ai-performance";
-import { getUserContext, checkModelAvailability } from "@/lib/api-helpers";
+import { isAbortError, mapWithConcurrency, splitTextIntoChunks, sumUsage } from "@/lib/ai-performance";
+import { getUserContext, checkModelAvailability, getApiKeyToUse, getApiKeyForModel } from "@/lib/api-helpers";
+import { isModelAvailable } from "@/lib/models";
+import { generateWithProvider, type ProviderInfo } from "@/lib/providers";
+import { createOpenRouterClient } from "@/lib/openrouter";
+import { generateText } from "ai";
 import type { DocumentSection, UsageStats } from "@/types";
 import type { LanguageModelUsage } from "ai";
 
+// Helper to generate text with timeout, handling both own keys and system keys
+const generateWithTimeout = async (
+  modelId: string,
+  messages: Array<{ role: string; content: string }>,
+  apiKeys: ProviderInfo[],
+  openrouterClient: ReturnType<typeof createOpenRouterClient> | null,
+  options: { maxTokens?: number; temperature?: number; maxRetries?: number; timeoutMs: number; apiId?: string }
+): Promise<{ text: string; usage: LanguageModelUsage | undefined }> => {
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => {
+      const err = new Error("Timeout");
+      err.name = "AbortError";
+      reject(err);
+    }, options.timeoutMs);
+  });
+
+  const isUsingOwnKey = apiKeys.length > 0 && apiKeys.some(k => k.isOwnKey);
+
+  try {
+    if (isUsingOwnKey) {
+      // Use direct provider API for user's own key
+      const result = await Promise.race([
+        generateWithProvider(modelId, messages, apiKeys, {
+          maxTokens: options.maxTokens,
+          temperature: options.temperature,
+          maxRetries: options.maxRetries,
+        }),
+        timeoutPromise,
+      ]);
+      return { text: result.text, usage: result.usage };
+    } else {
+      const result = await Promise.race([
+        generateText({
+          model: openrouterClient!(options.apiId || modelId) as any,
+          messages: messages as any,
+          maxTokens: options.maxTokens,
+          temperature: options.temperature,
+          maxRetries: options.maxRetries,
+        }),
+        timeoutPromise,
+      ]);
+      return { text: result.text, usage: result.usage };
+    }
+  } catch (err) {
+    // Log concise error info before rethrowing
+    const errorObj = err as any;
+    if (errorObj?.statusCode || errorObj?.url) {
+      const message = errorObj.message || String(err);
+      const url = errorObj.url || 'unknown';
+      const status = errorObj.statusCode || 'unknown';
+      console.error(`[generateWithTimeout] API error (${status}): ${message} at ${url}`);
+    }
+    throw err;
+  }
+};
+
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 const NOTES_CHUNK_CHARS = 12_000;
 const NOTES_CHUNK_OVERLAP_CHARS = 350;
 const NOTES_MAX_CHUNKS_PER_SECTION = 8;
 const NOTES_CONCURRENCY = 3;
-const NOTES_CALL_TIMEOUT_MS = 30_000;
-const FINAL_CALL_TIMEOUT_MS = 70_000;
-const CHUNKING_THRESHOLD_CHARS = 28_000;
+const NOTES_CALL_TIMEOUT_MS = 60_000;
+const FINAL_CALL_TIMEOUT_MS = 180_000;
+const CHUNKING_THRESHOLD_CHARS = 12_000;
 
 const toSections = (value: unknown): DocumentSection[] => {
   if (!Array.isArray(value)) return [];
@@ -39,11 +97,12 @@ const toSections = (value: unknown): DocumentSection[] => {
 };
 
 export async function POST(request: Request) {
-  if (!process.env.OPENROUTER_API_KEY) {
+  const userContext = await getUserContext();
+  const apiKey = getApiKeyToUse(userContext);
+
+  if (!apiKey) {
     return NextResponse.json({ error: "Missing OpenRouter key" }, { status: 400 });
   }
-
-  const userContext = await getUserContext();
 
   const body = await request.json();
   const sections = toSections(body.sections);
@@ -62,13 +121,40 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Model not found" }, { status: 400 });
   }
 
-  // Check if user has access to this model
-  if (userContext && !checkModelAvailability(model, userContext.userTier)) {
+  // Check if user has access to this model (subscription OR API key)
+  const hasModelAccess = checkModelAvailability(
+    { id: model.openrouterId, subscriptionTier: model.subscriptionTier },
+    userContext
+  );
+
+  if (!hasModelAccess) {
     return NextResponse.json(
       { error: "This model is not available for your subscription tier" },
       { status: 403 }
     );
   }
+
+  // Determine which API key to use (system key for subscription models, user key for own-cost models)
+  const modelApiKeyInfo = getApiKeyForModel(modelId, userContext, model);
+  const finalApiKey = modelApiKeyInfo?.key || apiKey;
+  const isOwnKey = !!modelApiKeyInfo?.isOwnKey;
+
+  // Prepare API keys array for generateWithProvider if using own key
+  const apiKeys = isOwnKey && userContext
+    ? userContext.apiKeys.map(k => ({
+      provider: k.provider,
+      key: k.key || "",
+      isOwnKey: k.useOwnKey,
+    }))
+    : [];
+
+  // Debug logging (only when using own key)
+  if (isOwnKey) {
+    console.log(`[section-summary] Using own ${modelApiKeyInfo?.provider || "openrouter"} key for ${modelId}`);
+  }
+
+  // Prepare OpenRouter client for system key (when not using own key)
+  const openrouterClient = !isOwnKey ? createOpenRouterClient(finalApiKey) : null;
 
   const start = Date.now();
 
@@ -82,23 +168,22 @@ export async function POST(request: Request) {
 
   const summarizeDirect = async (): Promise<{ text: string; usage: LanguageModelUsage | undefined }> => {
     const { systemPrompt, userPrompt } = await buildSectionSummaryPrompts(sections, structure);
-    const timeout = createTimeoutController(FINAL_CALL_TIMEOUT_MS);
-    try {
-      const result = await generateText({
-        model: openrouter(modelId) as any,
+    const result = await generateWithTimeout(
+      modelId,
+      [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
+      ],
+      apiKeys,
+      openrouterClient,
+      {
         maxTokens: 2800,
         temperature: 0.2,
         maxRetries: 1,
-        abortSignal: timeout.signal,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
-        ]
-      });
-      return { text: result.text, usage: result.usage };
-    } finally {
-      timeout.cancel();
-    }
+        timeoutMs: FINAL_CALL_TIMEOUT_MS,
+      }
+    );
+    return { text: result.text, usage: result.usage };
   };
 
   const summarizeViaNotes = async (): Promise<{ text: string; usage: LanguageModelUsage | undefined }> => {
@@ -127,27 +212,28 @@ export async function POST(request: Request) {
 
     const chunkNotes = await mapWithConcurrency(noteSections, NOTES_CONCURRENCY, async (noteSection) => {
       const { systemPrompt, userPrompt } = await buildChunkNotesPrompts(noteSection, { maxBullets: 42 });
-      const timeout = createTimeoutController(NOTES_CALL_TIMEOUT_MS);
       try {
-        const result = await generateText({
-          model: openrouter(modelId) as any,
-          maxTokens: 950,
-          temperature: 0.2,
-          maxRetries: 1,
-          abortSignal: timeout.signal,
-          messages: [
+        const result = await generateWithTimeout(
+          modelId,
+          [
             { role: "system", content: systemPrompt },
             { role: "user", content: userPrompt }
-          ]
-        });
+          ],
+          apiKeys,
+          openrouterClient,
+          {
+            maxTokens: 950,
+            temperature: 0.2,
+            maxRetries: 1,
+            timeoutMs: NOTES_CALL_TIMEOUT_MS,
+          }
+        );
         return { section: noteSection, notes: result.text, usage: result.usage };
       } catch (err) {
         if (isAbortError(err)) {
           return { section: noteSection, notes: "", usage: undefined };
         }
         throw err;
-      } finally {
-        timeout.cancel();
       }
     });
 
@@ -161,23 +247,22 @@ export async function POST(request: Request) {
     }));
 
     const { systemPrompt, userPrompt } = await buildSectionSummaryPrompts(notesAsSections, structure);
-    const timeout = createTimeoutController(FINAL_CALL_TIMEOUT_MS);
-    try {
-      const result = await generateText({
-        model: openrouter(modelId) as any,
+    const result = await generateWithTimeout(
+      modelId,
+      [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt }
+      ],
+      apiKeys,
+      openrouterClient,
+      {
         maxTokens: 2800,
         temperature: 0.2,
         maxRetries: 1,
-        abortSignal: timeout.signal,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
-        ]
-      });
-      return { text: result.text, usage: result.usage };
-    } finally {
-      timeout.cancel();
-    }
+        timeoutMs: FINAL_CALL_TIMEOUT_MS,
+      }
+    );
+    return { text: result.text, usage: result.usage };
   };
 
   try {
@@ -191,6 +276,11 @@ export async function POST(request: Request) {
   } catch (err) {
     if (isAbortError(err)) {
       return NextResponse.json({ error: "Summary generation timed out. Try a faster model or shorter input." }, { status: 504 });
+    }
+    // Log error concisely before rethrowing
+    const errorObj = err as any;
+    if (errorObj?.statusCode || errorObj?.url) {
+      console.error(`[section-summary] API error: ${errorObj.statusCode || 'unknown'} at ${errorObj.url || 'unknown'}: ${errorObj.message || String(err)}`);
     }
     throw err;
   }

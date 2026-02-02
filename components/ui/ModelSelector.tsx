@@ -199,6 +199,9 @@ export function ModelSelector({
     buttonRef.current?.focus();
   };
 
+  // Check if user has any API keys (to show appropriate messaging)
+  const hasApiKeys = models.some(m => m.isAvailable && m.requiresOwnKey);
+
   return (
     <div className={`model-selector${className ? ` ${className}` : ""}`} ref={containerRef}>
       <button
@@ -217,6 +220,11 @@ export function ModelSelector({
         {selectedModelData?.subscriptionTier && (
           <span className={`tier-badge tier-badge-${selectedModelData.subscriptionTier}`}>
             {TIER_LABELS[selectedModelData.subscriptionTier] || selectedModelData.subscriptionTier}
+          </span>
+        )}
+        {selectedModelData?.requiresOwnKey && (
+          <span className="own-key-badge" title="Uses your own API key">
+            Own Key
           </span>
         )}
         <IconChevron />
@@ -238,24 +246,33 @@ export function ModelSelector({
             >
             {Object.entries(groupedModels).map(([tier, tierModels]) => {
               const isTierAvailable = isModelAvailable(tier, userTier);
+              // Check if any model in this tier is available via API key
+              const hasApiKeyAccess = tierModels.some(m => m.isAvailable && m.requiresOwnKey);
               return (
-                <div key={tier} className={`model-selector-group${!isTierAvailable ? " tier-locked" : ""}`}>
+                <div key={tier} className={`model-selector-group${!isTierAvailable && !hasApiKeyAccess ? " tier-locked" : ""}`}>
                   <div className="model-selector-group-header">
                     <span className="model-selector-group-label">
-                      {!isTierAvailable && <IconLock />}
+                      {!isTierAvailable && !hasApiKeyAccess && <IconLock />}
                       {TIER_LABELS[tier] || tier.charAt(0).toUpperCase() + tier.slice(1)}
-                      {!isTierAvailable && <span className="unlock-label">Unlock</span>}
+                      {!isTierAvailable && !hasApiKeyAccess && <span className="unlock-label">Unlock</span>}
+                      {hasApiKeyAccess && !isTierAvailable && (
+                        <span className="api-key-indicator" title="Available via your API key">
+                          Key
+                        </span>
+                      )}
                     </span>
                   </div>
                   {tierModels.map((model) => {
                     const isSelected = model.id === selectedModel;
-                    const isAvailable = isModelAvailable(model.subscriptionTier, userTier);
+                    // Use isAvailable from model data (set by API route based on subscription + API keys)
+                    const isAvailable = model.isAvailable ?? isModelAvailable(model.subscriptionTier, userTier);
+                    const isOwnKey = model.requiresOwnKey && isAvailable;
 
                     return (
                       <button
                         key={model.id}
                         type="button"
-                        className={`model-option${isSelected ? " selected" : ""}${!isAvailable ? " locked" : ""}`}
+                        className={`model-option${isSelected ? " selected" : ""}${!isAvailable ? " locked" : ""}${isOwnKey ? " own-key" : ""}`}
                         data-model-id={model.id}
                         onClick={(e) => handleSelect(model.id, isAvailable, e)}
                         aria-selected={isSelected}
@@ -267,16 +284,28 @@ export function ModelSelector({
                           {!isAvailable && (model.subscriptionTier === "pro" || model.subscriptionTier === "plus") && (
                             <span className="premium-sparkle" title="Premium Performance">✨</span>
                           )}
+                          {isOwnKey && (
+                            <span className="own-key-indicator" title="Uses your API key - charges apply to your account">
+                              Key
+                            </span>
+                          )}
                         </div>
                         <div className="model-option-meta">
                           {!isAvailable ? (
-                            <span className="upgrade-tag">Pro</span>
+                            <span className="upgrade-tag">{TIER_LABELS[model.subscriptionTier || "pro"]}</span>
                           ) : (
-                            model.subscriptionTier && model.subscriptionTier !== "free" && (
-                              <span className={`tier-badge tier-badge-${model.subscriptionTier}`}>
-                                {TIER_LABELS[model.subscriptionTier] || model.subscriptionTier}
-                              </span>
-                            )
+                            <>
+                              {model.subscriptionTier && model.subscriptionTier !== "free" && model.isCoveredBySubscription && (
+                                <span className={`tier-badge tier-badge-${model.subscriptionTier}`}>
+                                  {TIER_LABELS[model.subscriptionTier] || model.subscriptionTier}
+                                </span>
+                              )}
+                              {isOwnKey && (
+                                <span className="own-cost-badge" title="Charges apply to your API account">
+                                  Own Cost
+                                </span>
+                              )}
+                            </>
                           )}
                         </div>
                       </button>

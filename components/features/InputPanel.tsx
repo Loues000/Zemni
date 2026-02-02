@@ -49,18 +49,27 @@ export function InputPanel({
         </div>
       )}
       <div
-        className={`dropzone${dragActive ? " drag" : ""}`}
+        className={`dropzone${dragActive ? " drag" : ""}${fileName ? " has-file" : ""}`}
         onDrop={onDrop}
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
         onClick={() => (document.querySelector('input[type="file"]') as HTMLInputElement)?.click()}
       >
         {dropzoneCorner && <div className="dropzone-corner">{dropzoneCorner}</div>}
+        {!fileName && (
+          <div className="dropzone-icon">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="17 8 12 3 7 8"/>
+              <line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+          </div>
+        )}
         <div className="dropzone-label">
-          {fileName || "Upload PDF/MD"}
+          {fileName || "Upload your document"}
         </div>
         <div className="dropzone-hint">
-          {fileName ? "Click to upload a new file" : "Drop here or click"}
+          {fileName ? "Click to upload a new file" : "Drop PDF or Markdown here, or click to browse"}
         </div>
         <input
           type="file"

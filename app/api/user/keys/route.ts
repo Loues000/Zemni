@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
-import { encryptKey, decryptKey } from "@/lib/encryption";
+import { encryptKey } from "@/lib/encryption";
 
+// Create unauthenticated Convex client (auth happens via clerkUserId param)
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
 export async function GET() {
@@ -14,9 +15,8 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get user keys from Convex
-    // Note: In production, use proper authenticated Convex queries
-    const keys = await convex.query(api.apiKeys.getUserKeys, {});
+    // Get user keys from Convex using clerkUserId
+    const keys = await convex.query(api.apiKeys.getUserKeys, { clerkUserId: userId });
 
     // Return keys without the actual key values (for security)
     return NextResponse.json({
@@ -55,8 +55,9 @@ export async function POST(request: Request) {
     // Encrypt the key
     const encryptedKey = encryptKey(key);
 
-    // Save to Convex
+    // Save to Convex with clerkUserId for auth
     await convex.mutation(api.apiKeys.upsertKey, {
+      clerkUserId: userId,
       provider: provider as any,
       keyHash: encryptedKey,
     });
@@ -86,7 +87,9 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "keyId is required" }, { status: 400 });
     }
 
+    // Delete from Convex with clerkUserId for auth
     await convex.mutation(api.apiKeys.deleteKey, {
+      clerkUserId: userId,
       keyId: keyId as any,
     });
 

@@ -598,11 +598,12 @@ export default function AppClient() {
       <div className="main">
 
         {isSmallScreen && (
-          <div className="top-toolbar" role="region" aria-label="Controls">
-            <div className="top-toolbar-left">
-              <ModeSwitch outputKind={outputKind} onModeChange={setOutputKind} />
+          <div className="mobile-header" role="region" aria-label="Header">
+            <div className="mobile-header-branding">
+              <span className="mobile-header-logo">Zemni</span>
             </div>
-            <div className="top-toolbar-right">
+            <div className="mobile-header-controls">
+              <ModeSwitch outputKind={outputKind} onModeChange={setOutputKind} />
               <div className="view-toggle" role="tablist" aria-label="View">
                 <button
                   type="button"
@@ -665,51 +666,59 @@ export default function AppClient() {
                 topBarLeft={
                   <button
                     type="button"
-                    className="sidebar-toggle-input"
+                    className="input-bar-btn"
                     onClick={() => setSidebarOpen(!sidebarOpen)}
                     aria-label="Open history"
                     title="History"
                   >
                     <IconMenu />
+                    <span className="input-bar-btn-label">History</span>
                   </button>
                 }
                 topBarRight={
-                  <div className={`settings-float${settingsOpen ? " open" : ""}`} ref={settingsMenuRef}>
+                  <div className={`quick-menu${settingsOpen ? " open" : ""}`} ref={settingsMenuRef}>
                     <button
                       ref={settingsButtonRef}
                       type="button"
-                      className="icon-btn settings-btn"
+                      className="input-bar-btn"
                       onClick={() => setSettingsOpen((prev) => !prev)}
                       aria-label="Open quick settings"
                       aria-expanded={settingsOpen}
                       title="Quick settings"
                     >
                       <IconSettings />
+                      <span className="input-bar-btn-label">Settings</span>
                     </button>
                     {settingsOpen && (
-                      <div className="settings-popover" role="menu" aria-label="Quick settings">
-                        <div className="settings-popover-section">Quick settings</div>
+                      <div className="quick-menu-dropdown" role="menu" aria-label="Quick settings">
+                        <div className="quick-menu-header">
+                          <span>Quick Settings</span>
+                        </div>
                         <button
                           type="button"
-                          className="settings-popover-item"
+                          className="quick-menu-item"
                           role="menuitem"
                           onClick={() => {
                             setTheme(theme === "dark" ? "light" : "dark");
                           }}
                         >
+                          <span className="quick-menu-item-icon">🌓</span>
                           <span>Theme</span>
-                          <span className="settings-popover-meta">{theme === "dark" ? "Dark" : "Light"}</span>
+                          <span className="quick-menu-item-meta">{theme === "dark" ? "Dark" : "Light"}</span>
                         </button>
+                        <div className="quick-menu-divider" />
                         <button
                           type="button"
-                          className="settings-popover-item"
+                          className="quick-menu-item"
                           role="menuitem"
                           onClick={() => {
                             setSettingsOpen(false);
                             router.push("/settings");
                           }}
                         >
-                          <span>Settings</span>
+                          <span className="quick-menu-item-icon">⚙️</span>
+                          <span>All Settings</span>
+                          <span className="quick-menu-item-arrow">→</span>
                         </button>
                       </div>
                     )}

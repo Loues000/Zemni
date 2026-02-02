@@ -1,12 +1,10 @@
 /**
  * Error tracking utility
  * 
- * This module provides a foundation for error tracking and monitoring.
- * Currently logs errors to console with structured format.
- * 
- * TODO: Integrate with error tracking service (e.g., Sentry, LogRocket)
- * when ready for production monitoring.
+ * This module provides centralized error tracking using Sentry.
+ * Falls back to console logging when Sentry is not configured.
  */
+import * as Sentry from "@sentry/nextjs";
 
 export interface ErrorContext {
   userId?: string;
@@ -33,27 +31,39 @@ export interface EventContext {
 export function trackError(error: Error | string, context?: ErrorContext): void {
   const errorMessage = error instanceof Error ? error.message : error;
   const errorStack = error instanceof Error ? error.stack : undefined;
+  const timestamp = context?.timestamp || new Date().toISOString();
 
   const logData = {
-    level: "error",
+    level: "error" as const,
     message: errorMessage,
     stack: errorStack,
     context: {
       ...context,
-      timestamp: context?.timestamp || new Date().toISOString(),
+      timestamp,
     },
   };
 
-  // Log to console with structured format
+  // Always log to console
   console.error("[Error Tracking]", logData);
 
-  // TODO: Send to error tracking service
-  // Example for Sentry:
-  // if (typeof window !== "undefined" && window.Sentry) {
-  //   window.Sentry.captureException(error, {
-  //     contexts: { custom: context },
-  //   });
-  // }
+  // Send to Sentry if configured
+  try {
+    Sentry.captureException(error, {
+      contexts: {
+        custom: {
+          ...context,
+          timestamp,
+        },
+      },
+      tags: {
+        action: context?.action || "unknown",
+        userTier: context?.userTier || "unknown",
+      },
+    });
+  } catch (sentryError) {
+    // Sentry not initialized or failed - already logged to console
+    console.warn("[Error Tracking] Sentry capture failed:", sentryError);
+  }
 }
 
 /**
@@ -63,23 +73,35 @@ export function trackError(error: Error | string, context?: ErrorContext): void 
  * @param context - Additional context about the event
  */
 export function trackEvent(eventType: string, context?: Omit<EventContext, "eventType">): void {
+  const timestamp = context?.timestamp || new Date().toISOString();
+
   const logData = {
-    level: "info",
+    level: "info" as const,
     eventType,
     context: {
       ...context,
-      timestamp: context?.timestamp || new Date().toISOString(),
+      timestamp,
     },
   };
 
-  // Log to console with structured format
+  // Always log to console
   console.log("[Event Tracking]", logData);
 
-  // TODO: Send to analytics service
-  // Example for analytics:
-  // if (typeof window !== "undefined" && window.analytics) {
-  //   window.analytics.track(eventType, context);
-  // }
+  // Send to Sentry as breadcrumb/message
+  try {
+    Sentry.addBreadcrumb({
+      category: "user-action",
+      message: eventType,
+      data: {
+        ...context,
+        timestamp,
+      },
+      level: "info",
+    });
+  } catch (sentryError) {
+    // Sentry not initialized or failed - already logged to console
+    console.warn("[Event Tracking] Sentry breadcrumb failed:", sentryError);
+  }
 }
 
 /**
@@ -105,4 +127,42 @@ export function trackWebhookError(
       webhookData: webhookData ? JSON.stringify(webhookData) : undefined,
     },
   });
+}
+
+/**
+ * Set user context for Sentry
+ * Useful for associating errors with specific users
+ * 
+ * @param userId - The user's ID
+ * @param userTier - The user's subscription tier
+ * @param additionalContext - Any additional user context
+ */
+export function setUserContext(
+  userId: string,
+  userTier?: string,
+  additionalContext?: Record<string, unknown>
+): void {
+  try {
+    Sentry.setUser({
+      id: userId,
+      ...additionalContext,
+    });
+    
+    Sentry.setTag("user_tier", userTier || "unknown");
+  } catch (error) {
+    console.warn("[Error Tracking] Failed to set user context:", error);
+  }
+}
+
+/**
+ * Clear user context from Sentry
+ * Call this on logout
+ */
+export function clearUserContext(): void {
+  try {
+    Sentry.setUser(null);
+    Sentry.setTag("user_tier", "anonymous");
+  } catch (error) {
+    console.warn("[Error Tracking] Failed to clear user context:", error);
+  }
 }

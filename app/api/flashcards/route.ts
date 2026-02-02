@@ -7,11 +7,14 @@ import { buildFlashcardsPrompts } from "@/lib/study-prompts";
 import { estimateFlashcardsPerSection } from "@/lib/study-heuristics";
 import { parseJsonFromModelText } from "@/lib/parse-model-json";
 import { createTimeoutController, isAbortError, mapWithConcurrency, splitTextIntoChunks, sumUsage, getModelPerformanceConfig } from "@/lib/ai-performance";
-import { getUserContext, checkModelAvailability } from "@/lib/api-helpers";
+import { getUserContext, checkModelAvailability, getApiKeyToUse, getApiKeyForModel } from "@/lib/api-helpers";
+import { isModelAvailable } from "@/lib/models";
+import { createOpenRouterClient } from "@/lib/openrouter";
+import { generateWithProvider, type ProviderInfo } from "@/lib/providers";
 import type { DocumentSection, Flashcard, UsageStats } from "@/types";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 const CHUNK_CHARS = 7_500;
 const CHUNK_OVERLAP_CHARS = 350;
@@ -55,11 +58,12 @@ const clampInt = (value: number, min: number, max: number): number => {
 };
 
 export async function POST(request: Request) {
-  if (!process.env.OPENROUTER_API_KEY) {
+  const userContext = await getUserContext();
+  const apiKey = getApiKeyToUse(userContext);
+
+  if (!apiKey) {
     return NextResponse.json({ error: "Missing OpenRouter key" }, { status: 400 });
   }
-
-  const userContext = await getUserContext();
 
   const body = await request.json();
   const sections = toSections(body.sections);
@@ -88,14 +92,39 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Model not found" }, { status: 400 });
   }
 
-  // Check if user has access to this model
-  if (userContext && !checkModelAvailability(model, userContext.userTier)) {
+  // Check if user has access to this model (subscription OR API key)
+  const hasModelAccess = checkModelAvailability(
+    { id: model.openrouterId, subscriptionTier: model.subscriptionTier },
+    userContext
+  );
+
+  if (!hasModelAccess) {
     return NextResponse.json(
       { error: "This model is not available for your subscription tier" },
       { status: 403 }
     );
   }
 
+  // Determine which API key to use (system key for subscription models, user key for own-cost models)
+  const modelApiKeyInfo = getApiKeyForModel(modelId, userContext, model);
+  const finalApiKey = modelApiKeyInfo?.key || apiKey;
+  const isOwnKey = !!modelApiKeyInfo?.isOwnKey;
+
+  // Debug logging (only when using own key)
+  if (isOwnKey) {
+    console.log(`[flashcards] Using own ${modelApiKeyInfo?.provider || "openrouter"} key for ${modelId}`);
+  }
+
+  // Prepare API keys array for generateWithProvider if using own key
+  const apiKeys = isOwnKey && userContext
+    ? userContext.apiKeys.map(k => ({
+      provider: k.provider,
+      key: k.key || "",
+      isOwnKey: k.useOwnKey,
+    }))
+    : [];
+
+  const openrouterClient = !isOwnKey ? createOpenRouterClient(finalApiKey) : null;
   const start = Date.now();
 
   const tasks: Array<{
@@ -133,17 +162,41 @@ export async function POST(request: Request) {
     try {
       const baseMaxTokens = Math.min(4096, Math.max(900, task.cardsWanted * 190));
       const adjustedMaxTokens = Math.floor(baseMaxTokens * perfConfig.maxTokensMultiplier);
-      const result = await generateText({
-        model: openrouter(modelId) as any,
-        maxTokens: adjustedMaxTokens,
-        temperature: 0.2,
-        maxRetries: 1,
-        abortSignal: timeout.signal,
-        messages: [
+
+      let result: { text: string; usage: any };
+
+      if (isOwnKey && modelApiKeyInfo) {
+        // Use direct provider API for user's own key
+        const providerResult = await generateWithProvider(modelId, [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt }
-        ]
-      });
+        ], apiKeys, {
+          maxTokens: adjustedMaxTokens,
+          temperature: 0.2,
+          maxRetries: 1,
+        });
+        result = {
+          text: providerResult.text,
+          usage: providerResult.usage,
+        };
+      } else {
+        // Use OpenRouter (system key)
+        const genResult = await generateText({
+          model: openrouterClient!(modelId) as any,
+          maxTokens: adjustedMaxTokens,
+          temperature: 0.2,
+          maxRetries: 1,
+          abortSignal: timeout.signal,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt }
+          ]
+        });
+        result = {
+          text: genResult.text,
+          usage: genResult.usage,
+        };
+      }
 
       try {
         const parsed = parseJsonFromModelText<FlashcardsResult>(result.text);

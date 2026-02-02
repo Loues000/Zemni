@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Model, Subject, Status } from "@/types";
@@ -103,11 +103,23 @@ export function useAppState(): UseAppStateReturn {
         if (!res.ok) throw new Error("Could not load models.");
         const data = await res.json() as { models: Model[] };
         setModels(data.models);
-        // Use saved default model or first model
+        // Use saved default model, or prefer free tier model, or first available
         if (data.models.length > 0) {
-          const modelToUse = savedDefaultModel && data.models.find(m => m.id === savedDefaultModel)
-            ? savedDefaultModel
-            : data.models[0].id;
+          let modelToUse: string;
+          
+          if (savedDefaultModel && data.models.find(m => m.id === savedDefaultModel)) {
+            // Use saved preference if available and valid
+            modelToUse = savedDefaultModel;
+          } else {
+            // Find highest tier model user has access to, preferring free tier for new users
+            const freeModel = data.models.find(m => m.subscriptionTier === "free");
+            const basicModel = data.models.find(m => m.subscriptionTier === "basic");
+            const plusModel = data.models.find(m => m.subscriptionTier === "plus");
+            
+            // Priority: free > basic > plus > first available
+            modelToUse = freeModel?.id || basicModel?.id || plusModel?.id || data.models[0].id;
+          }
+          
           setSelectedModel(modelToUse);
         }
       } catch (err) {
@@ -159,6 +171,9 @@ export function useAppState(): UseAppStateReturn {
     fetchModels();
   }, []);
 
+  // Track failed database IDs to prevent repeated calls
+  const subjectsFetchFailedRef = useRef<string | null>(null);
+
   // Fetch subjects when user data is available
   useEffect(() => {
     if (currentUser) {
@@ -182,6 +197,11 @@ export function useAppState(): UseAppStateReturn {
           
           if (!userNotionToken || !userDatabaseId) return;
           
+          // Skip if we've already failed for this database ID
+          if (subjectsFetchFailedRef.current === userDatabaseId) {
+            return;
+          }
+          
           const url = new URL("/api/notion/subjects", window.location.origin);
           url.searchParams.set("databaseId", userDatabaseId);
           
@@ -191,8 +211,17 @@ export function useAppState(): UseAppStateReturn {
             },
           });
           if (!res.ok) return;
-          const data = await res.json() as { subjects: Subject[] };
+          const data = await res.json() as { subjects: Subject[]; error?: string };
+          
+          if (data.error) {
+            // Mark this database ID as failed
+            subjectsFetchFailedRef.current = userDatabaseId;
+            return;
+          }
+          
           setSubjects(data.subjects);
+          // Reset failure tracking on success
+          subjectsFetchFailedRef.current = null;
         } catch (err) {
           // Ignore
         }
