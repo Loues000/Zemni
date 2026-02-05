@@ -50,7 +50,7 @@ Zemni is an intelligent study companion that helps you prepare for exams by conv
      - [Convex](https://convex.dev) (free tier available) - Database
      - [Clerk](https://clerk.com) (free tier available) - Authentication
      - [OpenRouter](https://openrouter.ai) - AI model access
-     - [Stripe](https://stripe.com) (optional) - Only if using subscriptions
+     - [Polar](https://polar.sh) (optional) - Only if using subscriptions
    - See [user_guide.md](user_guide.md) for detailed setup instructions
 
 4. **Run the development server**
@@ -72,7 +72,7 @@ Built with modern web technologies:
 - **Next.js 14** (App Router) with TypeScript
 - **Convex** for backend database and real-time sync
 - **Clerk** for user authentication
-- **Stripe** for subscription management
+- **Polar** for subscription management
 - **OpenRouter** for AI model access
 - **Vercel AI SDK** for streaming responses
 
@@ -91,7 +91,7 @@ Built with modern web technologies:
 - Accounts for:
   - [Convex](https://convex.dev) - Database and backend (free tier available)
   - [Clerk](https://clerk.com) - Authentication (free tier available)
-  - [Stripe](https://stripe.com) - Subscriptions (free to start)
+  - [Polar](https://polar.sh) - Subscriptions (free to start)
   - [OpenRouter](https://openrouter.ai) - AI model access
 
 For detailed setup instructions, see [user_guide.md](user_guide.md).
@@ -147,4 +147,3 @@ This is a private project. For development guidelines, see [AGENTS.md](AGENTS.md
 ## License
 
 See LICENSE file for details.
-

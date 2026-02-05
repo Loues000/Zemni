@@ -45,6 +45,7 @@ config/openrouter-models.prices.json
 .vscode/
 .cursor/
 .qodo/
+.opencode/
 .DS_Store
 Thumbs.db
 
@@ -56,6 +57,7 @@ CLAUDE.md
 data/
 docs/
 !docs/
+docs/*
 !docs/legal-revert-guide.md
 old_guidelines.md
 benchmark/results/
