@@ -4,8 +4,8 @@ These rules apply to all modes (Summary / Flashcards / Quiz).
 Mode-specific add-ons may add further constraints, but may not weaken the core "no hallucination" rules.
 
 ## Output language
-- The final learning output must be in **German**.
-- Keep English technical terms **only if** they appear in the lecture material (do not introduce new terminology).
+- The output language is determined by the user's preference and will be specified in the prompt.
+- Keep technical terms from the source material as-is (do not translate established terminology inconsistently).
 
 ## Inputs and sources (hard rules)
 - The only source of truth is the user-provided lecture material (PDF/slides/markdown).
@@ -56,6 +56,14 @@ Not allowed:
 - No "summary of the summary".
 - No organizational content.
 - No page/slide numbers or citations in the learning text.
+- **Never use numbered headings** like `## 1. Introduction` or `## 1.2 Details`. Use markdown heading levels (`#`, `##`, `###`) instead to represent hierarchical structure.
+
+## Completeness requirements (critical)
+- You MUST cover ALL topics, concepts, mechanisms, and details mentioned in the source material.
+- Do not skip or omit any important information to save space - the goal is completeness and understanding, not brevity.
+- If the source material mentions multiple aspects, features, or examples for a topic, include all of them.
+- Include all necessary details: definitions, mechanisms, reasons, trade-offs, and edge cases.
+- If you approach the output token limit, prioritize breadth (ensuring all topics are covered) over excessive detail on single topics.
 
 ## Goal / quality bar
 The output must:
