@@ -8,7 +8,9 @@
     "lint": "next lint",
     "test": "vitest",
     "test:watch": "vitest --watch",
-    "test:ui": "vitest --ui"
+    "test:ui": "vitest --ui",
+    "validate-env": "tsx scripts/validate-env.ts",
+    "rotate-key": "tsx scripts/rotate-encryption-key.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.35",
@@ -19,7 +21,7 @@
     "@dqbd/tiktoken": "^1.0.20",
     "@notionhq/client": "^2.2.15",
     "@sentry/nextjs": "^10.38.0",
-    "@stripe/stripe-js": "^8.7.0",
+    "@polar-sh/sdk": "^0.34.16",
     "@types/jszip": "^3.4.0",
     "ai": "^3.4.0",
     "convex": "^1.31.6",
@@ -36,7 +38,7 @@
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.0",
     "remark-math": "^6.0.0",
-    "stripe": "^20.3.0"
+    "sonner": "^2.0.7"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.1.5",
@@ -47,6 +49,7 @@
     "@types/react": "^18.2.61",
     "@types/react-dom": "^18.2.19",
     "jsdom": "^23.0.1",
+    "tsx": "^4.7.0",
     "typescript": "^5.4.5",
     "vitest": "^1.2.2"
   }
