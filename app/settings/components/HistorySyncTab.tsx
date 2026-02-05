@@ -162,7 +162,6 @@ export function HistorySyncTab() {
     <section className="settings-section">
       <div className="settings-section-header">
         <h2>History & Sync</h2>
-        <p>Back up your chat history or restore it from a previous export</p>
       </div>
 
       <div className="settings-card">

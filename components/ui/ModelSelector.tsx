@@ -39,6 +39,7 @@ export function ModelSelector({
   const containerRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const isBillingEnabled = process.env.NEXT_PUBLIC_ENABLE_BILLING === "true";
 
   // Ensure portal only renders on client (for Next.js SSR)
   useEffect(() => {
@@ -254,7 +255,11 @@ export function ModelSelector({
                     <span className="model-selector-group-label">
                       {!isTierAvailable && !hasApiKeyAccess && <IconLock />}
                       {TIER_LABELS[tier] || tier.charAt(0).toUpperCase() + tier.slice(1)}
-                      {!isTierAvailable && !hasApiKeyAccess && <span className="unlock-label">Unlock</span>}
+                      {!isTierAvailable && !hasApiKeyAccess && (
+                        <span className="unlock-label">
+                          {isBillingEnabled ? "Unlock" : "Key required"}
+                        </span>
+                      )}
                       {hasApiKeyAccess && !isTierAvailable && (
                         <span className="api-key-indicator" title="Available via your API key">
                           Key
@@ -314,9 +319,19 @@ export function ModelSelector({
                 </div>
               );
             })}
-            {userTier !== "pro" && (
+            {userTier !== "pro" && isBillingEnabled && (
               <div className="model-selector-upgrade-cta">
-                <Link href="/settings?tab=models" onClick={() => setIsOpen(false)}>
+                <Link 
+                  href="/settings?tab=models" 
+                  onClick={() => {
+                    setIsOpen(false);
+                    // Set flag to indicate we're navigating to settings
+                    // This allows session restoration when coming back
+                    if (typeof window !== "undefined") {
+                      window.sessionStorage.setItem("zemni_came_from_settings", "true");
+                    }
+                  }}
+                >
                   Unlock premium models →
                 </Link>
               </div>

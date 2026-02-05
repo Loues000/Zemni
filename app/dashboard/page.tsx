@@ -6,6 +6,7 @@ import { api } from "@/convex/_generated/api";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ClerkSignedIn, ClerkSignedOut, ClerkSignInButton } from "@/components/auth/ClerkWrapper";
+import { LegalNotice } from "@/components/ui/LegalNotice";
 
 // Prevent static generation - requires authentication
 export const dynamic = 'force-dynamic';
@@ -120,6 +121,9 @@ export default function DashboardPage() {
                 Sign In
               </button>
             </ClerkSignInButton>
+            <div style={{ maxWidth: "400px", margin: "0 auto" }}>
+              <LegalNotice />
+            </div>
           </div>
         </div>
       </ClerkSignedOut>

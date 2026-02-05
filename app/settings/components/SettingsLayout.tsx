@@ -6,6 +6,7 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useUser, SignOutButton } from "@clerk/nextjs";
 import { ToastProvider } from "./ToastProvider";
+import { LegalLinks } from "@/components/ui/LegalLinks";
 
 const clerkKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 const isClerkConfigured = !!(
@@ -31,10 +32,55 @@ const TABS = [
   { id: "contact", label: "Contact Us" },
 ] as const;
 
+/**
+ * Calculate the next billing cycle reset date based on account/subscription creation
+ */
+function getNextResetDate(user: { createdAt: number; subscriptionStartDate?: number } | null | undefined): Date {
+  if (!user) {
+    // Fallback to next month if no user data
+    return new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1);
+  }
+
+  // Use subscription start date for paid users, otherwise use account creation date
+  const startDate = user.subscriptionStartDate || user.createdAt;
+  const start = new Date(startDate);
+  
+  // Get the day of month from the start date (e.g., 15th)
+  const dayOfMonth = start.getDate();
+  
+  // Calculate next reset date
+  const now = new Date();
+  let nextReset = new Date(now.getFullYear(), now.getMonth(), dayOfMonth);
+  nextReset.setHours(0, 0, 0, 0);
+  
+  // If we've already passed this month's reset date, use next month
+  if (nextReset.getTime() <= now.getTime()) {
+    nextReset = new Date(now.getFullYear(), now.getMonth() + 1, dayOfMonth);
+    nextReset.setHours(0, 0, 0, 0);
+    
+    // Handle edge case: if day doesn't exist in next month (e.g., Jan 31 -> Feb 31)
+    // JavaScript Date will auto-adjust (Feb 31 becomes Mar 3), so check if month changed
+    if (nextReset.getMonth() !== (now.getMonth() + 1) % 12) {
+      // Day doesn't exist, use last day of the month instead
+      nextReset = new Date(now.getFullYear(), now.getMonth() + 2, 0); // Day 0 = last day of previous month
+      nextReset.setHours(0, 0, 0, 0);
+    }
+  } else {
+    // Handle edge case for current month too
+    if (nextReset.getMonth() !== now.getMonth()) {
+      // Day doesn't exist in current month, use last day of current month
+      nextReset = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      nextReset.setHours(0, 0, 0, 0);
+    }
+  }
+  
+  return nextReset;
+}
+
 export function SettingsLayout({ children, activeTab, onTabChange }: SettingsLayoutProps) {
   const { user } = useUser();
   const currentUser = useQuery(api.users.getCurrentUser);
-  const usageStats = useQuery(api.usage.getUsageStats, {});
+  const monthlyUsage = useQuery(api.usage.getMonthlyGenerationCount, {});
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
   const subscriptionTier = currentUser?.subscriptionTier || "free";
@@ -44,6 +90,8 @@ export function SettingsLayout({ children, activeTab, onTabChange }: SettingsLay
     plus: "Plus",
     pro: "Pro",
   };
+
+  const nextResetDate = getNextResetDate(currentUser);
 
   return (
     <ToastProvider>
@@ -83,10 +131,41 @@ export function SettingsLayout({ children, activeTab, onTabChange }: SettingsLay
               <div className="settings-profile-name">{user?.fullName || "User"}</div>
               <div className={`tier-badge tier-badge-${subscriptionTier}`}>{tierLabels[subscriptionTier]} Plan</div>
             </div>
-            {usageStats && (
+            {monthlyUsage && (
               <div className="settings-sidebar-usage">
-                <div>Documents: {usageStats.thisMonthDocuments}</div>
-                <div>Tokens: {(usageStats.thisMonthTokensIn + usageStats.thisMonthTokensOut).toLocaleString()}</div>
+                <div className="settings-usage-header">
+                  <div className="settings-usage-label">Monthly Generations</div>
+                  <div className="settings-usage-count">
+                    {monthlyUsage.count} / {monthlyUsage.limit}
+                  </div>
+                </div>
+                <div className="settings-usage-progress-container">
+                  <div 
+                    className="settings-usage-progress-bar"
+                    style={{
+                      width: `${Math.min(100, (monthlyUsage.count / monthlyUsage.limit) * 100)}%`,
+                      backgroundColor: 
+                        monthlyUsage.count / monthlyUsage.limit >= 0.8 
+                          ? "var(--error-text)" 
+                          : monthlyUsage.count / monthlyUsage.limit >= 0.5
+                          ? "var(--warning)"
+                          : "var(--accent)"
+                    }}
+                  />
+                </div>
+                {monthlyUsage.count >= monthlyUsage.limit && (
+                  <div className="settings-usage-warning" style={{ marginTop: "8px", fontSize: "0.875rem", color: "var(--error-text)" }}>
+                    Limit reached. Paid tiers are coming soon.
+                  </div>
+                )}
+                {monthlyUsage.count < monthlyUsage.limit && monthlyUsage.count / monthlyUsage.limit >= 0.8 && (
+                  <div className="settings-usage-warning" style={{ marginTop: "8px", fontSize: "0.875rem", color: "var(--warning-text)" }}>
+                    {monthlyUsage.limit - monthlyUsage.count} remaining
+                  </div>
+                )}
+                <div className="settings-usage-reset" style={{ marginTop: "8px", fontSize: "0.75rem", color: "var(--text-secondary)" }}>
+                  Resets {nextResetDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                </div>
               </div>
             )}
           </aside>
@@ -106,6 +185,9 @@ export function SettingsLayout({ children, activeTab, onTabChange }: SettingsLay
             <div className="settings-content">{children}</div>
           </main>
         </div>
+        <footer className="settings-footer">
+          <LegalLinks />
+        </footer>
       </div>
     </ToastProvider>
   );

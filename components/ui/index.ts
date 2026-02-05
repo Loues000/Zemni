@@ -10,3 +10,8 @@ export * from "./ProviderIcon";
 export * from "./ConfirmModal";
 export * from "./Toast";
 export * from "./SentryErrorBoundary";
+export * from "./ConvexErrorBoundary";
+export * from "./LoginPromptBanner";
+export * from "./SaveStatus";
+export * from "./LegalLinks";
+export * from "./LegalNotice";

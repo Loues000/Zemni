@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { SettingsLayout } from "./components/SettingsLayout";
 import { ClerkSignedIn, ClerkSignedOut, ClerkSignInButton } from "@/components/auth/ClerkWrapper";
+import { LegalNotice } from "@/components/ui/LegalNotice";
 
 // Prevent static generation - requires authentication
 export const dynamic = 'force-dynamic';
@@ -73,6 +74,7 @@ function SettingsContent() {
                     Sign In
                   </button>
                 </ClerkSignInButton>
+                <LegalNotice />
               </div>
             </main>
           </div>

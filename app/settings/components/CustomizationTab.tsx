@@ -54,7 +54,6 @@ export function CustomizationTab() {
     <section className="settings-section">
       <div className="settings-section-header">
         <h2>Customization</h2>
-        <p>Customize your UI preferences and defaults</p>
       </div>
 
       <div className="settings-card">
@@ -92,7 +91,6 @@ export function CustomizationTab() {
               Dark
             </button>
           </div>
-          <p className="field-hint">Choose your preferred color scheme</p>
         </div>
 
         <div className="settings-divider" />

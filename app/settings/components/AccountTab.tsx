@@ -142,7 +142,6 @@ export function AccountTab() {
     <section className="settings-section">
       <div className="settings-section-header">
         <h2>Account Settings</h2>
-        <p>Manage your profile and usage preferences</p>
       </div>
 
       <div className="settings-card">
@@ -150,17 +149,15 @@ export function AccountTab() {
         <div className="settings-card-split">
           <div className="field">
             <label className="field-label">Preferred Name</label>
-            <div className="field-value">
-              <input
-                type="text"
-                value={preferredName}
-                onChange={(e) => setPreferredName(e.target.value)}
-                onBlur={() => handleNameChange(preferredName)}
-                placeholder="How should we call you?"
-                className="input-text field-value-input"
-                disabled={saving}
-              />
-            </div>
+            <input
+              type="text"
+              value={preferredName}
+              onChange={(e) => setPreferredName(e.target.value)}
+              onBlur={() => handleNameChange(preferredName)}
+              placeholder="How should we call you?"
+              className="input-text field-value-input"
+              disabled={saving}
+            />
           </div>
 
           <div className="field">
@@ -173,7 +170,7 @@ export function AccountTab() {
 
         <div className="field">
           <label className="field-label" htmlFor="language-select">
-            Language Preference
+            Output Language
           </label>
           <select
             id="language-select"
@@ -183,10 +180,13 @@ export function AccountTab() {
             disabled={saving}
           >
             <option value="en">English</option>
-            <option value="de">German</option>
+            <option value="de">German (Deutsch)</option>
+            <option value="es">Spanish (Español)</option>
+            <option value="fr">French (Français)</option>
+            <option value="it">Italian (Italiano)</option>
           </select>
           <p className="field-hint">
-            This determines which guideline files are used for your generations. Changing this will affect all future generations.
+            The language of your generated summaries, flashcards, and quizzes. Input language doesn't matter - upload content in any language and get output in your preferred language.
           </p>
         </div>
       </div>

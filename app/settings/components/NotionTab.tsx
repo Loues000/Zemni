@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { decryptKey } from "@/lib/encryption";
 
 export function NotionTab() {
   const currentUser = useQuery(api.users.getCurrentUser);
@@ -18,18 +17,9 @@ export function NotionTab() {
   // Load existing values from Convex
   useEffect(() => {
     if (currentUser) {
-      // Decrypt token if present
-      if (currentUser.notionToken) {
-        try {
-          const decrypted = decryptKey(currentUser.notionToken);
-          setNotionToken(decrypted);
-        } catch (error) {
-          console.error("Failed to decrypt Notion token:", error);
-          setNotionToken("");
-        }
-      } else {
-        setNotionToken("");
-      }
+      // Don't decrypt token on client side (security best practice)
+      // User can re-enter if they want to change it
+      setNotionToken("");
       setDatabaseId(currentUser.notionDatabaseId || "");
       setExportMethod(currentUser.notionExportMethod || "database");
     }
@@ -109,7 +99,10 @@ export function NotionTab() {
       setLoading(true);
       setMessage(null);
       try {
-        await clearNotionConfig({});
+        // Pass clerkUserId explicitly to avoid auth context issues
+        await clearNotionConfig({
+          clerkUserId: currentUser?.clerkUserId,
+        });
         setNotionToken("");
         setDatabaseId("");
         setExportMethod("database");
@@ -129,12 +122,11 @@ export function NotionTab() {
     <section className="settings-section">
       <div className="settings-section-header">
         <h2>Notion Integration</h2>
-        <p>Connect your Notion workspace to export summaries</p>
       </div>
 
       <div className="settings-card">
         <div className="field">
-          <label className="field-label" htmlFor="notion-token">
+          <label className="field-label" htmlFor="notion-token" style={{ fontSize: "14px" }}>
             Notion API Token <span style={{ color: "var(--error-text)" }}>*</span>
           </label>
           <input
@@ -163,7 +155,7 @@ export function NotionTab() {
         <div className="settings-divider" />
 
         <div className="field">
-          <label className="field-label">Export Method</label>
+          <label className="field-label" style={{ fontSize: "14px" }}>Export Method</label>
           <div className="settings-radio-group">
             <label className="settings-radio">
               <input
@@ -188,11 +180,6 @@ export function NotionTab() {
               <span>Direct Page Export (Simple)</span>
             </label>
           </div>
-          <p className="field-hint">
-            {exportMethod === "database"
-              ? "Organize exports by subject in a database."
-              : "Export directly to new pages without a database."}
-          </p>
         </div>
 
         {exportMethod === "database" && (

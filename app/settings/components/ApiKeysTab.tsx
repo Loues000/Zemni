@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { useUser } from "@clerk/nextjs";
 import { useToastContext } from "./ToastProvider";
 
 const PROVIDERS = [
@@ -13,13 +14,13 @@ const PROVIDERS = [
 ] as const;
 
 export function ApiKeysTab() {
-  const [editingProvider, setEditingProvider] = useState<string | null>(null);
+  const { user } = useUser();
   const [keyValues, setKeyValues] = useState<Record<string, string>>({});
   const [useOwnKey, setUseOwnKey] = useState(false);
   const [loading, setLoading] = useState(false);
   const toast = useToastContext();
 
-  const userKeys = useQuery(api.apiKeys.getUserKeys);
+  const userKeys = useQuery(api.apiKeys.getUserKeys, {});
   const useOwnKeyPreference = useQuery(api.apiKeys.getUseOwnKeyPreference);
   const setUseOwnKeyPref = useMutation(api.apiKeys.setUseOwnKeyPreference);
   const deleteKey = useMutation(api.apiKeys.deleteKey);
@@ -57,7 +58,6 @@ export function ApiKeysTab() {
         throw new Error(error.error || "Failed to save key");
       }
       
-      setEditingProvider(null);
       setKeyValues((prev) => ({ ...prev, [provider]: "" }));
       toast.success(`${PROVIDERS.find(p => p.id === provider)?.label || provider} API key saved`);
     } catch (error) {
@@ -74,9 +74,14 @@ export function ApiKeysTab() {
       return;
     }
 
+    if (!user?.id) {
+      toast.error("Not authenticated");
+      return;
+    }
+
     setLoading(true);
     try {
-      await deleteKey({ keyId: keyId as any });
+      await deleteKey({ clerkUserId: user.id, keyId: keyId as any });
       toast.success("API key deleted");
     } catch (error) {
       console.error("Failed to delete key:", error);
@@ -94,7 +99,6 @@ export function ApiKeysTab() {
     <section className="settings-section">
       <div className="settings-section-header">
         <h2>API Keys</h2>
-        <p>Manage your bring-your-own AI API keys</p>
       </div>
 
       <div className="settings-card">
@@ -121,12 +125,11 @@ export function ApiKeysTab() {
 
         {PROVIDERS.map((provider) => {
           const existingKey = getKeyForProvider(provider.id);
-          const isEditing = editingProvider === provider.id;
 
           return (
             <div key={provider.id} className="field">
               <label className="field-label">{provider.label}</label>
-              {existingKey && !isEditing ? (
+              {existingKey ? (
                 <div className="settings-key-display">
                   <div className="settings-key-status">
                     <span className="settings-key-status-indicator active" />
@@ -138,13 +141,6 @@ export function ApiKeysTab() {
                     )}
                   </div>
                   <div className="settings-key-actions">
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-small"
-                      onClick={() => setEditingProvider(provider.id)}
-                    >
-                      Edit
-                    </button>
                     <button
                       type="button"
                       className="btn btn-danger btn-small"
@@ -174,20 +170,8 @@ export function ApiKeysTab() {
                       onClick={() => handleSaveKey(provider.id)}
                       disabled={loading || !keyValues[provider.id]}
                     >
-                      Save
+                      Add Key
                     </button>
-                    {existingKey && (
-                      <button
-                        type="button"
-                        className="btn btn-text btn-small"
-                        onClick={() => {
-                          setEditingProvider(null);
-                          setKeyValues((prev) => ({ ...prev, [provider.id]: "" }));
-                        }}
-                      >
-                        Cancel
-                      </button>
-                    )}
                   </div>
                 </div>
               )}
