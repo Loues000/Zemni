@@ -52,17 +52,17 @@ function checkModelTierAvailability(
     return true;
   }
 
-  // Not logged in: only free tier models
+  // Not logged in (null userTier): only free tier models
   if (userTier === null) {
     return modelTier === "free";
   }
 
-  // Logged in, no subscription: free tier models
+  // Legacy/edge case: "free" tier in database (shouldn't happen for new users, but handle gracefully)
   if (userTier === "free") {
     return modelTier === "free";
   }
 
-  // Basic subscription: free and basic tier models
+  // Basic tier: automatically awarded to all logged-in users - can access free and basic tier models
   if (userTier === "basic") {
     return modelTier === "free" || modelTier === "basic";
   }

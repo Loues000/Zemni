@@ -34,7 +34,7 @@ export function createOpenAIProvider(apiKey: string) {
       const model = openai(getModelId(modelId));
 
       const result = await generateText({
-        model,
+        model: model as any,
         messages: messages as any,
         maxTokens: options.maxTokens,
         temperature: options.temperature,
@@ -56,7 +56,7 @@ export function createOpenAIProvider(apiKey: string) {
       const model = openai(getModelId(modelId));
 
       const stream = await streamText({
-        model,
+        model: model as any,
         messages: messages as any,
         maxTokens: options.maxTokens,
         temperature: options.temperature,

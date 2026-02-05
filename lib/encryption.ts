@@ -54,31 +54,73 @@ export function encryptKey(key: string): string {
 export function decryptKey(encryptedKey: string): string {
   const encryptionKey = getEncryptionKey();
   
+  // Validate input
+  if (!encryptedKey || typeof encryptedKey !== "string") {
+    throw new Error("Invalid encrypted key format: key is empty or not a string");
+  }
+  
   // Split the stored format: iv:tag:encrypted
   const parts = encryptedKey.split(":");
   if (parts.length !== 3) {
-    throw new Error("Invalid encrypted key format");
+    throw new Error(
+      `Invalid encrypted key format: expected "iv:tag:encrypted" format with 3 parts, got ${parts.length} parts. ` +
+      `This may indicate corrupted data or a key that was stored in an old format. Please re-enter your API key.`
+    );
   }
-  
+
   const [ivHex, tagHex, encrypted] = parts;
-  
-  const iv = Buffer.from(ivHex, "hex");
-  const tag = Buffer.from(tagHex, "hex");
-  
-  const decipher = crypto.createDecipheriv(ALGORITHM, encryptionKey, iv);
-  decipher.setAuthTag(tag);
-  
-  let decrypted = decipher.update(encrypted, "hex", "utf8");
-  decrypted += decipher.final("utf8");
-  return decrypted;
+
+  // Validate hex format
+  if (!/^[0-9a-f]+$/i.test(ivHex) || !/^[0-9a-f]+$/i.test(tagHex) || !/^[0-9a-f]+$/i.test(encrypted)) {
+    throw new Error(
+      "Invalid encrypted key format: iv, tag, and encrypted data must be hex-encoded. " +
+      "This may indicate corrupted data. Please re-enter your API key."
+    );
+  }
+
+  try {
+    const iv = Buffer.from(ivHex, "hex");
+    const tag = Buffer.from(tagHex, "hex");
+
+    // Validate IV and tag lengths
+    if (iv.length !== IV_LENGTH) {
+      throw new Error(`Invalid IV length: expected ${IV_LENGTH} bytes, got ${iv.length}`);
+    }
+
+    const decipher = crypto.createDecipheriv(ALGORITHM, encryptionKey, iv);
+    decipher.setAuthTag(tag);
+
+    let decrypted = decipher.update(encrypted, "hex", "utf8");
+    decrypted += decipher.final("utf8");
+    return decrypted;
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("Invalid encrypted key format")) {
+      throw error;
+    }
+    throw new Error(
+      `Failed to decrypt key: ${error instanceof Error ? error.message : String(error)}. ` +
+      `This may indicate corrupted data or an encryption key mismatch. Please re-enter your API key.`
+    );
+  }
 }
 
 /**
  * Hash a key for storage (one-way, for verification purposes)
+ * 
+ * NOTE: This function is currently UNUSED in the codebase.
+ * 
+ * IMPORTANT: The `ENCRYPTION_KEY` environment variable already uses SHA-256 
+ * (via scrypt key derivation) for encryption key derivation in `getEncryptionKey()`.
+ * This function is separate and would be for a different purpose if needed.
+ * 
+ * If this function is needed in the future, it should be updated to use SHA-256
+ * using Node.js crypto module for security-sensitive operations.
+ * 
+ * @deprecated Currently unused - remove if not needed, or implement SHA-256 if required
  */
 export function hashKey(key: string): string {
-  // In production, use proper hashing like bcrypt or SHA-256
-  // For now, return a simple hash
+  // Simple hash algorithm - NOT cryptographically secure
+  // TODO: If this function is needed, replace with SHA-256 using crypto.createHash('sha256')
   let hash = 0;
   for (let i = 0; i < key.length; i++) {
     const char = key.charCodeAt(i);

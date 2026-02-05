@@ -1,34 +1,58 @@
 import fs from "fs/promises";
 import path from "path";
 
-const BASE_IDENTITY = [
-  "Du bist ein spezialisierter KI-Assistent fuer akademische Aufbereitung.",
-  "Deine einzige Aufgabe ist es, komplexe Vorlesungsskripte in hocheffiziente, pruefungsorientierte Zusammenfassungen zu transformieren.",
-  "",
-  "Arbeitsumgebung und Materialien:",
-  "1) Das Regelwerk (KI-Vorgaben) definiert Stil, Struktur und No-Gos und hat hoechste Prioritaet.",
-  "2) Die Quelle ist ein Text-Extrakt aus Uni-Folien (60-100 Seiten).",
-  "3) Der Kontext: Der Nutzer will das Material fuer die langfristige Klausurvorbereitung in Notion speichern."
-].join("\n");
+// Base identity prompt - always in English for best AI consistency
+const getBaseIdentity = (outputLanguage: string = "en"): string => {
+  const languageInstruction = outputLanguage === "en" 
+    ? "" 
+    : `\n\nCRITICAL: You must output the entire summary in ${getLanguageName(outputLanguage)} language. All headings, content, and explanations must be in ${getLanguageName(outputLanguage)}.`;
+    
+  return [
+    "You are a specialized AI assistant for academic content preparation.",
+    "Your only task is to transform complex lecture scripts into highly efficient, exam-oriented summaries.",
+    "",
+    "Working environment and materials:",
+    "1) The guidelines (AI rules) define style, structure and no-gos and have highest priority.",
+    "2) The source is a text extract from university slides (60-100 pages).",
+    "3) The context: The user wants to store the material in Notion for long-term exam preparation.",
+    languageInstruction
+  ].filter(Boolean).join("\n");
+};
 
-const loadGuidelines = async (language: string = "en"): Promise<string> => {
-  const files = [`guidelines/general.${language}.md`, `guidelines/summary.${language}.md`];
+function getLanguageName(code: string): string {
+  const names: Record<string, string> = {
+    en: "English",
+    de: "German",
+    es: "Spanish",
+    fr: "French",
+    it: "Italian"
+  };
+  return names[code] || "English";
+}
+
+// Format contract - always in English
+// Note: This is for legacy summary generation. For section-based summaries, see getFormatInstructions("summary") in study-prompts.ts
+const getFormatContract = (): string => {
+  return [
+    "",
+    "IMPORTANT - Format contract:",
+    "- Output starts DIRECTLY with an H1 heading (# Title).",
+    "- NO metadata, NO frontmatter, NO introductory comments.",
+    "- Only pure Markdown.",
+    "- Never number headings (no '## 1.' / '## I.' etc).",
+    "- If math/formulas appear: use LaTeX (inline $...$, Display $$ ... $$) and explain variables directly after."
+  ].join("\n");
+};
+
+const loadGuidelines = async (): Promise<string> => {
+  // Guidelines are always in English for consistency
+  const files = [`guidelines/general.en.md`, `guidelines/summary.en.md`];
   const parts = await Promise.all(
     files.map(async (file) => {
       const filePath = path.join(process.cwd(), file);
       try {
         return await fs.readFile(filePath, "utf8");
       } catch {
-        // Fallback to English if language file doesn't exist
-        if (language !== "en") {
-          const fallbackFile = file.replace(`.${language}.md`, ".en.md");
-          const fallbackPath = path.join(process.cwd(), fallbackFile);
-          try {
-            return await fs.readFile(fallbackPath, "utf8");
-          } catch {
-            return "";
-          }
-        }
         return "";
       }
     })
@@ -36,24 +60,44 @@ const loadGuidelines = async (language: string = "en"): Promise<string> => {
   return parts.filter((p) => p.trim().length > 0).join("\n\n---\n\n");
 };
 
-const FORMAT_CONTRACT = [
-  "",
-  "WICHTIG - Formatvertrag:",
-  "- Ausgabe beginnt DIREKT mit einer H1-Ueberschrift (# Titel).",
-  "- KEINE Metadaten, KEIN Frontmatter, KEINE einleitenden Kommentare.",
-  "- Nur reines Markdown.",
-  "- Ueberschriften niemals nummerieren (kein '## 1.' / '## I.' etc).",
-  "- Wenn Mathe/Formeln vorkommen: nutze LaTeX (inline $...$, Display $$ ... $$) und erklaere Variablen direkt danach.",
-  "- VERBOTEN: Abschluss-Saetze wie 'Damit kann man sich gut vorbereiten' oder 'Alles kommt aus den Vorlesungsfolien'."
-].join("\n");
+// User prompt with explicit output language instruction
+const getSummaryUserPrompt = (outputLanguage: string, text: string, structure?: string): string => {
+  const langName = getLanguageName(outputLanguage);
+  
+  return [
+    `Source text (extract from PDF):`,
+    text,
+    "",
+    "Optional structure hints (headings):",
+    structure?.trim() ? structure.trim() : "None",
+    "",
+    `Generate the summary in ${langName} language.`,
+    `Output ONLY the finished summary in Markdown starting with # Title.`,
+    `All content must be in ${langName}.`
+  ].join("\n");
+};
+
+const getRefineUserPrompt = (outputLanguage: string, summary: string): string => {
+  const langName = getLanguageName(outputLanguage);
+  
+  return [
+    "You revise the existing summary according to the user's instructions.",
+    `Maintain the output language: ${langName}.`,
+    "Output only the fully updated summary in Markdown.",
+    "Start directly with # Title (H1 heading).",
+    "",
+    "Current summary:",
+    summary
+  ].join("\n");
+};
 
 export const buildSummaryPrompts = async (
   text: string,
   structure?: string,
-  language: string = "en",
+  outputLanguage: string = "en",
   customGuidelines?: string
 ) => {
-  const guidelines = await loadGuidelines(language);
+  const guidelines = await loadGuidelines();
   let finalGuidelines = guidelines;
   
   // Append custom guidelines if provided
@@ -61,26 +105,21 @@ export const buildSummaryPrompts = async (
     finalGuidelines = `${guidelines}\n\n---\n\nAdditional User Guidelines:\n${customGuidelines.trim()}`;
   }
   
-  const systemPrompt = `${BASE_IDENTITY}\n\nRegelwerk (KI-Vorgaben):\n${finalGuidelines}\n\nHalte dich strikt an das Regelwerk.${FORMAT_CONTRACT}`;
-  const userPrompt = [
-    "Quelle (PDF-Extrakt):",
-    text,
-    "",
-    "Optionale Strukturvorgaben (Ueberschriften):",
-    structure?.trim() ? structure.trim() : "Keine",
-    "",
-    "Gib ausschliesslich die fertige Zusammenfassung in Markdown aus. Beginne direkt mit # Titel."
-  ].join("\n");
+  const baseIdentity = getBaseIdentity(outputLanguage);
+  const formatContract = getFormatContract();
+  
+  const systemPrompt = `${baseIdentity}\n\nGuidelines (AI Rules):\n${finalGuidelines}\n\nStrictly follow the guidelines.${formatContract}`;
+  const userPrompt = getSummaryUserPrompt(outputLanguage, text, structure);
 
   return { systemPrompt, userPrompt };
 };
 
 export const buildRefineSystemPrompt = async (
   summary: string,
-  language: string = "en",
+  outputLanguage: string = "en",
   customGuidelines?: string
 ) => {
-  const guidelines = await loadGuidelines(language);
+  const guidelines = await loadGuidelines();
   let finalGuidelines = guidelines;
   
   // Append custom guidelines if provided
@@ -88,18 +127,17 @@ export const buildRefineSystemPrompt = async (
     finalGuidelines = `${guidelines}\n\n---\n\nAdditional User Guidelines:\n${customGuidelines.trim()}`;
   }
   
+  const baseIdentity = getBaseIdentity(outputLanguage);
+  const formatContract = getFormatContract();
+  const userPrompt = getRefineUserPrompt(outputLanguage, summary);
+  
   return [
-    BASE_IDENTITY,
+    baseIdentity,
     "",
-    "Regelwerk (KI-Vorgaben):",
+    "Guidelines (AI Rules):",
     finalGuidelines,
-    FORMAT_CONTRACT,
+    formatContract,
     "",
-    "Du ueberarbeitest die bestehende Zusammenfassung anhand der Nutzeranweisung.",
-    "Gib ausschliesslich die vollstaendig aktualisierte Zusammenfassung in Markdown aus.",
-    "Beginne direkt mit # Titel (H1-Ueberschrift).",
-    "",
-    "Aktuelle Zusammenfassung:",
-    summary
+    userPrompt
   ].join("\n");
 };

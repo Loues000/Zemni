@@ -14,10 +14,6 @@ export function createOpenRouterClient(apiKey?: string) {
     throw new Error("OpenRouter API key is required");
   }
 
-  console.log('[OpenRouter] API key length:', key.length);
-  console.log('[OpenRouter] API key format:', key.substring(0, 10) + '...');
-  console.log('[OpenRouter] Creating AI SDK client with baseURL:', 'https://openrouter.ai/api/v1');
-
   return createOpenAI({
     apiKey: key,
     baseURL: "https://openrouter.ai/api/v1",

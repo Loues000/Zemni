@@ -20,6 +20,7 @@ export type ModelSpec = {
   openrouterId: string;
   subscriptionTier?: string;
   available?: boolean;
+  description?: string;
 };
 
 const DEFAULT_MODELS: ModelSpec[] = [
@@ -140,6 +141,8 @@ const parseModelsJson = (data: unknown): ModelSpec[] => {
     // Read available field (defaults to true if not present)
     const available = record.available !== undefined ? Boolean(record.available) : true;
 
+    const description = record.description ? String(record.description).trim() : undefined;
+
     const modelSpec: ModelSpec = {
       name,
       provider,
@@ -148,7 +151,8 @@ const parseModelsJson = (data: unknown): ModelSpec[] => {
       pricing,
       openrouterId,
       subscriptionTier,
-      available
+      available,
+      description
     };
 
     return modelSpec;

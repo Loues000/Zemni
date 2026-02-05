@@ -3,6 +3,7 @@ import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import { decryptKey } from "./encryption";
 import { isModelAvailable } from "./models";
+import { isModelAvailableViaApiKey } from "./model-availability";
 
 // Create unauthenticated Convex client (auth happens via clerkUserId param)
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
@@ -63,18 +64,28 @@ export async function getUserContext(): Promise<UserContext | null> {
       });
 
       if (userKey && userKey.keyHash) {
-        const decryptedKey = decryptKey(userKey.keyHash);
-        decryptedKeys.push(decryptedKey); // Track for cleanup
-        
-        apiKeys.push({
-          provider: providerInfo.provider,
-          useOwnKey: providerInfo.useOwnKey,
-          key: decryptedKey,
-        });
+        try {
+          const decryptedKey = decryptKey(userKey.keyHash);
+          decryptedKeys.push(decryptedKey); // Track for cleanup
+          
+          apiKeys.push({
+            provider: providerInfo.provider,
+            useOwnKey: providerInfo.useOwnKey,
+            key: decryptedKey,
+          });
 
-        // Keep backward compatibility - use openrouter as primary key if available
-        if (providerInfo.provider === "openrouter" && providerInfo.useOwnKey) {
-          apiKey = decryptedKey;
+          // Keep backward compatibility - use openrouter as primary key if available
+          if (providerInfo.provider === "openrouter" && providerInfo.useOwnKey) {
+            apiKey = decryptedKey;
+          }
+        } catch (decryptError) {
+          // Handle invalid encrypted key format (e.g., from old data or migration issues)
+          console.error(
+            `[getUserContext] Failed to decrypt ${providerInfo.provider} key:`,
+            decryptError instanceof Error ? decryptError.message : String(decryptError)
+          );
+          // Skip this key and continue with others
+          // The user will need to re-enter this key
         }
       }
     }
@@ -186,6 +197,9 @@ function getProviderFromModelId(modelId: string): ApiProvider | null {
 /**
  * Check if a model is available for the user
  * Considers both subscription tier AND API keys
+ * 
+ * Priority: API keys are checked FIRST, then subscription tier
+ * This allows users with API keys to access higher tier models
  */
 export function checkModelAvailability(
   model: { 
@@ -195,22 +209,34 @@ export function checkModelAvailability(
   },
   userContext: UserContext | null
 ): boolean {
-  // First check subscription-based availability
+  const modelId = model.id || model.openrouterId;
+  
+  // FIRST: Check if user has API key for this model (regardless of useOwnKey preference)
+  // Having an API key grants access to the model, even if it's a higher tier
+  // Note: We check ALL keys that exist, not just those with useOwnKey=true, because
+  // having an API key means the user can access higher tier models (they'll be charged for usage)
+  if (userContext && modelId && userContext.apiKeys?.length > 0) {
+    // Extract providers from user's API keys (only keys that actually exist)
+    // We don't filter by useOwnKey here - having a key grants tier access rights
+    const userApiKeyProviders: ApiProvider[] = userContext.apiKeys
+      .filter(k => k.key && k.key.trim().length > 0) // Only include keys that exist and are non-empty
+      .map(k => k.provider);
+    
+    // Check if any of the user's API keys grant access to this model
+    if (isModelAvailableViaApiKey(modelId, userApiKeyProviders)) {
+      console.log(`[checkModelAvailability] Model ${modelId} available via API key (providers: ${userApiKeyProviders.join(", ")})`);
+      return true;
+    }
+  }
+  
+  // SECOND: Check subscription-based availability
   const availableBySubscription = isModelAvailable(model, userContext?.userTier || "free");
   
-  if (availableBySubscription) {
-    return true;
+  if (!availableBySubscription && userContext && modelId) {
+    console.log(`[checkModelAvailability] Model ${modelId} not available - tier: ${model.subscriptionTier}, user tier: ${userContext.userTier}, has API keys: ${userContext.apiKeys?.length > 0}`);
   }
   
-  // If not available by subscription, check if user has API key for this model
-  // getApiKeyForModel will return null if useOwnKey=false, so availability is correctly blocked
-  if (userContext && (model.id || model.openrouterId)) {
-    const modelId = model.id || model.openrouterId!;
-    const apiKeyInfo = getApiKeyForModel(modelId, userContext, model);
-    return apiKeyInfo !== null;
-  }
-  
-  return false;
+  return availableBySubscription;
 }
 
 /**

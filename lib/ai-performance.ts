@@ -6,32 +6,176 @@ export type TimeoutController = {
 };
 
 /**
- * Determines if a model needs extended timeout and token limits.
- * Large/slow models (like 120B parameter models) need more time and tokens.
+ * Performance tracking for generation times per model.
+ * Stored in memory for the session, can be persisted to Convex for long-term analytics.
  */
-export const getModelPerformanceConfig = (modelId: string): {
+type GenerationMetrics = {
+  modelId: string;
+  durationMs: number;
+  documentSize: number;
+  timestamp: number;
+};
+
+const generationMetrics: GenerationMetrics[] = [];
+const MAX_METRICS_HISTORY = 50;
+
+/**
+ * Track generation performance for a model.
+ */
+export const trackGenerationPerformance = (
+  modelId: string,
+  durationMs: number,
+  documentSize: number
+): void => {
+  generationMetrics.push({
+    modelId,
+    durationMs,
+    documentSize,
+    timestamp: Date.now()
+  });
+
+  // Keep only recent metrics
+  if (generationMetrics.length > MAX_METRICS_HISTORY) {
+    generationMetrics.shift();
+  }
+
+  // Log for debugging
+  console.log(`[Performance] ${modelId}: ${Math.round(durationMs / 1000)}s for ${documentSize} chars`);
+};
+
+/**
+ * Get average generation time for a model based on recent history.
+ */
+export const getAverageGenerationTime = (modelId: string): number | null => {
+  const modelMetrics = generationMetrics
+    .filter(m => m.modelId === modelId)
+    .slice(-5); // Last 5 generations
+
+  if (modelMetrics.length === 0) return null;
+
+  const avg = modelMetrics.reduce((sum, m) => sum + m.durationMs, 0) / modelMetrics.length;
+  return avg;
+};
+
+/**
+ * Get estimated completion time based on model, document size, and output type.
+ */
+export const getEstimatedCompletionTime = (
+  modelId: string,
+  documentSize: number,
+  outputKind?: "summary" | "flashcards" | "quiz"
+): number => {
+  // Base estimate from historical data
+  const historicalAvg = getAverageGenerationTime(modelId);
+
+  if (historicalAvg) {
+    // Add 20% buffer to historical average
+    let baseEstimate = historicalAvg * 1.2 / 1000;
+
+    // Apply output-type multiplier if provided
+    if (outputKind === "flashcards") {
+      baseEstimate *= 1.3; // JSON parsing overhead
+    } else if (outputKind === "quiz") {
+      baseEstimate *= 1.2; // Similar to flashcards
+    }
+
+    return Math.ceil(baseEstimate);
+  }
+
+  // Fallback to model-specific base estimates (in seconds)
+  const baseEstimates: Record<string, number> = {
+    "openai/gpt-oss-120b": 90,
+    "openai/gpt-oss-20b": 60,
+    "anthropic/claude-opus-4.5": 75,
+    "anthropic/claude-sonnet-4.5": 45,
+    "openai/gpt-5.2": 30,
+    "openai/gpt-5.1": 25,
+    "openai/gpt-5-mini": 15,
+    "deepseek/deepseek-v3.2": 20,
+  };
+
+  const baseTime = baseEstimates[modelId] || 30;
+
+  // Use logarithmic scaling for better accuracy with document size
+  // Small docs (<10k): minimal scaling
+  // Medium docs (10k-50k): moderate scaling
+  // Large docs (>50k): more aggressive scaling
+  let sizeFactor: number;
+  if (documentSize < 10000) {
+    sizeFactor = 1 + (documentSize / 100000); // Very small impact
+  } else if (documentSize < 50000) {
+    sizeFactor = 1.1 + Math.log10(documentSize / 10000) * 0.3; // Logarithmic scaling
+  } else {
+    sizeFactor = 1.5 + Math.log10(documentSize / 50000) * 0.4; // More aggressive for large docs
+  }
+
+  // Apply output-type multiplier
+  if (outputKind === "flashcards") {
+    sizeFactor *= 1.3; // JSON parsing overhead
+  } else if (outputKind === "quiz") {
+    sizeFactor *= 1.2; // Similar to flashcards
+  }
+
+  return Math.ceil(baseTime * sizeFactor);
+};
+
+/**
+ * Format estimated time for display.
+ */
+export const formatEstimatedTime = (seconds: number): string => {
+  if (seconds < 60) return `~${seconds}s`;
+  const mins = Math.ceil(seconds / 60);
+  return `~${mins} min`;
+};
+
+/**
+ * Determines if a model needs extended timeout and token limits.
+ * Uses adaptive timeouts based on historical performance data.
+ */
+export const getModelPerformanceConfig = (
+  modelId: string,
+  documentSize?: number
+): {
   timeoutMs: number;
   maxTokensMultiplier: number;
+  estimatedTimeSeconds: number;
 } => {
-  // Models that are known to be slower/larger and need extended timeouts
+  // Models that are known to be slower/larger/problemtic with JSON and need higher multipliers
   const slowModelPatterns = [
     "gpt-oss-120b",
     "gpt-oss-20b",
-    "anthropic"
+    "anthropic/claude-opus",
+    "grok-4.1-fast", // Grok models can sometimes be verbose
+    "gemini-3",      // Gemini preview models might need more buffer
   ];
 
   const isSlowModel = slowModelPatterns.some(pattern => modelId.includes(pattern));
+  const isFreeModel = modelId.includes(":free");
 
-  if (isSlowModel) {
-    return {
-      timeoutMs: 180_000, // 180 seconds for large models
-      maxTokensMultiplier: 1.5 // 50% more tokens for proper JSON generation
-    };
+  // Calculate estimated time for UI display (default to summary if not specified)
+  const estimatedTimeSeconds = getEstimatedCompletionTime(modelId, documentSize || 10000, "summary");
+
+  // Use historical data to adjust timeout if available
+  const historicalAvg = getAverageGenerationTime(modelId);
+  let timeoutMs: number;
+
+  if (historicalAvg) {
+    // Use 3x historical average as timeout (was 2.5x), with minimums
+    timeoutMs = Math.max(historicalAvg * 3.0, isSlowModel ? 240_000 : 90_000);
+  } else {
+    // Increased base timeouts (was 180s/45s)
+    timeoutMs = isSlowModel ? 240_000 : 90_000;
   }
 
+  // Multiplier for maxTokens to prevent truncation
+  let maxTokensMultiplier = 1.0;
+  if (isSlowModel) maxTokensMultiplier = 1.8; // Increased from 1.5
+  if (isFreeModel) maxTokensMultiplier = 1.5; // Free models often need more buffer or have lower quality
+
   return {
-    timeoutMs: 45_000, // Default 45 seconds
-    maxTokensMultiplier: 1.0
+    timeoutMs,
+    maxTokensMultiplier,
+    estimatedTimeSeconds
   };
 };
 
