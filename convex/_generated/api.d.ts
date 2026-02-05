@@ -8,9 +8,12 @@
  * @module
  */
 
+import type * as analysis_analyzeTables from "../analysis/analyzeTables.js";
+import type * as analysis_checkSyncIssues from "../analysis/checkSyncIssues.js";
 import type * as apiKeys from "../apiKeys.js";
 import type * as documents from "../documents.js";
-import type * as stripe from "../stripe.js";
+import type * as polar from "../polar.js";
+import type * as rateLimits from "../rateLimits.js";
 import type * as usage from "../usage.js";
 import type * as users from "../users.js";
 
@@ -21,9 +24,12 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  "analysis/analyzeTables": typeof analysis_analyzeTables;
+  "analysis/checkSyncIssues": typeof analysis_checkSyncIssues;
   apiKeys: typeof apiKeys;
   documents: typeof documents;
-  stripe: typeof stripe;
+  polar: typeof polar;
+  rateLimits: typeof rateLimits;
   usage: typeof usage;
   users: typeof users;
 }>;

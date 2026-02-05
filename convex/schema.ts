@@ -11,8 +11,9 @@ export default defineSchema({
       v.literal("plus"),
       v.literal("pro")
     ),
-    stripeCustomerId: v.optional(v.string()),
-    stripeSubscriptionId: v.optional(v.string()),
+    polarCustomerId: v.optional(v.string()),
+    polarSubscriptionId: v.optional(v.string()),
+    subscriptionStartDate: v.optional(v.number()), // Timestamp when subscription started (for billing cycle)
     preferredLanguage: v.optional(v.string()),
     preferredName: v.optional(v.string()),
     customGuidelines: v.optional(v.string()),
@@ -79,4 +80,12 @@ export default defineSchema({
     .index("by_user_id", ["userId"])
     .index("by_user_timestamp", ["userId", "timestamp"])
     .index("by_document_id", ["documentId"]),
+
+  rateLimits: defineTable({
+    userId: v.string(), // Clerk user ID
+    type: v.union(v.literal("key_management"), v.literal("generation")),
+    count: v.number(),
+    resetTime: v.number(), // Timestamp when rate limit window resets
+  })
+    .index("by_user_type", ["userId", "type"]),
 });

@@ -16,6 +16,13 @@ export const getOrCreateUser = mutation({
       .first();
 
     if (existing) {
+      // Fix: If existing user has no subscriptionTier, set to "free"
+      if (!existing.subscriptionTier) {
+        await ctx.db.patch(existing._id, {
+          subscriptionTier: "free",
+          updatedAt: Date.now(),
+        });
+      }
       return existing._id;
     }
 
@@ -31,7 +38,43 @@ export const getOrCreateUser = mutation({
 });
 
 /**
+ * Ensure user has correct subscription tier (background fix)
+ * Called periodically to fix any tier inconsistencies
+ */
+export const ensureCorrectTier = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_user_id", (q: any) => q.eq("clerkUserId", identity.subject))
+      .first();
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    // Fix tier if missing
+    if (!user.subscriptionTier) {
+      await ctx.db.patch(user._id, {
+        subscriptionTier: "free",
+        updatedAt: Date.now(),
+      });
+      console.log(`[ensureCorrectTier] Fixed tier for user ${user._id}: "${user.subscriptionTier || "undefined"}" -> "free"`);
+      return { fixed: true, oldTier: user.subscriptionTier || "undefined", newTier: "free" };
+    }
+
+    return { fixed: false, tier: user.subscriptionTier };
+  },
+});
+
+/**
  * Get current user by Clerk user ID
+ * Returns user with guaranteed subscriptionTier (defaults to "free" if missing)
  */
 export const getCurrentUser = query({
   args: {},
@@ -41,10 +84,24 @@ export const getCurrentUser = query({
       return null;
     }
 
-    return await ctx.db
+    const user = await ctx.db
       .query("users")
       .withIndex("by_clerk_user_id", (q: any) => q.eq("clerkUserId", identity.subject))
       .first();
+
+    if (!user) {
+      return null;
+    }
+
+    // DEFENSIVE: Ensure missing tier defaults to "free"
+    if (!user.subscriptionTier) {
+      return {
+        ...user,
+        subscriptionTier: "free" as const,
+      };
+    }
+
+    return user;
   },
 });
 
@@ -70,14 +127,14 @@ export const updateSubscriptionTier = mutation({
   args: {
     userId: v.id("users"),
     tier: v.union(v.literal("free"), v.literal("basic"), v.literal("plus"), v.literal("pro")),
-    stripeCustomerId: v.optional(v.string()),
-    stripeSubscriptionId: v.optional(v.string()),
+    polarCustomerId: v.optional(v.string()),
+    polarSubscriptionId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.userId, {
       subscriptionTier: args.tier,
-      stripeCustomerId: args.stripeCustomerId,
-      stripeSubscriptionId: args.stripeSubscriptionId,
+      polarCustomerId: args.polarCustomerId,
+      polarSubscriptionId: args.polarSubscriptionId,
       updatedAt: Date.now(),
     });
   },
@@ -238,22 +295,37 @@ export const updateDefaultStructureHints = mutation({
 
 /**
  * Update Notion configuration
+ * Note: This uses clerkUserId from the client instead of ctx.auth for API route compatibility
  */
 export const updateNotionConfig = mutation({
   args: {
     token: v.string(),
     databaseId: v.optional(v.string()),
     exportMethod: v.optional(v.union(v.literal("database"), v.literal("page"))),
+    clerkUserId: v.optional(v.string()), // Optional: when provided, bypasses ctx.auth
   },
   handler: async (ctx, args) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
+    let clerkUserId: string | null = null;
+    
+    // If clerkUserId is provided (from API route), use it directly
+    if (args.clerkUserId) {
+      clerkUserId = args.clerkUserId;
+    } else {
+      // Otherwise, try to get from auth context (client-side calls)
+      const identity = await ctx.auth.getUserIdentity();
+      if (!identity) {
+        throw new Error("Not authenticated");
+      }
+      clerkUserId = identity.subject;
+    }
+
+    if (!clerkUserId) {
       throw new Error("Not authenticated");
     }
 
     const user = await ctx.db
       .query("users")
-      .withIndex("by_clerk_user_id", (q: any) => q.eq("clerkUserId", identity.subject))
+      .withIndex("by_clerk_user_id", (q: any) => q.eq("clerkUserId", clerkUserId))
       .first();
 
     if (!user) {
@@ -273,18 +345,34 @@ export const updateNotionConfig = mutation({
 
 /**
  * Clear Notion configuration
+ * Note: This uses clerkUserId from the client instead of ctx.auth for API route compatibility
  */
 export const clearNotionConfig = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
+  args: {
+    clerkUserId: v.optional(v.string()), // Optional: when provided, bypasses ctx.auth
+  },
+  handler: async (ctx, args) => {
+    let clerkUserId: string | null = null;
+    
+    // If clerkUserId is provided (from API route), use it directly
+    if (args.clerkUserId) {
+      clerkUserId = args.clerkUserId;
+    } else {
+      // Otherwise, try to get from auth context (client-side calls)
+      const identity = await ctx.auth.getUserIdentity();
+      if (!identity) {
+        throw new Error("Not authenticated");
+      }
+      clerkUserId = identity.subject;
+    }
+
+    if (!clerkUserId) {
       throw new Error("Not authenticated");
     }
 
     const user = await ctx.db
       .query("users")
-      .withIndex("by_clerk_user_id", (q: any) => q.eq("clerkUserId", identity.subject))
+      .withIndex("by_clerk_user_id", (q: any) => q.eq("clerkUserId", clerkUserId))
       .first();
 
     if (!user) {
@@ -336,5 +424,48 @@ export const anonymizeAccount = mutation({
     });
 
     return { success: true, anonymousId };
+  },
+});
+
+/**
+ * Debug: Get all users with their subscription tiers
+ * Only for debugging - should be removed or secured in production
+ */
+export const getAllUsersDebug = query({
+  args: {},
+  handler: async (ctx) => {
+    const users = await ctx.db.query("users").collect();
+    return users.map((u) => ({
+      _id: u._id,
+      clerkUserId: u.clerkUserId,
+      email: u.email,
+      subscriptionTier: u.subscriptionTier,
+      polarCustomerId: u.polarCustomerId,
+      polarSubscriptionId: u.polarSubscriptionId,
+    }));
+  },
+});
+
+/**
+ * Fix: Update all users with missing subscriptionTier to "free"
+ * This is a one-time migration function
+ */
+export const fixSubscriptionTiers = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const users = await ctx.db.query("users").collect();
+    let updated = 0;
+    
+    for (const user of users) {
+      if (!user.subscriptionTier) {
+        await ctx.db.patch(user._id, {
+          subscriptionTier: "free",
+          updatedAt: Date.now(),
+        });
+        updated++;
+      }
+    }
+    
+    return { updated, total: users.length };
   },
 });

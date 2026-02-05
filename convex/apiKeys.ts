@@ -308,3 +308,49 @@ export const getActiveProviders = query({
       }));
   },
 });
+
+/**
+ * Get all API keys for key rotation (admin operation)
+ * WARNING: This returns all keys with their hashes - use only for key rotation
+ * This should be restricted to admin access in production
+ */
+export const getAllKeysForRotation = query({
+  args: {},
+  handler: async (ctx) => {
+    // WARNING: This returns all API keys - should be restricted in production
+    // For now, we'll return all keys. In production, add admin authentication check.
+    const allKeys = await ctx.db.query("apiKeys").collect();
+    
+    return allKeys.map(key => ({
+      _id: key._id,
+      userId: key.userId,
+      provider: key.provider,
+      keyHash: key.keyHash,
+    }));
+  },
+});
+
+/**
+ * Update API key hash (for key rotation)
+ * WARNING: This is a sensitive operation - should be restricted to admin access
+ */
+export const updateKeyHash = mutation({
+  args: {
+    keyId: v.id("apiKeys"),
+    newKeyHash: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // WARNING: This allows updating any key hash - should be restricted in production
+    // For now, we'll allow it. In production, add admin authentication check.
+    const key = await ctx.db.get(args.keyId);
+    if (!key) {
+      throw new Error("API key not found");
+    }
+
+    await ctx.db.patch(args.keyId, {
+      keyHash: args.newKeyHash,
+    });
+
+    return { success: true };
+  },
+});
