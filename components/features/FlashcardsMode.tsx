@@ -185,11 +185,6 @@ export function FlashcardsMode({ extractedText, fileName, output, showKeyboardHi
             aria-label={`Open flashcard ${idx + 1}`}
             title="Click: open fullscreen flashcard"
           >
-            {card.page ? (
-              <div className="flashcard-top">
-                <span className="flashcard-page">Page {card.page}</span>
-              </div>
-            ) : null}
             <div className="flashcard-front">{card.front}</div>
             <div className="flashcard-hint" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
@@ -211,7 +206,6 @@ export function FlashcardsMode({ extractedText, fileName, output, showKeyboardHi
             <div className="flashcard-player-top">
               <div className="flashcard-player-meta">
                 <span className="flashcard-player-progress">{cursor + 1} / {cards.length}</span>
-                {current.page ? <span className="flashcard-player-page">Page {current.page}</span> : null}
               </div>
               <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPlayerOpen(false)}>
                 {showKeyboardHints ? "Close (Esc)" : "Close"}

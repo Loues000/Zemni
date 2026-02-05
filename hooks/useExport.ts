@@ -4,7 +4,6 @@ import { api } from "@/convex/_generated/api";
 import type { OutputKind, Status, Subject } from "@/types";
 import { handleExport as handleExportHandler, handleSubjectPicked as handleSubjectPickedHandler, type ExportHandlersContext, type NotionConfig } from "@/lib/handlers/export-handlers";
 import type { HistoryEntry } from "@/types";
-import { decryptKey } from "@/lib/encryption";
 
 export interface UseExportReturn {
   exportProgress: { current: number; total: number } | null;
@@ -45,20 +44,13 @@ export function useExport(
   const [pendingExport, setPendingExport] = useState(false);
 
   // Load Notion config from Convex
+  // Token will be decrypted server-side by API endpoints
   const notionConfig: NotionConfig | undefined = useMemo(() => {
-    if (!currentUser) return undefined;
+    if (!currentUser || !currentUser.notionToken) return undefined;
     
-    let token: string | null = null;
-    if (currentUser.notionToken) {
-      try {
-        token = decryptKey(currentUser.notionToken);
-      } catch (error) {
-        console.error("Failed to decrypt Notion token:", error);
-      }
-    }
-    
+    // Pass encrypted token - API endpoint will decrypt server-side
     return {
-      token,
+      token: currentUser.notionToken,
       databaseId: currentUser.notionDatabaseId || null,
       exportMethod: currentUser.notionExportMethod || "database",
     };

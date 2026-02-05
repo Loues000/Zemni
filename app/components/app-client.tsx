@@ -21,10 +21,11 @@ import {
 const SummaryPreview = lazy(() => import("@/components/features/SummaryPreview.tsx").then(m => ({ default: m.SummaryPreview })));
 const FlashcardsMode = lazy(() => import("@/components/features/FlashcardsMode.tsx").then(m => ({ default: m.FlashcardsMode })));
 const QuizMode = lazy(() => import("@/components/features/QuizMode.tsx").then(m => ({ default: m.QuizMode })));
-import { ActivityBar, CostPreview, StatsSection, IconMenu, IconSun, IconMoon, IconSettings } from "@/components/ui";
+import { ActivityBar, CostPreview, StatsSection, IconMenu, IconSun, IconMoon, IconSettings, LoginPromptBanner } from "@/components/ui";
+
 import { ClerkSignedIn, ClerkSignedOut, ClerkSignInButton } from "@/components/auth/ClerkWrapper";
 import { UserButton, useUser } from "@clerk/nextjs";
-import type { OutputKind, UsageStats, HistoryEntry } from "@/types";
+import type { OutputKind, UsageStats, HistoryEntry, Status } from "@/types";
 import {
   useHistory,
   useTokenEstimate,
@@ -39,7 +40,9 @@ import {
   useKeyboardShortcuts,
   useUIState,
   useComputedValues,
-  useRefineEffects
+  useRefineEffects,
+  useSessionPersistence,
+  useClientRateLimit
 } from "@/hooks";
 import { enforceOutputFormat } from "@/lib/format-output";
 import { getSummaryTitle } from "@/lib/output-previews";
@@ -129,6 +132,9 @@ export default function AppClient() {
     }
   }, []);
 
+  // Login prompt state - show when file is uploaded or generation starts
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
+
   // Refs
   const previewRef1 = useRef<HTMLDivElement | null>(null);
   const previewRef2 = useRef<HTMLDivElement | null>(null);
@@ -138,7 +144,17 @@ export default function AppClient() {
   const settingsButtonRef = useRef<HTMLButtonElement | null>(null);
 
   // History and token estimation
-  const { history, updateHistoryState } = useHistory();
+  const { 
+    history, 
+    updateHistoryState, 
+    isSaving, 
+    saveError, 
+    lastSavedAt, 
+    pendingSaves,
+    saveEntryToConvex,
+    clearSaveError,
+    retryFailedSaves 
+  } = useHistory();
   const {
     modelCosts,
     costHeuristic,
@@ -223,6 +239,19 @@ export default function AppClient() {
     setMobileView
   );
 
+  // Show login prompt when file is uploaded or generation starts (for unauthenticated users)
+  useEffect(() => {
+    if (currentUser !== undefined && !currentUser) {
+      // User is not authenticated
+      if (fileHandling.extractedText || status === "summarizing") {
+        setShowLoginPrompt(true);
+      }
+    } else if (currentUser) {
+      // User is authenticated, hide prompt
+      setShowLoginPrompt(false);
+    }
+  }, [fileHandling.extractedText, status, currentUser]);
+
   // Generation
   const generation = useGeneration(
     fileHandling.fileName,
@@ -247,6 +276,12 @@ export default function AppClient() {
     setInput
   );
   const { docSection, studySection, textForEstimate, handleGenerate, handleRetry } = generation;
+
+  // Client-side rate limiting for better UX (prevents double-clicks, reduces network traffic)
+  const rateLimitedGenerate = useClientRateLimit({
+    fn: handleGenerate,
+    minInterval: 2000 // 2 seconds minimum between requests
+  });
 
   // Export
   const exportHook = useExport(
@@ -306,7 +341,12 @@ export default function AppClient() {
     setMessages,
     setInput,
     setData,
-    updateHistoryState
+    updateHistoryState,
+    saveEntryToConvex,
+    setSaveError: (err) => {
+      if (err) console.error("[App] Save error:", err);
+    },
+    currentUser // Pass currentUser so saves can be queued until user is ready
   });
 
   // Quiz state
@@ -322,6 +362,169 @@ export default function AppClient() {
     setGeneratingTabId
   );
   const { handleQuizReveal, handleQuizSelectOption, handleQuizNext, handleQuizPrev } = quizState;
+
+  // Session persistence - restore state when returning from settings
+  const sessionPersistence = useSessionPersistence(
+    outputs,
+    selectedTabId,
+    secondTabId,
+    outputKind,
+    fileHandling.extractedText,
+    fileHandling.fileName,
+    generatingTabId,
+    !loadedFromHistory // Don't persist when loading from history
+  );
+  const { restoreSession, clearSession } = sessionPersistence;
+
+  // Restore session state on mount (only if not loading from history and coming from settings)
+  useEffect(() => {
+    if (loadedFromHistory) {
+      // If loading from history, clear any session state
+      clearSession();
+      return;
+    }
+
+    // Only restore if we're coming back from settings
+    // Check for the flag that indicates we navigated to settings
+    if (typeof window !== "undefined") {
+      const comingFromSettings = window.sessionStorage.getItem("zemni_came_from_settings");
+      if (!comingFromSettings) {
+        // Not coming from settings, don't restore session
+        // Clear any stale session data
+        clearSession();
+        return;
+      }
+      // Clear the flag after checking
+      window.sessionStorage.removeItem("zemni_came_from_settings");
+    }
+
+    // Only restore if we don't have any current state
+    // This prevents overwriting state that was set during initialization
+    if (Object.keys(outputs).length > 0 || fileHandling.extractedText) {
+      return;
+    }
+
+    const restored = restoreSession();
+    if (!restored) {
+      return;
+    }
+
+    // Check if restored file matches current file (if any)
+    const fileMatches = !fileHandling.fileName || fileHandling.fileName === restored.fileName;
+    
+    if (!fileMatches) {
+      // Different file, don't restore
+      clearSession();
+      return;
+    }
+
+    // Restore file content if available
+    if (restored.extractedText && restored.fileName) {
+      fileHandling.setExtractedText(restored.extractedText);
+      fileHandling.setFileName(restored.fileName);
+    }
+    
+    // Restore outputs if they exist
+    if (Object.keys(restored.outputs).length > 0) {
+      setOutputs(restored.outputs);
+    }
+    
+    // Restore tab selection if valid
+    if (restored.selectedTabId && restored.outputs[restored.selectedTabId]) {
+      setSelectedTabId(restored.selectedTabId);
+    }
+    
+    if (restored.secondTabId && restored.outputs[restored.secondTabId]) {
+      setSecondTabId(restored.secondTabId);
+    }
+    
+    // Restore output kind
+    if (restored.outputKind && ["summary", "flashcards", "quiz"].includes(restored.outputKind)) {
+      setOutputKind(restored.outputKind);
+    }
+    
+    // Handle generation state
+    if (restored.generatingTabId) {
+      const output = restored.outputs[restored.generatingTabId];
+      
+      // Check if generation completed while away by examining the restored output
+      // We use restored.outputs here because the current outputs state is still being restored
+      const hasNewContent = output && (
+        (output.summary && output.summary.trim().length > 0) ||
+        (output.flashcards && output.flashcards.length > 0) ||
+        (output.quiz && output.quiz.length > 0)
+      );
+      
+      if (hasNewContent && output && !output.isGenerating) {
+        // Generation completed before navigating to settings
+        setGeneratingTabId(null);
+        setStatus("ready");
+      } else if (output && output.isGenerating && !output.error) {
+        // Check if it has content (might have completed but state wasn't updated)
+        const hasContent = (output.summary && output.summary.trim().length > 0) ||
+                          (output.flashcards && output.flashcards.length > 0) ||
+                          (output.quiz && output.quiz.length > 0);
+        
+        if (hasContent) {
+          // Generation completed while in settings, update state
+          setOutputs((prev) => ({
+            ...prev,
+            [restored.generatingTabId!]: {
+              ...output,
+              isGenerating: false
+            }
+          }));
+          setGeneratingTabId(null);
+          setStatus("ready");
+        } else {
+          // Still generating - restore the state
+          // Check if it's been generating for too long (might have failed silently)
+          const generatingDuration = Date.now() - (output.updatedAt || Date.now());
+          if (generatingDuration > 300_000) {
+            // Been generating for more than 5 minutes, likely failed
+            // Mark as error so user can retry
+            setOutputs((prev) => ({
+              ...prev,
+              [restored.generatingTabId!]: {
+                ...output,
+                isGenerating: false,
+                error: "Generation may have timed out. Please try again.",
+                canRetry: true
+              }
+            }));
+            setGeneratingTabId(null);
+            setStatus("error");
+          } else {
+            // Restore generation state - API call is still running
+            setGeneratingTabId(restored.generatingTabId);
+            // Restore status from session or default to "summarizing"
+            // Note: Status type only includes "summarizing", not "generating-flashcards" or "generating-quiz"
+            if (restored.status && ["summarizing", "parsing", "refining"].includes(restored.status)) {
+              setStatus(restored.status as Status);
+            } else {
+              setStatus("summarizing");
+            }
+          }
+        }
+      } else {
+        // No longer generating
+        setGeneratingTabId(null);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run on mount
+
+  // Clear session when a new document is uploaded (different from current)
+  useEffect(() => {
+    if (fileHandling.extractedText && fileHandling.fileName) {
+      const restored = restoreSession();
+      if (restored && restored.fileName && restored.fileName !== fileHandling.fileName) {
+        // New document uploaded, clear old session
+        clearSession();
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fileHandling.fileName]);
 
   // Computed values
   const { streamingRefineContent, currentCost, currentKind, isCurrentTabRefining, currentSummary, currentUsage, secondSummary } = useComputedValues({
@@ -468,6 +671,16 @@ export default function AppClient() {
     setSelectedModel(modelId);
   }, [setSelectedModel]);
 
+  // Navigate to settings and set flag to restore session on return
+  const navigateToSettings = useCallback((path: string = "/settings") => {
+    if (typeof window !== "undefined") {
+      // Set flag to indicate we're navigating to settings
+      // This allows session restoration when coming back
+      window.sessionStorage.setItem("zemni_came_from_settings", "true");
+    }
+    router.push(path);
+  }, [router]);
+
   // Memoize sorted output tabs to avoid recalculation
   const outputTabs = useMemo(() => {
     return Object.values(outputs).sort((a, b) => b.updatedAt - a.updatedAt);
@@ -574,7 +787,7 @@ export default function AppClient() {
               <button
                 type="button"
                 className="sidebar-user-button"
-                onClick={() => router.push("/settings")}
+                onClick={() => navigateToSettings("/settings")}
               >
                 <UserButton afterSignOutUrl="/" />
                 <div className="sidebar-user-info">
@@ -627,6 +840,7 @@ export default function AppClient() {
         )}
 
         {error && <div className="error-banner">{error}</div>}
+        {showLoginPrompt && <LoginPromptBanner />}
         <SubjectPickerModal
           isOpen={subjectPickerOpen}
           subjects={subjects}
@@ -713,7 +927,7 @@ export default function AppClient() {
                           role="menuitem"
                           onClick={() => {
                             setSettingsOpen(false);
-                            router.push("/settings");
+                            navigateToSettings("/settings");
                           }}
                         >
                           <span className="quick-menu-item-icon">⚙️</span>
@@ -814,7 +1028,7 @@ export default function AppClient() {
                         role="menuitem"
                         onClick={() => {
                           setSettingsOpen(false);
-                          router.push("/settings");
+                          navigateToSettings("/settings");
                         }}
                       >
                         <span>Settings</span>
@@ -864,10 +1078,10 @@ export default function AppClient() {
                   <button
                     type="button"
                     className="btn btn-primary"
-                    onClick={() => void handleGenerate()}
-                    disabled={!canGenerate}
+                    onClick={() => void rateLimitedGenerate.execute()}
+                    disabled={!canGenerate || rateLimitedGenerate.isRateLimited || rateLimitedGenerate.isExecuting}
                   >
-                    {generatingTabId ? "Generating..." : "Generate"}
+                    {generatingTabId || rateLimitedGenerate.isExecuting ? "Generating..." : "Generate"}
                   </button>
                   <button
                     type="button"
@@ -899,12 +1113,12 @@ export default function AppClient() {
                   <button
                     type="button"
                     className="btn btn-secondary btn-sm"
-                    onClick={handleGenerate}
-                    disabled={!canGenerate}
+                    onClick={() => void rateLimitedGenerate.execute()}
+                    disabled={!canGenerate || rateLimitedGenerate.isRateLimited || rateLimitedGenerate.isExecuting}
                     aria-label={canGenerate ? "Generate content" : "Cannot generate - missing file or model"}
-                    title={!canGenerate && !fileHandling.extractedText ? "Upload a file first" : !canGenerate && !selectedModel ? "Select a model first" : ""}
+                    title={!canGenerate && !fileHandling.extractedText ? "Upload a file first" : !canGenerate && !selectedModel ? "Select a model first" : rateLimitedGenerate.isRateLimited ? `Please wait ${rateLimitedGenerate.cooldownRemaining}s` : ""}
                   >
-                    {generatingTabId ? "Generating..." : "Generate"}
+                    {generatingTabId || rateLimitedGenerate.isExecuting ? "Generating..." : "Generate"}
                   </button>
                 </div>
                 {outputKind === "summary" && (() => {
@@ -915,7 +1129,7 @@ export default function AppClient() {
                       <button
                         type="button"
                         className="btn btn-primary btn-sm"
-                        onClick={() => router.push("/settings?tab=notion")}
+                        onClick={() => navigateToSettings("/settings?tab=notion")}
                         aria-label="Set up Notion integration"
                         title="Configure Notion integration to export summaries"
                       >
@@ -971,7 +1185,13 @@ export default function AppClient() {
                 })()}
               </div>
             </div>
-            <ActivityBar status={status} exportProgress={exportProgress} />
+            <ActivityBar 
+              status={status} 
+              exportProgress={exportProgress} 
+              outputKind={outputKind}
+              modelId={selectedModel}
+              documentSize={fileHandling.extractedText?.length || 0} 
+            />
 
             {outputKind === "summary" ? (
               <Suspense fallback={<div className="preview-empty">Loading preview...</div>}>

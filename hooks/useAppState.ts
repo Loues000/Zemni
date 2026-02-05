@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Model, Subject, Status } from "@/types";
-import { decryptKey } from "@/lib/encryption";
 
 export interface UseAppStateReturn {
   theme: "light" | "dark";
@@ -103,7 +102,7 @@ export function useAppState(): UseAppStateReturn {
         if (!res.ok) throw new Error("Could not load models.");
         const data = await res.json() as { models: Model[] };
         setModels(data.models);
-        // Use saved default model, or prefer free tier model, or first available
+        // Use saved default model, or prefer gpt-oss-120b:free, or fallback to other free tier model
         if (data.models.length > 0) {
           let modelToUse: string;
           
@@ -111,13 +110,18 @@ export function useAppState(): UseAppStateReturn {
             // Use saved preference if available and valid
             modelToUse = savedDefaultModel;
           } else {
-            // Find highest tier model user has access to, preferring free tier for new users
+            // Priority: gpt-oss-120b:free > other free tier > basic > plus > first available
+            const gptOss120bFree = data.models.find(m => m.id === "openai/gpt-oss-120b:free");
             const freeModel = data.models.find(m => m.subscriptionTier === "free");
             const basicModel = data.models.find(m => m.subscriptionTier === "basic");
             const plusModel = data.models.find(m => m.subscriptionTier === "plus");
             
-            // Priority: free > basic > plus > first available
-            modelToUse = freeModel?.id || basicModel?.id || plusModel?.id || data.models[0].id;
+            modelToUse = gptOss120bFree?.id || freeModel?.id || basicModel?.id || plusModel?.id || data.models[0].id;
+            
+            // Set defaultModel if not already set
+            if (!savedDefaultModel) {
+              setDefaultModel(modelToUse);
+            }
           }
           
           setSelectedModel(modelToUse);
@@ -134,32 +138,13 @@ export function useAppState(): UseAppStateReturn {
         // This will be called after currentUser is loaded
         if (!currentUser) return;
         
-        let userNotionToken: string | null = null;
-        let userDatabaseId: string | null = null;
+        if (!currentUser.notionDatabaseId) return;
         
-        if (currentUser.notionToken) {
-          try {
-            userNotionToken = decryptKey(currentUser.notionToken);
-          } catch (err) {
-            console.error("Failed to decrypt Notion token:", err);
-            return;
-          }
-        }
-        
-        if (currentUser.notionDatabaseId) {
-          userDatabaseId = currentUser.notionDatabaseId;
-        }
-        
-        if (!userNotionToken || !userDatabaseId) return;
-        
+        // API endpoint will decrypt token server-side
         const url = new URL("/api/notion/subjects", window.location.origin);
-        url.searchParams.set("databaseId", userDatabaseId);
+        url.searchParams.set("databaseId", currentUser.notionDatabaseId);
         
-        const res = await fetch(url.toString(), {
-          headers: {
-            "x-notion-token": userNotionToken,
-          },
-        });
+        const res = await fetch(url.toString());
         if (!res.ok) return;
         const data = await res.json() as { subjects: Subject[] };
         setSubjects(data.subjects);
@@ -179,43 +164,24 @@ export function useAppState(): UseAppStateReturn {
     if (currentUser) {
       const fetchSubjects = async () => {
         try {
-          let userNotionToken: string | null = null;
-          let userDatabaseId: string | null = null;
-          
-          if (currentUser.notionToken) {
-            try {
-              userNotionToken = decryptKey(currentUser.notionToken);
-            } catch (err) {
-              console.error("Failed to decrypt Notion token:", err);
-              return;
-            }
-          }
-          
-          if (currentUser.notionDatabaseId) {
-            userDatabaseId = currentUser.notionDatabaseId;
-          }
-          
-          if (!userNotionToken || !userDatabaseId) return;
+          if (!currentUser.notionDatabaseId) return;
           
           // Skip if we've already failed for this database ID
-          if (subjectsFetchFailedRef.current === userDatabaseId) {
+          if (subjectsFetchFailedRef.current === currentUser.notionDatabaseId) {
             return;
           }
           
+          // API endpoint will decrypt token server-side
           const url = new URL("/api/notion/subjects", window.location.origin);
-          url.searchParams.set("databaseId", userDatabaseId);
+          url.searchParams.set("databaseId", currentUser.notionDatabaseId);
           
-          const res = await fetch(url.toString(), {
-            headers: {
-              "x-notion-token": userNotionToken,
-            },
-          });
+          const res = await fetch(url.toString());
           if (!res.ok) return;
           const data = await res.json() as { subjects: Subject[]; error?: string };
           
           if (data.error) {
             // Mark this database ID as failed
-            subjectsFetchFailedRef.current = userDatabaseId;
+            subjectsFetchFailedRef.current = currentUser.notionDatabaseId;
             return;
           }
           
