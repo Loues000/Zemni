@@ -55,9 +55,13 @@ CLAUDE.md
 # Local-only scratch/data (keep ignored)
 data/
 docs/
+!docs/
+!docs/legal-revert-guide.md
 old_guidelines.md
 benchmark/results/
 *.txt
 
 # User guide (setup instructions)
 user_guide.md
+# Sentry Config File
+.env.sentry-build-plugin
