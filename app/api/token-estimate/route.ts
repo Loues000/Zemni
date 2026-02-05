@@ -85,12 +85,15 @@ export async function POST(request: Request) {
   let systemPrompt = "";
   let userPrompt = "";
 
+  // Default to English for token estimation (no user context available)
+  const defaultLanguage = "en";
+  
   if (mode === "summary") {
-    ({ systemPrompt, userPrompt } = await buildSectionSummaryPrompts([section], structureHints));
+    ({ systemPrompt, userPrompt } = await buildSectionSummaryPrompts([section], structureHints, defaultLanguage));
   } else if (mode === "flashcards") {
-    ({ systemPrompt, userPrompt } = await buildFlashcardsPrompts([section], n ?? 6));
+    ({ systemPrompt, userPrompt } = await buildFlashcardsPrompts([section], n ?? 6, defaultLanguage));
   } else {
-    ({ systemPrompt, userPrompt } = await buildQuizPrompts(section, n ?? 6, []));
+    ({ systemPrompt, userPrompt } = await buildQuizPrompts(section, n ?? 6, [], defaultLanguage));
   }
 
   const fullPrompt = systemPrompt + "\n" + userPrompt;

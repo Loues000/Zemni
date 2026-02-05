@@ -4,7 +4,6 @@ import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import { encryptKey } from "@/lib/encryption";
 import { validateApiKeyFormat, getValidationErrorMessage, type ApiProvider } from "@/lib/api-key-validation";
-import { checkRateLimit } from "@/lib/rate-limit";
 
 // Create unauthenticated Convex client (auth happens via clerkUserId param)
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
@@ -47,18 +46,27 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Check rate limit
-    const rateLimit = checkRateLimit(userId);
-    if (!rateLimit.allowed) {
-      return NextResponse.json(
-        { error: "Too many requests. Please try again later." },
-        {
-          status: 429,
-          headers: {
-            "Retry-After": String(rateLimit.retryAfter || 3600),
-          },
-        }
-      );
+    // Check rate limit (using Convex for persistence)
+    try {
+      const rateLimit = await convex.mutation(api.rateLimits.checkRateLimit, {
+        userId: userId,
+        type: "key_management",
+      });
+      if (!rateLimit.allowed) {
+        return NextResponse.json(
+          { error: "Too many requests. Please try again later." },
+          {
+            status: 429,
+            headers: {
+              "Retry-After": String(rateLimit.retryAfter || 3600),
+            },
+          }
+        );
+      }
+    } catch (error) {
+      // If Convex call fails, log but allow request (fail open for availability)
+      console.error("Rate limit check failed:", error);
+      // Continue with request - rate limiting is a protection, not a blocker
     }
 
     const body = await request.json();
@@ -135,18 +143,27 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Check rate limit
-    const rateLimit = checkRateLimit(userId);
-    if (!rateLimit.allowed) {
-      return NextResponse.json(
-        { error: "Too many requests. Please try again later." },
-        {
-          status: 429,
-          headers: {
-            "Retry-After": String(rateLimit.retryAfter || 3600),
-          },
-        }
-      );
+    // Check rate limit (using Convex for persistence)
+    try {
+      const rateLimit = await convex.mutation(api.rateLimits.checkRateLimit, {
+        userId: userId,
+        type: "key_management",
+      });
+      if (!rateLimit.allowed) {
+        return NextResponse.json(
+          { error: "Too many requests. Please try again later." },
+          {
+            status: 429,
+            headers: {
+              "Retry-After": String(rateLimit.retryAfter || 3600),
+            },
+          }
+        );
+      }
+    } catch (error) {
+      // If Convex call fails, log but allow request (fail open for availability)
+      console.error("Rate limit check failed:", error);
+      // Continue with request - rate limiting is a protection, not a blocker
     }
 
     const { searchParams } = new URL(request.url);

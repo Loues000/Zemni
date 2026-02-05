@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { generateText } from "ai";
 import { openrouter } from "@/lib/openrouter";
 import { loadModels } from "@/lib/models";
@@ -11,10 +12,15 @@ import { getUserContext, checkModelAvailability, getApiKeyToUse, getApiKeyForMod
 import { isModelAvailable } from "@/lib/models";
 import { createOpenRouterClient } from "@/lib/openrouter";
 import { generateWithProvider, type ProviderInfo } from "@/lib/providers";
+import { ConvexHttpClient } from "convex/browser";
+import { api } from "@/convex/_generated/api";
+import { validateModelId, validateFlashcardsDensity } from "@/lib/utils/validation";
 import type { DocumentSection, Flashcard, UsageStats } from "@/types";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
+
+const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
 const CHUNK_CHARS = 7_500;
 const CHUNK_OVERLAP_CHARS = 350;
@@ -58,6 +64,7 @@ const clampInt = (value: number, min: number, max: number): number => {
 };
 
 export async function POST(request: Request) {
+  const { userId: clerkUserId } = await auth();
   const userContext = await getUserContext();
   const apiKey = getApiKeyToUse(userContext);
 
@@ -85,12 +92,37 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Missing modelId or sections" }, { status: 400 });
   }
 
+  // Validate model ID
+  const modelValidation = await validateModelId(modelId);
+  if (!modelValidation.valid) {
+    return NextResponse.json({ error: modelValidation.error }, { status: 400 });
+  }
+
+  // Validate coverage level (density)
+  const densityValidation = validateFlashcardsDensity(coverageLevel);
+  if (!densityValidation.valid) {
+    return NextResponse.json({ error: densityValidation.error }, { status: 400 });
+  }
+
+  // Validate sections have valid structure
+  for (let i = 0; i < sections.length; i++) {
+    const section = sections[i];
+    if (!section.id || !section.text || section.text.trim().length === 0) {
+      return NextResponse.json(
+        { error: `Section at index ${i} is invalid: must have id and non-empty text` },
+        { status: 400 }
+      );
+    }
+  }
+
   const models = await loadModels();
   const model = models.find((item) => item.openrouterId === modelId) ?? null;
 
   if (!model) {
     return NextResponse.json({ error: "Model not found" }, { status: 400 });
   }
+
+  const allowUnlimitedOutput = model.pricing.output_per_1m === 0;
 
   // Check if user has access to this model (subscription OR API key)
   const hasModelAccess = checkModelAvailability(
@@ -100,9 +132,30 @@ export async function POST(request: Request) {
 
   if (!hasModelAccess) {
     return NextResponse.json(
-      { error: "This model is not available for your subscription tier" },
+      { error: "This model is not available for your subscription tier. Add an API key in settings to use higher tier models." },
       { status: 403 }
     );
+  }
+
+  // Check monthly usage limit
+  if (userContext) {
+    try {
+      const monthlyUsage = await convex.query(api.usage.getMonthlyGenerationCount, {});
+      if (monthlyUsage.count >= monthlyUsage.limit) {
+        return NextResponse.json(
+          {
+            error: `Monthly limit reached (${monthlyUsage.count}/${monthlyUsage.limit} generations). Upgrade your plan for more generations.`,
+            limitReached: true,
+            currentCount: monthlyUsage.count,
+            limit: monthlyUsage.limit,
+          },
+          { status: 429 }
+        );
+      }
+    } catch (err) {
+      console.error("Failed to check usage limit:", err);
+      // Continue with generation if limit check fails (fail open)
+    }
   }
 
   // Determine which API key to use (system key for subscription models, user key for own-cost models)
@@ -123,6 +176,10 @@ export async function POST(request: Request) {
       isOwnKey: k.useOwnKey,
     }))
     : [];
+
+  // Get user preferences for language and custom guidelines
+  const userLanguage = userContext?.preferredLanguage || "en";
+  const customGuidelines = userContext?.customGuidelines;
 
   const openrouterClient = !isOwnKey ? createOpenRouterClient(finalApiKey) : null;
   const start = Date.now();
@@ -151,69 +208,146 @@ export async function POST(request: Request) {
     }
   }
 
+  /**
+   * Validates flashcard structure
+   */
+  const validateFlashcard = (card: any): card is ModelFlashcard => {
+    if (!card || typeof card !== "object") return false;
+    const sectionId = String(card.sectionId ?? "").trim();
+    const front = String(card.front ?? "").trim();
+    const back = String(card.back ?? "").trim();
+    const sourceSnippet = String(card.sourceSnippet ?? "").trim();
+    // Normalize type: accept "qa", "Q&A", "question", etc. and convert to "qa" or "cloze"
+    const typeRaw = String(card.type ?? "").toLowerCase();
+    const type = typeRaw === "cloze" || typeRaw.includes("cloze") ? "cloze" : "qa";
+
+    return sectionId.length > 0 && front.length > 0 && back.length > 0 && sourceSnippet.length > 0;
+  };
+
   const perfConfig = getModelPerformanceConfig(modelId);
   const results = await mapWithConcurrency(tasks, 2, async (task) => {
-    const { systemPrompt, userPrompt } = await buildFlashcardsPrompts(
-      [{ id: task.sectionMeta.id, title: task.sectionMeta.title, text: task.chunkText, page: task.sectionMeta.page }],
-      task.cardsWanted
-    );
+    const generateFlashcards = async (retryCount: number = 0): Promise<{ flashcards: ModelFlashcard[]; usage: any }> => {
+      const { systemPrompt, userPrompt } = await buildFlashcardsPrompts(
+        [{ id: task.sectionMeta.id, title: task.sectionMeta.title, text: task.chunkText, page: task.sectionMeta.page }],
+        task.cardsWanted,
+        userLanguage,
+        customGuidelines
+      );
 
-    const timeout = createTimeoutController(perfConfig.timeoutMs);
-    try {
-      const baseMaxTokens = Math.min(4096, Math.max(900, task.cardsWanted * 190));
-      const adjustedMaxTokens = Math.floor(baseMaxTokens * perfConfig.maxTokensMultiplier);
+      // Progressive retries:
+      // Retry 1: Add JSON format instructions
+      // Retry 2: Increase maxTokens (already handled by multiplier, but can be forced)
+      // Retry 3: Reduce cards wanted
+      const currentCardsWanted = retryCount < 2 ? task.cardsWanted : Math.max(1, Math.floor(task.cardsWanted * 0.7));
 
-      let result: { text: string; usage: any };
+      const enhancedSystemPrompt = retryCount > 0
+        ? `${systemPrompt}\n\nCRITICAL: Output ONLY valid JSON. No markdown, no code fences, no explanations. The JSON must be parseable. Ensure all strings are properly escaped and closed.`
+        : systemPrompt;
 
-      if (isOwnKey && modelApiKeyInfo) {
-        // Use direct provider API for user's own key
-        const providerResult = await generateWithProvider(modelId, [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
-        ], apiKeys, {
-          maxTokens: adjustedMaxTokens,
-          temperature: 0.2,
-          maxRetries: 1,
-        });
-        result = {
-          text: providerResult.text,
-          usage: providerResult.usage,
-        };
-      } else {
-        // Use OpenRouter (system key)
-        const genResult = await generateText({
-          model: openrouterClient!(modelId) as any,
-          maxTokens: adjustedMaxTokens,
-          temperature: 0.2,
-          maxRetries: 1,
-          abortSignal: timeout.signal,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt }
-          ]
-        });
-        result = {
-          text: genResult.text,
-          usage: genResult.usage,
-        };
-      }
-
+      const timeout = createTimeoutController(perfConfig.timeoutMs * (retryCount + 1));
       try {
-        const parsed = parseJsonFromModelText<FlashcardsResult>(result.text);
-        return { flashcards: parsed.flashcards ?? [], usage: result.usage };
-      } catch (parseErr) {
-        // Log parsing error for debugging, but still return empty array to not break the flow
-        console.error(`[Flashcards] JSON parse error for model ${modelId}:`, parseErr instanceof Error ? parseErr.message : String(parseErr));
-        return { flashcards: [], usage: result.usage };
+        const baseMaxTokens = Math.min(4096, Math.max(1500, currentCardsWanted * 250));
+        let adjustedMaxTokens = Math.floor(baseMaxTokens * perfConfig.maxTokensMultiplier);
+
+        // Boost max tokens even more on retry if it looked truncated
+        if (retryCount > 0) adjustedMaxTokens = Math.floor(adjustedMaxTokens * 1.5);
+
+        let result: { text: string; usage: any };
+        const maxTokens = allowUnlimitedOutput ? undefined : adjustedMaxTokens;
+
+        if (isOwnKey && modelApiKeyInfo) {
+          const providerResult = await generateWithProvider(modelId, [
+            { role: "system", content: enhancedSystemPrompt },
+            { role: "user", content: userPrompt }
+          ], apiKeys, {
+            maxTokens,
+            temperature: 0.2, // Lower temperature for more stable JSON
+            maxRetries: 1,
+          });
+          result = {
+            text: providerResult.text,
+            usage: providerResult.usage,
+          };
+        } else {
+          const genResult = await generateText({
+            model: openrouterClient!(modelId) as any,
+            maxTokens,
+            temperature: 0.2,
+            maxRetries: 1,
+            abortSignal: timeout.signal,
+            messages: [
+              { role: "system", content: enhancedSystemPrompt },
+              { role: "user", content: userPrompt }
+            ]
+          });
+          result = {
+            text: genResult.text,
+            usage: genResult.usage,
+          };
+        }
+
+        if (!result.text || result.text.trim().length < 10) {
+          if (retryCount < 2) {
+            console.warn(`[Flashcards] Empty response from ${modelId}, retrying (${retryCount + 1})...`);
+            timeout.cancel();
+            return generateFlashcards(retryCount + 1);
+          }
+        }
+
+        try {
+          const parsed = parseJsonFromModelText<FlashcardsResult>(result.text);
+
+          if (!parsed || typeof parsed !== "object") {
+            throw new Error("Parsed result is not an object");
+          }
+
+          const flashcardsRaw = parsed.flashcards;
+          if (!Array.isArray(flashcardsRaw)) {
+            console.warn(`[Flashcards] Invalid flashcards field: expected array, got ${typeof flashcardsRaw}`);
+            if (retryCount < 2) {
+              timeout.cancel();
+              return generateFlashcards(retryCount + 1);
+            }
+            return { flashcards: [], usage: result.usage };
+          }
+
+          const flashcards = flashcardsRaw.filter(validateFlashcard);
+
+          if (flashcards.length === 0 && retryCount < 1) {
+            console.warn(`[Flashcards] No valid flashcards from model ${modelId}, retrying...`);
+            timeout.cancel();
+            return generateFlashcards(retryCount + 1);
+          }
+
+          return { flashcards, usage: result.usage };
+        } catch (parseErr) {
+          const errMsg = parseErr instanceof Error ? parseErr.message : String(parseErr);
+          const isTruncated = errMsg.includes("truncated") || errMsg.includes("Expected ',' or ']'") || errMsg.includes("Unexpected end");
+
+          if (retryCount < 2) {
+            console.warn(`[Flashcards] JSON parse error (${isTruncated ? "truncated" : "malformed"}) for model ${modelId}, retrying (${retryCount + 1})...`);
+            timeout.cancel();
+            return generateFlashcards(retryCount + 1);
+          }
+
+          console.error(`[Flashcards] JSON parse error for model ${modelId} after multiple retries:`, errMsg);
+          return { flashcards: [], usage: result.usage };
+        }
+      } catch (err) {
+        if (isAbortError(err)) {
+          if (retryCount < 1) {
+            console.warn(`[Flashcards] Timeout for model ${modelId}, retrying with longer timeout...`);
+            return generateFlashcards(retryCount + 1);
+          }
+          return { flashcards: [], usage: undefined };
+        }
+        throw err;
+      } finally {
+        timeout.cancel();
       }
-    } catch (err) {
-      if (isAbortError(err)) {
-        return { flashcards: [], usage: undefined };
-      }
-      throw err;
-    } finally {
-      timeout.cancel();
-    }
+    };
+
+    return generateFlashcards();
   });
 
   const flashcards: Flashcard[] = [];
@@ -249,5 +383,23 @@ export async function POST(request: Request) {
 
   const usageAgg = sumUsage(results.map((r) => r.usage));
   const usage: UsageStats | null = buildUsageStats(usageAgg, Date.now() - start, model, "flashcards");
+
+  // Save usage to Convex if user is authenticated
+  if (clerkUserId) {
+    try {
+      await convex.mutation(api.usage.recordUsage, {
+        source: "flashcards",
+        tokensIn: usageAgg?.promptTokens || 0,
+        tokensOut: usageAgg?.completionTokens || 0,
+        cost: usage?.costTotal || 0,
+        modelId: modelId,
+        clerkUserId: clerkUserId,
+      });
+    } catch (err) {
+      console.error("Failed to record usage:", err);
+      // Don't fail the request if usage recording fails
+    }
+  }
+
   return NextResponse.json({ flashcards, usage, meta: { requestedCardsPerSection: cardsPerSection, usedCardsPerSection: targetCardsPerSection } });
 }

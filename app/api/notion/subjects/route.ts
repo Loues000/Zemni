@@ -1,19 +1,44 @@
 import { NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
+import { ConvexHttpClient } from "convex/browser";
+import { api } from "@/convex/_generated/api";
 import { listSubjects } from "@/lib/notion";
 import { trackError } from "@/lib/error-tracking";
+import { decryptKey } from "@/lib/encryption";
+
+const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  // Check for user-provided Notion config (from localStorage, passed via query params or headers)
-  // For now, fall back to environment variables
   const { searchParams } = new URL(request.url);
   const userDatabaseId = searchParams.get("databaseId");
   const userToken = request.headers.get("x-notion-token");
 
-  const databaseId = userDatabaseId || process.env.NOTION_SUBJECTS_DATABASE_ID;
-  const notionToken = userToken || process.env.NOTION_TOKEN;
+  let databaseId = userDatabaseId || process.env.NOTION_SUBJECTS_DATABASE_ID;
+  let notionToken = userToken || process.env.NOTION_TOKEN;
+
+  // If no token provided via header, try to get from Convex (server-side decryption)
+  if (!notionToken) {
+    try {
+      const { userId } = await auth();
+      if (userId) {
+        const user = await convex.query(api.users.getUserByClerkUserId, {
+          clerkUserId: userId,
+        });
+        if (user?.notionToken) {
+          notionToken = decryptKey(user.notionToken);
+          if (!databaseId && user.notionDatabaseId) {
+            databaseId = user.notionDatabaseId;
+          }
+        }
+      }
+    } catch (error) {
+      // Fall back to env var if Convex lookup fails
+      console.warn("Failed to get Notion config from Convex:", error);
+    }
+  }
 
   if (!databaseId || !notionToken) {
     return NextResponse.json({ subjects: [] });
@@ -47,10 +72,11 @@ export async function GET(request: Request) {
         });
       } else if (errorAny.status === 401 || error.message.includes("401") || error.message.includes("Unauthorized")) {
         errorMessage = "Invalid Notion token. Please check your integration settings.";
-        // Track auth errors as they indicate configuration issues
+        // Track auth errors silently (still sent to Sentry for monitoring, but don't spam console)
         trackError(error, {
           action: "notion_subjects_auth",
           metadata: { databaseId },
+          silent: true,
         });
       } else {
         errorMessage = error.message || errorMessage;

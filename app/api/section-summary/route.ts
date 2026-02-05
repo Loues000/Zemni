@@ -1,4 +1,7 @@
 import { NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
+import { ConvexHttpClient } from "convex/browser";
+import { api } from "@/convex/_generated/api";
 import { loadModels } from "@/lib/models";
 import { buildUsageStats } from "@/lib/usage";
 import { enforceOutputFormat } from "@/lib/format-output";
@@ -71,13 +74,15 @@ const generateWithTimeout = async (
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
+const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+
 const NOTES_CHUNK_CHARS = 12_000;
 const NOTES_CHUNK_OVERLAP_CHARS = 350;
 const NOTES_MAX_CHUNKS_PER_SECTION = 8;
-const NOTES_CONCURRENCY = 3;
-const NOTES_CALL_TIMEOUT_MS = 60_000;
-const FINAL_CALL_TIMEOUT_MS = 180_000;
-const CHUNKING_THRESHOLD_CHARS = 12_000;
+const NOTES_CONCURRENCY = 5;
+const NOTES_CALL_TIMEOUT_MS = 45_000;
+const FINAL_CALL_TIMEOUT_MS = 120_000;
+const CHUNKING_THRESHOLD_CHARS = 35_000;
 
 const toSections = (value: unknown): DocumentSection[] => {
   if (!Array.isArray(value)) return [];
@@ -97,6 +102,7 @@ const toSections = (value: unknown): DocumentSection[] => {
 };
 
 export async function POST(request: Request) {
+  const { userId: clerkUserId } = await auth();
   const userContext = await getUserContext();
   const apiKey = getApiKeyToUse(userContext);
 
@@ -121,6 +127,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Model not found" }, { status: 400 });
   }
 
+  const allowUnlimitedOutput = model.pricing.output_per_1m === 0;
+
   // Check if user has access to this model (subscription OR API key)
   const hasModelAccess = checkModelAvailability(
     { id: model.openrouterId, subscriptionTier: model.subscriptionTier },
@@ -129,7 +137,7 @@ export async function POST(request: Request) {
 
   if (!hasModelAccess) {
     return NextResponse.json(
-      { error: "This model is not available for your subscription tier" },
+      { error: "This model is not available for your subscription tier. Add an API key in settings to use higher tier models." },
       { status: 403 }
     );
   }
@@ -156,6 +164,10 @@ export async function POST(request: Request) {
   // Prepare OpenRouter client for system key (when not using own key)
   const openrouterClient = !isOwnKey ? createOpenRouterClient(finalApiKey) : null;
 
+  // Get user preferences for language and custom guidelines
+  const userLanguage = userContext?.preferredLanguage || "en";
+  const customGuidelines = userContext?.customGuidelines;
+
   const start = Date.now();
 
   const totalChars = sections.reduce((acc, s) => acc + (s.text?.length ?? 0), 0);
@@ -167,7 +179,17 @@ export async function POST(request: Request) {
   const usages: Array<LanguageModelUsage | undefined> = [];
 
   const summarizeDirect = async (): Promise<{ text: string; usage: LanguageModelUsage | undefined }> => {
-    const { systemPrompt, userPrompt } = await buildSectionSummaryPrompts(sections, structure);
+    const { systemPrompt, userPrompt } = await buildSectionSummaryPrompts(sections, structure, userLanguage, customGuidelines);
+
+    // Dynamic maxTokens based on content length and number of sections
+    // More realistic: ~3 characters per token (accounts for markdown overhead)
+    const charBasedTokens = Math.floor(totalChars / 3);
+    // More tokens per section for comprehensive summaries
+    const sectionBasedTokens = sections.length * 1000;
+    // Higher minimum (8000) and higher maximum (16000) to allow complete summaries
+    const dynamicMaxTokens = Math.min(16000, Math.max(8000, charBasedTokens, sectionBasedTokens));
+    const maxTokens = allowUnlimitedOutput ? undefined : dynamicMaxTokens;
+
     const result = await generateWithTimeout(
       modelId,
       [
@@ -177,8 +199,8 @@ export async function POST(request: Request) {
       apiKeys,
       openrouterClient,
       {
-        maxTokens: 2800,
-        temperature: 0.2,
+        maxTokens,
+        temperature: 0.1,
         maxRetries: 1,
         timeoutMs: FINAL_CALL_TIMEOUT_MS,
       }
@@ -203,7 +225,7 @@ export async function POST(request: Request) {
       chunks.forEach((chunkText, index) => {
         noteSections.push({
           id: `${section.id}#${index + 1}`,
-          title: `${section.title} (Teil ${index + 1})`,
+          title: `${section.title} (Part ${index + 1})`,
           text: chunkText,
           page: section.page
         });
@@ -211,7 +233,7 @@ export async function POST(request: Request) {
     }
 
     const chunkNotes = await mapWithConcurrency(noteSections, NOTES_CONCURRENCY, async (noteSection) => {
-      const { systemPrompt, userPrompt } = await buildChunkNotesPrompts(noteSection, { maxBullets: 42 });
+      const { systemPrompt, userPrompt } = await buildChunkNotesPrompts(noteSection, { maxBullets: 42, language: userLanguage, customGuidelines });
       try {
         const result = await generateWithTimeout(
           modelId,
@@ -222,7 +244,7 @@ export async function POST(request: Request) {
           apiKeys,
           openrouterClient,
           {
-            maxTokens: 950,
+            maxTokens: allowUnlimitedOutput ? undefined : 950,
             temperature: 0.2,
             maxRetries: 1,
             timeoutMs: NOTES_CALL_TIMEOUT_MS,
@@ -246,7 +268,18 @@ export async function POST(request: Request) {
       page: r.section.page
     }));
 
-    const { systemPrompt, userPrompt } = await buildSectionSummaryPrompts(notesAsSections, structure);
+    const { systemPrompt, userPrompt } = await buildSectionSummaryPrompts(notesAsSections, structure, userLanguage, customGuidelines);
+
+    // Dynamic maxTokens for the final summary assembly
+    const totalNoteChars = notesAsSections.reduce((acc, s) => acc + (s.text?.length ?? 0), 0);
+    // More realistic: ~3 characters per token (accounts for markdown overhead)
+    const charBasedTokens = Math.floor(totalNoteChars / 3);
+    // More tokens per section for comprehensive summaries
+    const sectionBasedTokens = notesAsSections.length * 1000;
+    // Higher minimum (8000) and higher maximum (16000) to allow complete summaries
+    const dynamicMaxTokens = Math.min(16000, Math.max(8000, charBasedTokens, sectionBasedTokens));
+    const maxTokens = allowUnlimitedOutput ? undefined : dynamicMaxTokens;
+
     const result = await generateWithTimeout(
       modelId,
       [
@@ -256,8 +289,8 @@ export async function POST(request: Request) {
       apiKeys,
       openrouterClient,
       {
-        maxTokens: 2800,
-        temperature: 0.2,
+        maxTokens,
+        temperature: 0.1,
         maxRetries: 1,
         timeoutMs: FINAL_CALL_TIMEOUT_MS,
       }
@@ -272,6 +305,24 @@ export async function POST(request: Request) {
     const summary = enforceOutputFormat(result.text, titleHint || undefined);
     const usageAgg = sumUsage(usages);
     const usage: UsageStats | null = buildUsageStats(usageAgg, Date.now() - start, model, "section-summary");
+
+    // Save usage to Convex if user is authenticated
+    if (clerkUserId) {
+      try {
+        await convex.mutation(api.usage.recordUsage, {
+          source: "section-summary",
+          tokensIn: usageAgg?.promptTokens || 0,
+          tokensOut: usageAgg?.completionTokens || 0,
+          cost: usage?.costTotal || 0,
+          modelId: modelId,
+          clerkUserId: clerkUserId,
+        });
+      } catch (err) {
+        console.error("Failed to record usage:", err);
+        // Don't fail the request if usage recording fails
+      }
+    }
+
     return NextResponse.json({ summary, usage, meta: { chunked: shouldChunk, totalChars } });
   } catch (err) {
     if (isAbortError(err)) {

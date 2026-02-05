@@ -1,5 +1,11 @@
 import { NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
+import { ConvexHttpClient } from "convex/browser";
+import { api } from "@/convex/_generated/api";
 import { exportSummary, ExportProgress, createNotionClient } from "@/lib/notion";
+import { decryptKey } from "@/lib/encryption";
+
+const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
 export const runtime = "nodejs";
 
@@ -10,7 +16,36 @@ export async function POST(request: Request) {
   const title = String(body.title ?? "");
   const markdown = String(body.markdown ?? "");
   const stream = body.stream === true;
-  const notionToken = body.notionToken || process.env.NOTION_TOKEN;
+  let notionToken = body.notionToken || process.env.NOTION_TOKEN;
+
+  // If token is encrypted (from Convex), decrypt it server-side
+  // Encrypted tokens contain colons (iv:tag:encrypted format)
+  if (notionToken && notionToken.includes(":") && notionToken.split(":").length === 3) {
+    try {
+      notionToken = decryptKey(notionToken);
+    } catch (error) {
+      // If decryption fails, it might be a plain token, continue with it
+      console.warn("Failed to decrypt token, using as-is:", error);
+    }
+  }
+
+  // If no token provided, try to get from Convex (server-side decryption)
+  if (!notionToken) {
+    try {
+      const { userId } = await auth();
+      if (userId) {
+        const user = await convex.query(api.users.getUserByClerkUserId, {
+          clerkUserId: userId,
+        });
+        if (user?.notionToken) {
+          notionToken = decryptKey(user.notionToken);
+        }
+      }
+    } catch (error) {
+      // Fall back to env var if Convex lookup fails
+      console.warn("Failed to get Notion config from Convex:", error);
+    }
+  }
 
   if (!notionToken) {
     return NextResponse.json({ error: "Missing Notion token" }, { status: 400 });

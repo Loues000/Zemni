@@ -24,11 +24,12 @@ export async function POST(request: Request) {
     // Encrypt the token server-side before storing
     const encryptedToken = encryptKey(token);
 
-    // Save to Convex
+    // Save to Convex with clerkUserId for auth
     await convex.mutation(api.users.updateNotionConfig, {
       token: encryptedToken,
       databaseId: databaseId || undefined,
       exportMethod: exportMethod || undefined,
+      clerkUserId: userId,
     });
 
     return NextResponse.json({ success: true });
@@ -49,8 +50,10 @@ export async function DELETE() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Clear Notion configuration
-    await convex.mutation(api.users.clearNotionConfig, {});
+    // Clear Notion configuration with clerkUserId for auth
+    await convex.mutation(api.users.clearNotionConfig, {
+      clerkUserId: userId,
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {
