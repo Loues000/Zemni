@@ -7,21 +7,23 @@ import { getUserContext, checkModelAvailability, getApiKeyToUse, getApiKeyForMod
 import { createOpenRouterClient } from "@/lib/openrouter";
 import { isModelAvailable } from "@/lib/models";
 import { buildUsageStats } from "@/lib/usage";
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import { validateTextSize } from "@/lib/request-validation";
 import { validateSummaryText, validateMessagesArray, validateModelId } from "@/lib/utils/validation";
+import { getConvexClient } from "@/lib/convex-server";
 
 export const runtime = "nodejs";
 
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
-
+/**
+ * Stream a refined summary from the provided summary and messages.
+ */
 export async function POST(request: Request) {
   const userContext = await getUserContext();
   
   // Check rate limit for authenticated users (using Convex for persistence)
   if (userContext) {
     try {
+      const convex = getConvexClient();
       const rateLimit = await convex.mutation(api.rateLimits.checkRateLimit, {
         userId: userContext.userId,
         type: "generation",

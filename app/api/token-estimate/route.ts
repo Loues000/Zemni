@@ -6,12 +6,18 @@ import type { DocumentSection, OutputKind } from "@/types";
 
 export const runtime = "nodejs";
 
+/**
+ * Clamp a value into an integer range with a fallback.
+ */
 const clampInt = (value: unknown, min: number, max: number, fallback: number): number => {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
   return Math.max(min, Math.min(max, Math.floor(n)));
 };
 
+/**
+ * Estimate output tokens based on mode, input size, and per-section counts.
+ */
 const estimateOutputTokens = (
   avgInputTokens: number,
   mode: OutputKind,
@@ -67,6 +73,9 @@ const estimateOutputTokens = (
   return { outputRatio, outputCap, estimatedOutputTokens, note: `Output estimate: min(${outputCap}, inputTokens x ${outputRatio})` };
 };
 
+/**
+ * Estimate token usage and cost for a summarization request.
+ */
 export async function POST(request: Request) {
   const body = await request.json();
   const extractedText = String(body.extractedText ?? "");

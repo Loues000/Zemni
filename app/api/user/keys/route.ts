@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import { encryptKey } from "@/lib/encryption";
 import { validateApiKeyFormat, getValidationErrorMessage, type ApiProvider } from "@/lib/api-key-validation";
+import { getConvexClient } from "@/lib/convex-server";
 
-// Create unauthenticated Convex client (auth happens via clerkUserId param)
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
-
+/**
+ * Return metadata for the current user's API keys.
+ */
 export async function GET() {
   try {
     const { userId } = await auth();
@@ -15,6 +15,8 @@ export async function GET() {
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    const convex = getConvexClient();
 
     // Get user keys from Convex using clerkUserId
     const keys = await convex.query(api.apiKeys.getUserKeys, { clerkUserId: userId });
@@ -38,6 +40,9 @@ export async function GET() {
   }
 }
 
+/**
+ * Store an encrypted API key for the current user.
+ */
 export async function POST(request: Request) {
   try {
     const { userId } = await auth();
@@ -45,6 +50,8 @@ export async function POST(request: Request) {
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    const convex = getConvexClient();
 
     // Check rate limit (using Convex for persistence)
     try {
@@ -135,6 +142,9 @@ export async function POST(request: Request) {
   }
 }
 
+/**
+ * Delete a stored API key for the current user.
+ */
 export async function DELETE(request: Request) {
   try {
     const { userId } = await auth();
@@ -142,6 +152,8 @@ export async function DELETE(request: Request) {
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    const convex = getConvexClient();
 
     // Check rate limit (using Convex for persistence)
     try {

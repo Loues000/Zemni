@@ -13,6 +13,9 @@ const PROVIDERS = [
   { id: "google", label: "Google (Gemini)", placeholder: "AIza..." },
 ] as const;
 
+/**
+ * Manage user-provided API keys and usage preference.
+ */
 export function ApiKeysTab() {
   const { user } = useUser();
   const [keyValues, setKeyValues] = useState<Record<string, string>>({});
@@ -25,6 +28,9 @@ export function ApiKeysTab() {
   const setUseOwnKeyPref = useMutation(api.apiKeys.setUseOwnKeyPreference);
   const deleteKey = useMutation(api.apiKeys.deleteKey);
 
+  /**
+   * Persist the preference for using user-provided keys.
+   */
   const handleToggleUseOwnKey = async (value: boolean) => {
     setLoading(true);
     try {
@@ -39,6 +45,9 @@ export function ApiKeysTab() {
     }
   };
 
+  /**
+   * Save a new API key for the selected provider.
+   */
   const handleSaveKey = async (provider: string) => {
     const keyValue = keyValues[provider];
     if (!keyValue) {
@@ -69,6 +78,9 @@ export function ApiKeysTab() {
     }
   };
 
+  /**
+   * Delete a stored API key after confirmation.
+   */
   const handleDeleteKey = async (keyId: string) => {
     if (!confirm("Are you sure you want to delete this API key?")) {
       return;
@@ -91,6 +103,9 @@ export function ApiKeysTab() {
     }
   };
 
+  /**
+   * Return the active key for a provider, if any.
+   */
   const getKeyForProvider = (provider: string) => {
     return userKeys?.find((k: any) => k.provider === provider && k.isActive);
   };

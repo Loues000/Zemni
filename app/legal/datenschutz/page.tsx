@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * Render the placeholder privacy policy page.
+ */
 export default function DatenschutzPage() {
   return (
     <div className="legal-page">

@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * Render the placeholder withdrawal policy page.
+ */
 export default function WiderrufPage() {
   return (
     <div className="legal-page">

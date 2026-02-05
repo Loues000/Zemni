@@ -20,6 +20,9 @@ const body = IBM_Plex_Sans({
   variable: "--font-body"
 });
 
+/**
+ * Provide default metadata and Sentry tracing headers.
+ */
 export function generateMetadata(): Metadata {
   return {
     title: "Zemni",
@@ -30,6 +33,9 @@ export function generateMetadata(): Metadata {
   };
 }
 
+/**
+ * App root layout with providers and global UI scaffolding.
+ */
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   // Only include UserSync if Clerk is configured
   const clerkKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;

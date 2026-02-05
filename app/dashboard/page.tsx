@@ -11,6 +11,9 @@ import { LegalNotice } from "@/components/ui/LegalNotice";
 // Prevent static generation - requires authentication
 export const dynamic = 'force-dynamic';
 
+/**
+ * Dashboard for listing and managing saved documents.
+ */
 export default function DashboardPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const router = useRouter();
@@ -24,6 +27,9 @@ export default function DashboardPage() {
 
   const displayDocs = searchQuery && searchResults ? searchResults : documents?.documents || [];
 
+  /**
+   * Delete a document after confirmation.
+   */
   const handleDelete = async (docId: string) => {
     if (!confirm("Are you sure you want to delete this document?")) return;
     try {
@@ -34,6 +40,9 @@ export default function DashboardPage() {
     }
   };
 
+  /**
+   * Navigate to the selected document in the main app.
+   */
   const handleOpen = (docId: string) => {
     router.push(`/?document=${docId}`);
   };

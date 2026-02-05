@@ -18,6 +18,9 @@ interface SettingsModalProps {
   historyCount?: number;
 }
 
+/**
+ * Modal dialog for quick app settings.
+ */
 export function SettingsModal({
   isOpen,
   onClose,
@@ -43,6 +46,9 @@ export function SettingsModal({
   useEffect(() => {
     if (!isOpen) return;
 
+    /**
+     * Close modal when clicking outside the dialog.
+     */
     const onPointerDown = (e: PointerEvent) => {
       const root = rootRef.current;
       if (!root) return;
@@ -51,6 +57,9 @@ export function SettingsModal({
       }
     };
 
+    /**
+     * Close modal on Escape key.
+     */
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
@@ -63,6 +72,9 @@ export function SettingsModal({
     };
   }, [isOpen, onClose]);
 
+  /**
+   * Persist settings and close the modal.
+   */
   const handleSave = () => {
     onSave({
       defaultModel: localDefaultModel,

@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { polar, TIER_PRODUCT_IDS } from "@/lib/polar";
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
+import { getConvexClient } from "@/lib/convex-server";
 
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
-
+/**
+ * Create a Polar checkout session for the selected paid tier.
+ */
 export async function POST(request: Request) {
   try {
     if (process.env.NEXT_PUBLIC_ENABLE_BILLING !== "true") {
@@ -20,6 +21,8 @@ export async function POST(request: Request) {
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    const convex = getConvexClient();
 
     // Get user from Clerk to get email
     const clerkUser = await currentUser();

@@ -1,12 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import { decryptKey } from "./encryption";
 import { isModelAvailable } from "./models";
 import { isModelAvailableViaApiKey } from "./model-availability";
-
-// Create unauthenticated Convex client (auth happens via clerkUserId param)
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+import { getConvexClient } from "@/lib/convex-server";
 
 export type ApiProvider = "openrouter" | "openai" | "anthropic" | "google";
 
@@ -36,6 +33,8 @@ export async function getUserContext(): Promise<UserContext | null> {
   if (!userId) {
     return null;
   }
+
+  const convex = getConvexClient();
 
   // Get user from Convex using clerkUserId
   const user = await convex.query(api.users.getUserByClerkUserId, {

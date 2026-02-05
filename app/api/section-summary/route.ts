@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import { loadModels } from "@/lib/models";
 import { buildUsageStats } from "@/lib/usage";
@@ -14,8 +13,11 @@ import { createOpenRouterClient } from "@/lib/openrouter";
 import { generateText } from "ai";
 import type { DocumentSection, UsageStats } from "@/types";
 import type { LanguageModelUsage } from "ai";
+import { getConvexClient } from "@/lib/convex-server";
 
-// Helper to generate text with timeout, handling both own keys and system keys
+/**
+ * Generate text with a timeout, supporting system and user-provided API keys.
+ */
 const generateWithTimeout = async (
   modelId: string,
   messages: Array<{ role: string; content: string }>,
@@ -23,8 +25,9 @@ const generateWithTimeout = async (
   openrouterClient: ReturnType<typeof createOpenRouterClient> | null,
   options: { maxTokens?: number; temperature?: number; maxRetries?: number; timeoutMs: number; apiId?: string }
 ): Promise<{ text: string; usage: LanguageModelUsage | undefined }> => {
+  let timeoutId: NodeJS.Timeout | null = null;
   const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => {
+    timeoutId = setTimeout(() => {
       const err = new Error("Timeout");
       err.name = "AbortError";
       reject(err);
@@ -68,13 +71,16 @@ const generateWithTimeout = async (
       console.error(`[generateWithTimeout] API error (${status}): ${message} at ${url}`);
     }
     throw err;
+  } finally {
+    // Clear timeout to prevent unhandled promise rejections
+    if (timeoutId !== null) {
+      clearTimeout(timeoutId);
+    }
   }
 };
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
-
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
 const NOTES_CHUNK_CHARS = 12_000;
 const NOTES_CHUNK_OVERLAP_CHARS = 350;
@@ -84,6 +90,9 @@ const NOTES_CALL_TIMEOUT_MS = 45_000;
 const FINAL_CALL_TIMEOUT_MS = 120_000;
 const CHUNKING_THRESHOLD_CHARS = 35_000;
 
+/**
+ * Normalize unknown input into a list of document sections.
+ */
 const toSections = (value: unknown): DocumentSection[] => {
   if (!Array.isArray(value)) return [];
   const sections: DocumentSection[] = [];
@@ -101,6 +110,9 @@ const toSections = (value: unknown): DocumentSection[] => {
   return sections;
 };
 
+/**
+ * Generate a section summary, chunking when inputs are large.
+ */
 export async function POST(request: Request) {
   const { userId: clerkUserId } = await auth();
   const userContext = await getUserContext();
@@ -178,6 +190,9 @@ export async function POST(request: Request) {
 
   const usages: Array<LanguageModelUsage | undefined> = [];
 
+  /**
+   * Summarize sections directly in a single model call.
+   */
   const summarizeDirect = async (): Promise<{ text: string; usage: LanguageModelUsage | undefined }> => {
     const { systemPrompt, userPrompt } = await buildSectionSummaryPrompts(sections, structure, userLanguage, customGuidelines);
 
@@ -208,6 +223,9 @@ export async function POST(request: Request) {
     return { text: result.text, usage: result.usage };
   };
 
+  /**
+   * Summarize sections by first generating chunk notes, then a final summary.
+   */
   const summarizeViaNotes = async (): Promise<{ text: string; usage: LanguageModelUsage | undefined }> => {
     const noteSections: DocumentSection[] = [];
 
@@ -309,6 +327,7 @@ export async function POST(request: Request) {
     // Save usage to Convex if user is authenticated
     if (clerkUserId) {
       try {
+        const convex = getConvexClient();
         await convex.mutation(api.usage.recordUsage, {
           source: "section-summary",
           tokensIn: usageAgg?.promptTokens || 0,

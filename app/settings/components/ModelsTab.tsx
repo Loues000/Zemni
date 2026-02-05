@@ -6,7 +6,9 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useState, useMemo } from "react";
 
-// SVG Model Icon component
+/**
+ * Render a small SVG icon for a model family.
+ */
 function ModelIcon({ modelId }: { modelId: string }) {
   // Different model families have different visual representations
   if (modelId.includes("gpt-5") || modelId.includes("openai")) {
@@ -67,7 +69,9 @@ function ModelIcon({ modelId }: { modelId: string }) {
   );
 }
 
-// Get 1-line description for model based on ID
+/**
+ * Return a short human-readable description for a model id.
+ */
 function getModelDescription(modelId: string): string {
   const descriptions: Record<string, string> = {
     "openai/gpt-5.2-chat": "Fast responses with GPT-5.2 capabilities for rapid prototyping",
@@ -93,6 +97,9 @@ function getModelDescription(modelId: string): string {
   return descriptions[modelId] || "General-purpose language model for content generation";
 }
 
+/**
+ * Settings tab for selecting and browsing models.
+ */
 export function ModelsTab() {
   const { models, selectedModel, setSelectedModel, defaultModel, setDefaultModel } = useAppState();
   const currentUser = useQuery(api.users.getCurrentUser);

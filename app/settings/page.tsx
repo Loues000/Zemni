@@ -19,6 +19,9 @@ import { ContactTab } from "./components/ContactTab";
 
 const VALID_TABS = ["account", "subscription", "api-keys", "notion", "history", "models", "customization", "contact"];
 
+/**
+ * Render settings tabs based on the current URL selection.
+ */
 function SettingsContent() {
   const searchParams = useSearchParams();
   const tabFromUrl = searchParams.get("tab");
@@ -32,6 +35,9 @@ function SettingsContent() {
     }
   }, [tabFromUrl]);
 
+  /**
+   * Resolve the active tab component.
+   */
   const renderTab = () => {
     switch (activeTab) {
       case "account":
@@ -84,6 +90,9 @@ function SettingsContent() {
   );
 }
 
+/**
+ * Suspense-wrapped settings page entry point.
+ */
 export default function SettingsRoute() {
   return (
     <Suspense fallback={

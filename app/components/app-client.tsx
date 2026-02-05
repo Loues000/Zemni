@@ -54,6 +54,9 @@ import { createSummaryContext } from "@/lib/handlers/summary-context";
 import { useSummaryWrappers } from "@/lib/handlers/summary-wrappers";
 import { handleRetryGeneration } from "@/lib/handlers/retry-handlers";
 
+/**
+ * Root client component wiring global app state and layout.
+ */
 export default function AppClient() {
   const router = useRouter();
   // Core app state
@@ -122,6 +125,9 @@ export default function AppClient() {
       setShowNerdStats(saved === "true");
       
       // Listen for storage events to sync across tabs
+      /**
+       * Sync nerd stats preference between tabs via localStorage events.
+       */
       const handleStorageChange = (e: StorageEvent) => {
         if (e.key === "showNerdStats") {
           setShowNerdStats(e.newValue === "true");
@@ -557,6 +563,9 @@ export default function AppClient() {
   useEffect(() => {
     if (!settingsOpen) return;
 
+    /**
+     * Close settings when clicking outside the settings menu and button.
+     */
     const onPointerDown = (e: PointerEvent) => {
       const menu = settingsMenuRef.current;
       const button = settingsButtonRef.current;
@@ -567,6 +576,9 @@ export default function AppClient() {
       setSettingsOpen(false);
     };
 
+    /**
+     * Close settings when Escape is pressed.
+     */
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setSettingsOpen(false);
@@ -596,6 +608,9 @@ export default function AppClient() {
     const floatBtn = document.querySelector('.refine-float-btn') as HTMLElement;
     if (!refineBar || !floatBtn) return;
 
+    /**
+     * Sync refine floating button visibility with refine bar state.
+     */
     const updateFloatButton = () => {
       const isHidden = refineBar.classList.contains('refine-bar-hidden');
       floatBtn.style.display = isHidden ? 'flex' : 'none';

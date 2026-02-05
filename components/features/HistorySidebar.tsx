@@ -12,6 +12,9 @@ interface HistorySidebarProps {
   footer?: ReactNode;
 }
 
+/**
+ * Sidebar listing history entries with search and grouping.
+ */
 export function HistorySidebar({
   isOpen,
   history,
@@ -33,6 +36,9 @@ export function HistorySidebar({
         (entry.exportedSubject && entry.exportedSubject.toLowerCase().includes(query))
     );
   }, [history, searchQuery]);
+  /**
+   * Group history entries into time buckets for display.
+   */
   const groupHistoryByTime = (entries: HistoryEntry[]): Array<[string, HistoryEntry[]]> => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);

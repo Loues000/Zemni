@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * Render the placeholder terms and conditions page.
+ */
 export default function AGBPage() {
   return (
     <div className="legal-page">

@@ -12,6 +12,9 @@ type SubjectPickerModalProps = {
   onClose: () => void;
 };
 
+/**
+ * Modal picker for selecting a Notion subject.
+ */
 export function SubjectPickerModal({
   isOpen,
   subjects,
@@ -28,6 +31,9 @@ export function SubjectPickerModal({
 
   useEffect(() => {
     if (!isOpen) return;
+    /**
+     * Close modal on Escape key.
+     */
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
@@ -84,4 +90,3 @@ export function SubjectPickerModal({
     </div>
   );
 }
-

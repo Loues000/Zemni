@@ -1,21 +1,27 @@
 import { NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { polar } from "@/lib/polar";
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
-import { getUserContext } from "@/lib/api-helpers";
+import { getConvexClient } from "@/lib/convex-server";
 
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
-
+/**
+ * Create a Polar customer portal session for subscription management.
+ */
 export async function POST() {
   try {
-    // Use getUserContext to verify authentication and get user
-    const userContext = await getUserContext();
-    if (!userContext) {
+    const { userId } = await auth();
+
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const convex = getConvexClient();
+
     // Get full user object to access polarCustomerId
-    const user = await convex.query(api.users.getCurrentUser, {});
+    // Use getUserByClerkUserId since getCurrentUser requires auth context
+    const user = await convex.query(api.users.getUserByClerkUserId, {
+      clerkUserId: userId,
+    });
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }

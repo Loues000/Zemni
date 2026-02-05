@@ -10,6 +10,9 @@ interface RefineBarProps {
   onClose?: () => void;
 }
 
+/**
+ * Inline form for refining the current summary.
+ */
 export function RefineBar({
   input,
   isRefining,

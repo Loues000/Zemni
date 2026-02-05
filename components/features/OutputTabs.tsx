@@ -11,6 +11,9 @@ interface OutputTabsProps {
   onCloseTab: (tabId: string, event: React.MouseEvent) => void;
 }
 
+/**
+ * Render selectable output tabs with optional split view hints.
+ */
 export function OutputTabs({
   outputs,
   selectedTabId,

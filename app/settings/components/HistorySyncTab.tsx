@@ -5,6 +5,9 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { exportHistoryAsZip } from "@/lib/export-history-zip";
 
+/**
+ * Export, import, and manage chat history entries.
+ */
 export function HistorySyncTab() {
   const [selectedDocs, setSelectedDocs] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
@@ -146,6 +149,9 @@ export function HistorySyncTab() {
     }
   }, [selectedDocs, deleteDoc]);
 
+  /**
+   * Toggle the selection state for a document.
+   */
   const toggleSelect = (docId: string) => {
     setSelectedDocs((prev) => {
       const next = new Set(prev);

@@ -55,6 +55,7 @@ CLAUDE.md
 
 # Local-only scratch/data (keep ignored)
 data/
+tasks/
 docs/
 !docs/
 docs/*

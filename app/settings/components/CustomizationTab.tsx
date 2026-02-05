@@ -5,6 +5,9 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useAppState } from "@/hooks";
 
+/**
+ * Customize theme, stats visibility, and default structure hints.
+ */
 export function CustomizationTab() {
   const {
     theme,
@@ -34,6 +37,9 @@ export function CustomizationTab() {
     }
   }, []);
 
+  /**
+   * Save default structure hints to the user profile.
+   */
   const handleSave = async () => {
     setSaving(true);
     setMessage(null);

@@ -22,9 +22,15 @@ const modeLabels: Record<OutputKind, string> = {
   quiz: "Quiz"
 };
 
+/**
+ * Determine whether the status represents active work.
+ */
 const isBusyStatus = (status: Status): boolean =>
   status === "parsing" || status === "summarizing" || status === "refining" || status === "exporting";
 
+/**
+ * Format elapsed milliseconds into a short label.
+ */
 const formatElapsed = (ms: number): string => {
   const totalSeconds = Math.floor(ms / 1000);
   const minutes = Math.floor(totalSeconds / 60);
@@ -33,7 +39,9 @@ const formatElapsed = (ms: number): string => {
   return `${minutes}m ${seconds}s`;
 };
 
-// Get the current stage based on status
+/**
+ * Map status to the current activity stage label.
+ */
 const getStage = (status: Status): { stage: "input" | "processing" | "output"; label: string } => {
   switch (status) {
     case "parsing":
@@ -58,6 +66,9 @@ interface ActivityBarProps {
   isCancellable?: boolean;
 }
 
+/**
+ * Show a progress bar and status while work is in flight.
+ */
 export function ActivityBar({
   status,
   exportProgress,

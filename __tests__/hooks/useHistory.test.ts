@@ -300,9 +300,9 @@ describe("useHistory", () => {
         await result.current.saveAllEntriesToConvex(entries);
       });
 
-      expect(mockUpsertDocument).toHaveBeenCalledTimes(2);
       // Should have attempted 3 retries for the failed one
-      expect(mockUpsertDocument).toHaveBeenCalledTimes(5); // 1 success + 4 retries for failure
+      // Total: 1 success (entry-1) + 1 initial failure (entry-2) + 3 retries (entry-2) = 5 calls
+      expect(mockUpsertDocument).toHaveBeenCalledTimes(5);
     });
   });
 

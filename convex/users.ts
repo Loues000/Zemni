@@ -295,37 +295,22 @@ export const updateDefaultStructureHints = mutation({
 
 /**
  * Update Notion configuration
- * Note: This uses clerkUserId from the client instead of ctx.auth for API route compatibility
  */
 export const updateNotionConfig = mutation({
   args: {
     token: v.string(),
     databaseId: v.optional(v.string()),
     exportMethod: v.optional(v.union(v.literal("database"), v.literal("page"))),
-    clerkUserId: v.optional(v.string()), // Optional: when provided, bypasses ctx.auth
   },
   handler: async (ctx, args) => {
-    let clerkUserId: string | null = null;
-    
-    // If clerkUserId is provided (from API route), use it directly
-    if (args.clerkUserId) {
-      clerkUserId = args.clerkUserId;
-    } else {
-      // Otherwise, try to get from auth context (client-side calls)
-      const identity = await ctx.auth.getUserIdentity();
-      if (!identity) {
-        throw new Error("Not authenticated");
-      }
-      clerkUserId = identity.subject;
-    }
-
-    if (!clerkUserId) {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
       throw new Error("Not authenticated");
     }
 
     const user = await ctx.db
       .query("users")
-      .withIndex("by_clerk_user_id", (q: any) => q.eq("clerkUserId", clerkUserId))
+      .withIndex("by_clerk_user_id", (q: any) => q.eq("clerkUserId", identity.subject))
       .first();
 
     if (!user) {
@@ -345,34 +330,18 @@ export const updateNotionConfig = mutation({
 
 /**
  * Clear Notion configuration
- * Note: This uses clerkUserId from the client instead of ctx.auth for API route compatibility
  */
 export const clearNotionConfig = mutation({
-  args: {
-    clerkUserId: v.optional(v.string()), // Optional: when provided, bypasses ctx.auth
-  },
-  handler: async (ctx, args) => {
-    let clerkUserId: string | null = null;
-    
-    // If clerkUserId is provided (from API route), use it directly
-    if (args.clerkUserId) {
-      clerkUserId = args.clerkUserId;
-    } else {
-      // Otherwise, try to get from auth context (client-side calls)
-      const identity = await ctx.auth.getUserIdentity();
-      if (!identity) {
-        throw new Error("Not authenticated");
-      }
-      clerkUserId = identity.subject;
-    }
-
-    if (!clerkUserId) {
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
       throw new Error("Not authenticated");
     }
 
     const user = await ctx.db
       .query("users")
-      .withIndex("by_clerk_user_id", (q: any) => q.eq("clerkUserId", clerkUserId))
+      .withIndex("by_clerk_user_id", (q: any) => q.eq("clerkUserId", identity.subject))
       .first();
 
     if (!user) {
@@ -429,11 +398,25 @@ export const anonymizeAccount = mutation({
 
 /**
  * Debug: Get all users with their subscription tiers
- * Only for debugging - should be removed or secured in production
+ * Only for debugging - requires admin allowlist
  */
 export const getAllUsersDebug = query({
   args: {},
   handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const adminList = (process.env.ADMIN_CLERK_USER_IDS || "")
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean);
+
+    if (!adminList.includes(identity.subject)) {
+      throw new Error("Unauthorized");
+    }
+
     const users = await ctx.db.query("users").collect();
     return users.map((u) => ({
       _id: u._id,

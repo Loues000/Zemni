@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 
+/**
+ * Contact form for user support requests.
+ */
 export function ContactTab() {
   const [formData, setFormData] = useState({
     subject: "",
@@ -11,6 +14,9 @@ export function ContactTab() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  /**
+   * Submit the contact form to the server.
+   */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);

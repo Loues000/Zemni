@@ -4,15 +4,24 @@ import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import { encryptKey } from "@/lib/encryption";
 
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
-
+/**
+ * Save the user's Notion integration configuration.
+ */
 export async function POST(request: Request) {
   try {
-    const { userId } = await auth();
+    const { userId, getToken } = await auth();
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    const convexToken = await getToken({ template: "convex" });
+    if (!convexToken) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+    convex.setAuth(convexToken);
 
     const body = await request.json();
     const { token, databaseId, exportMethod } = body;
@@ -24,12 +33,11 @@ export async function POST(request: Request) {
     // Encrypt the token server-side before storing
     const encryptedToken = encryptKey(token);
 
-    // Save to Convex with clerkUserId for auth
+    // Save to Convex with authenticated context
     await convex.mutation(api.users.updateNotionConfig, {
       token: encryptedToken,
       databaseId: databaseId || undefined,
       exportMethod: exportMethod || undefined,
-      clerkUserId: userId,
     });
 
     return NextResponse.json({ success: true });
@@ -42,18 +50,27 @@ export async function POST(request: Request) {
   }
 }
 
+/**
+ * Clear the user's Notion integration configuration.
+ */
 export async function DELETE() {
   try {
-    const { userId } = await auth();
+    const { userId, getToken } = await auth();
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Clear Notion configuration with clerkUserId for auth
-    await convex.mutation(api.users.clearNotionConfig, {
-      clerkUserId: userId,
-    });
+    const convexToken = await getToken({ template: "convex" });
+    if (!convexToken) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+    convex.setAuth(convexToken);
+
+    // Clear Notion configuration with authenticated context
+    await convex.mutation(api.users.clearNotionConfig, {});
 
     return NextResponse.json({ success: true });
   } catch (error) {

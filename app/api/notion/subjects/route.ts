@@ -1,16 +1,17 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import { listSubjects } from "@/lib/notion";
 import { trackError } from "@/lib/error-tracking";
 import { decryptKey } from "@/lib/encryption";
-
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+import { getConvexClient } from "@/lib/convex-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/**
+ * Fetch Notion subject list using configured database and token.
+ */
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const userDatabaseId = searchParams.get("databaseId");
@@ -24,6 +25,7 @@ export async function GET(request: Request) {
     try {
       const { userId } = await auth();
       if (userId) {
+        const convex = getConvexClient();
         const user = await convex.query(api.users.getUserByClerkUserId, {
           clerkUserId: userId,
         });

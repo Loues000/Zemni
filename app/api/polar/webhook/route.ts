@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import { validateEvent, WebhookVerificationError } from "@polar-sh/sdk/webhooks";
 import { getTierFromProductId } from "@/lib/polar";
 import { trackWebhookError, trackEvent } from "@/lib/error-tracking";
-
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+import { getConvexClient } from "@/lib/convex-server";
 
 type SubscriptionPayload = Record<string, any>;
 
+/**
+ * Return the first non-empty string from a list of values.
+ */
 function firstString(...values: Array<unknown>): string | undefined {
   for (const value of values) {
     if (typeof value === "string" && value.trim().length > 0) {
@@ -18,6 +19,9 @@ function firstString(...values: Array<unknown>): string | undefined {
   return undefined;
 }
 
+/**
+ * Normalize timestamps to milliseconds when provided in seconds.
+ */
 function normalizeTimestamp(value?: number): number | undefined {
   if (typeof value !== "number") {
     return undefined;
@@ -25,6 +29,9 @@ function normalizeTimestamp(value?: number): number | undefined {
   return value < 1_000_000_000_000 ? value * 1000 : value;
 }
 
+/**
+ * Parse a date-like value into a millisecond timestamp.
+ */
 function parseDate(value?: unknown): number | undefined {
   if (value instanceof Date) {
     return value.getTime();
@@ -39,6 +46,9 @@ function parseDate(value?: unknown): number | undefined {
   return undefined;
 }
 
+/**
+ * Resolve the subscription start date from payload variants.
+ */
 function getSubscriptionStartDate(subscription: SubscriptionPayload): number | undefined {
   return (
     parseDate(subscription.startedAt) ??
@@ -50,6 +60,9 @@ function getSubscriptionStartDate(subscription: SubscriptionPayload): number | u
   );
 }
 
+/**
+ * Extract a product identifier from multiple payload shapes.
+ */
 function getProductId(subscription: SubscriptionPayload): string | undefined {
   return firstString(
     subscription.productId,
@@ -63,6 +76,9 @@ function getProductId(subscription: SubscriptionPayload): string | undefined {
   );
 }
 
+/**
+ * Extract the Polar customer id from payload variants.
+ */
 function getCustomerId(subscription: SubscriptionPayload): string | undefined {
   return firstString(
     subscription.customerId,
@@ -72,6 +88,9 @@ function getCustomerId(subscription: SubscriptionPayload): string | undefined {
   );
 }
 
+/**
+ * Extract the external customer id (Clerk user id) from payload variants.
+ */
 function getExternalCustomerId(subscription: SubscriptionPayload): string | undefined {
   return firstString(
     subscription.externalCustomerId,
@@ -83,6 +102,9 @@ function getExternalCustomerId(subscription: SubscriptionPayload): string | unde
   );
 }
 
+/**
+ * Handle Polar subscription webhooks and sync tiers to Convex.
+ */
 export async function POST(request: Request) {
   const bodyBuffer = Buffer.from(await request.arrayBuffer());
   const headers = Object.fromEntries(request.headers);
@@ -101,6 +123,7 @@ export async function POST(request: Request) {
   }
 
   try {
+    const convex = getConvexClient();
     const subscription = (event?.data?.subscription ?? event?.data) as SubscriptionPayload;
     const eventType = event?.type as string | undefined;
 
@@ -139,6 +162,9 @@ export async function POST(request: Request) {
     ].includes(eventType);
     const isActive = status ? status === "active" || status === "trialing" : eventIndicatesActive;
 
+    /**
+     * Update a subscription by Clerk user id when available.
+     */
     const updateByClerkUserId = async (payload: {
       tier: "free" | "basic" | "plus" | "pro";
       polarCustomerId?: string;
@@ -155,6 +181,9 @@ export async function POST(request: Request) {
       return true;
     };
 
+    /**
+     * Update a subscription by Polar customer id when available.
+     */
     const updateByCustomerId = async (payload: {
       tier: "free" | "basic" | "plus" | "pro";
       polarSubscriptionId?: string;

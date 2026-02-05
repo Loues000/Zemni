@@ -12,21 +12,22 @@ import { getUserContext, checkModelAvailability, getApiKeyToUse, getApiKeyForMod
 import { isModelAvailable } from "@/lib/models";
 import { createOpenRouterClient } from "@/lib/openrouter";
 import { generateWithProvider, type ProviderInfo } from "@/lib/providers";
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import { validateModelId, validateFlashcardsDensity } from "@/lib/utils/validation";
 import type { DocumentSection, Flashcard, UsageStats } from "@/types";
+import { getConvexClient } from "@/lib/convex-server";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
-
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
 const CHUNK_CHARS = 7_500;
 const CHUNK_OVERLAP_CHARS = 350;
 const MAX_CHUNKS = 4;
 const FLASHCARDS_PER_SECTION_HARD_CAP = 20;
 
+/**
+ * Parse unknown input into normalized document sections.
+ */
 const toSections = (value: unknown): DocumentSection[] => {
   if (!Array.isArray(value)) return [];
   const sections: DocumentSection[] = [];
@@ -58,11 +59,17 @@ type FlashcardsResult = {
   flashcards: ModelFlashcard[];
 };
 
+/**
+ * Clamp and floor a number into the provided integer range.
+ */
 const clampInt = (value: number, min: number, max: number): number => {
   if (!Number.isFinite(value)) return min;
   return Math.max(min, Math.min(max, Math.floor(value)));
 };
 
+/**
+ * Generate flashcards for provided sections using the requested model.
+ */
 export async function POST(request: Request) {
   const { userId: clerkUserId } = await auth();
   const userContext = await getUserContext();
@@ -140,6 +147,7 @@ export async function POST(request: Request) {
   // Check monthly usage limit
   if (userContext) {
     try {
+      const convex = getConvexClient();
       const monthlyUsage = await convex.query(api.usage.getMonthlyGenerationCount, {});
       if (monthlyUsage.count >= monthlyUsage.limit) {
         return NextResponse.json(
@@ -226,6 +234,9 @@ export async function POST(request: Request) {
 
   const perfConfig = getModelPerformanceConfig(modelId);
   const results = await mapWithConcurrency(tasks, 2, async (task) => {
+    /**
+     * Generate flashcards for a single chunk with progressive retries.
+     */
     const generateFlashcards = async (retryCount: number = 0): Promise<{ flashcards: ModelFlashcard[]; usage: any }> => {
       const { systemPrompt, userPrompt } = await buildFlashcardsPrompts(
         [{ id: task.sectionMeta.id, title: task.sectionMeta.title, text: task.chunkText, page: task.sectionMeta.page }],
@@ -387,6 +398,7 @@ export async function POST(request: Request) {
   // Save usage to Convex if user is authenticated
   if (clerkUserId) {
     try {
+      const convex = getConvexClient();
       await convex.mutation(api.usage.recordUsage, {
         source: "flashcards",
         tokensIn: usageAgg?.promptTokens || 0,

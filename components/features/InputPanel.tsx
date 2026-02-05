@@ -21,6 +21,9 @@ interface InputPanelProps {
   children?: React.ReactNode;
 }
 
+/**
+ * Input panel for file upload, model selection, and structure hints.
+ */
 export function InputPanel({
   fileName,
   selectedModel,

@@ -10,17 +10,19 @@ import { createTimeoutController, isAbortError } from "@/lib/ai-performance";
 import { getUserContext, checkModelAvailability, getApiKeyToUse, getApiKeyForModel } from "@/lib/api-helpers";
 import { generateWithProvider, type ProviderInfo } from "@/lib/providers";
 import { isModelAvailable } from "@/lib/models";
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import { validateTextSize } from "@/lib/request-validation";
 import { validateTextLength, validateStructureHints, validateModelId } from "@/lib/utils/validation";
+import { getConvexClient } from "@/lib/convex-server";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
 const MODEL_CALL_TIMEOUT_MS = 70_000;
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
+/**
+ * Generate a full summary for the provided text.
+ */
 export async function POST(request: Request) {
   const { userId: clerkUserId } = await auth();
   const userContext = await getUserContext();
@@ -28,6 +30,7 @@ export async function POST(request: Request) {
   // Check rate limit for authenticated users (using Convex for persistence)
   if (userContext) {
     try {
+      const convex = getConvexClient();
       const rateLimit = await convex.mutation(api.rateLimits.checkRateLimit, {
         userId: userContext.userId,
         type: "generation",
@@ -117,6 +120,7 @@ export async function POST(request: Request) {
   // Check monthly usage limit
   if (userContext) {
     try {
+      const convex = getConvexClient();
       const monthlyUsage = await convex.query(api.usage.getMonthlyGenerationCount, {});
       if (monthlyUsage.count >= monthlyUsage.limit) {
         return NextResponse.json(
@@ -215,6 +219,7 @@ export async function POST(request: Request) {
   // Save usage to Convex if user is authenticated
   if (clerkUserId) {
     try {
+      const convex = getConvexClient();
       await convex.mutation(api.usage.recordUsage, {
         source: "summarize",
         tokensIn: result.usage?.promptTokens || 0,

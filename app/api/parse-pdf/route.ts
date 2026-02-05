@@ -6,6 +6,9 @@ import { validateTextSize, validatePdfSize, validatePagesSize } from "@/lib/requ
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
+/**
+ * Extract text (and optional pages) from a PDF or text upload.
+ */
 export async function POST(request: Request) {
   const contentType = request.headers.get("content-type") || "";
 

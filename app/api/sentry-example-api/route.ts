@@ -8,7 +8,9 @@ class SentryExampleAPIError extends Error {
   }
 }
 
-// A faulty API route to test Sentry's error monitoring
+/**
+ * Throw a test error to verify Sentry backend reporting.
+ */
 export function GET() {
   Sentry.logger.info("Sentry example API called");
   throw new SentryExampleAPIError(

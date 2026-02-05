@@ -11,18 +11,27 @@ type FlashcardsDensityControlProps = {
   totalChars?: number;
 };
 
+/**
+ * Map density value to a short label.
+ */
 const labelFor = (value: FlashcardsDensity): string => {
   if (value === 1) return "Few";
   if (value === 2) return "Balanced";
   return "Many";
 };
 
+/**
+ * Map density value to a tooltip description.
+ */
 const titleFor = (value: FlashcardsDensity): string => {
   if (value === 1) return "Fewer cards per document section";
   if (value === 2) return "Balanced amount of cards per section";
   return "More cards per document section";
 };
 
+/**
+ * Toggle control for flashcard density selection.
+ */
 export function FlashcardsDensityControl({ value, onChange, disabled, totalChars }: FlashcardsDensityControlProps) {
   const values: FlashcardsDensity[] = [1, 2, 3];
   return (

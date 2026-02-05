@@ -1,5 +1,8 @@
 "use client";
 
+/**
+ * Render the placeholder imprint page.
+ */
 export default function ImpressumPage() {
   return (
     <div className="legal-page">

@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
+import { getConvexClient } from "@/lib/convex-server";
 
 export const runtime = "nodejs";
 
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
-
+/**
+ * Accept contact form submissions and log them for follow-up.
+ */
 export async function POST(request: Request) {
   try {
     const { userId } = await auth();
@@ -25,6 +26,7 @@ export async function POST(request: Request) {
     let userName = "Anonymous User";
     
     if (userId) {
+      const convex = getConvexClient();
       const user = await convex.query(api.users.getUserByClerkUserId, {
         clerkUserId: userId,
       });

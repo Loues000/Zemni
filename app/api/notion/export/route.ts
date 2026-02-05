@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import { exportSummary, ExportProgress, createNotionClient } from "@/lib/notion";
 import { decryptKey } from "@/lib/encryption";
-
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+import { getConvexClient } from "@/lib/convex-server";
 
 export const runtime = "nodejs";
 
+/**
+ * Export markdown summaries to Notion (streaming or non-streaming).
+ */
 export async function POST(request: Request) {
   const body = await request.json();
   const subjectId = body.subjectId ? String(body.subjectId) : undefined;
@@ -34,6 +35,7 @@ export async function POST(request: Request) {
     try {
       const { userId } = await auth();
       if (userId) {
+        const convex = getConvexClient();
         const user = await convex.query(api.users.getUserByClerkUserId, {
           clerkUserId: userId,
         });
@@ -68,7 +70,13 @@ export async function POST(request: Request) {
   // Streaming mode with NDJSON progress events
   const encoder = new TextEncoder();
   const readable = new ReadableStream({
+    /**
+     * Stream Notion export progress updates as NDJSON events.
+     */
     async start(controller) {
+      /**
+       * Enqueue a progress event into the stream.
+       */
       const sendEvent = (event: ExportProgress) => {
         try {
           controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));

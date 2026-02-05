@@ -6,6 +6,9 @@ import { useState, useEffect, useRef } from "react";
 import { IconCheck } from "@/components/ui/Icons";
 import { useToastContext } from "./ToastProvider";
 
+/**
+ * Display subscription status and management options.
+ */
 export function SubscriptionTab() {
   const currentUser = useQuery(api.users.getCurrentUser);
   const [loading, setLoading] = useState(false);
@@ -41,6 +44,9 @@ export function SubscriptionTab() {
 
   const [error, setError] = useState<string | null>(null);
 
+  /**
+   * Open the Polar customer portal for subscription management.
+   */
   const handleManageSubscription = async () => {
     setLoading(true);
     setError(null);

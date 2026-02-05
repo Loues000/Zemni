@@ -11,16 +11,17 @@ import { getUserContext, checkModelAvailability, getApiKeyToUse, getApiKeyForMod
 import { isModelAvailable } from "@/lib/models";
 import { createOpenRouterClient } from "@/lib/openrouter";
 import { generateWithProvider, type ProviderInfo } from "@/lib/providers";
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import { validateModelId, validateQuestionsCount } from "@/lib/utils/validation";
 import type { DocumentSection, QuizQuestion, UsageStats } from "@/types";
+import { getConvexClient } from "@/lib/convex-server";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
-
+/**
+ * Normalize a single section payload into a DocumentSection.
+ */
 const toSection = (value: unknown): DocumentSection | null => {
   if (!value || typeof value !== "object") return null;
   const record = value as Record<string, unknown>;
@@ -48,6 +49,9 @@ type QuizResult = {
   questions: ModelQuizQuestion[];
 };
 
+/**
+ * Generate quiz questions for a section using the requested model.
+ */
 export async function POST(request: Request) {
   const { userId: clerkUserId } = await auth();
   const userContext = await getUserContext();
@@ -118,6 +122,7 @@ export async function POST(request: Request) {
   // Check monthly usage limit
   if (userContext) {
     try {
+      const convex = getConvexClient();
       const monthlyUsage = await convex.query(api.usage.getMonthlyGenerationCount, {});
       if (monthlyUsage.count >= monthlyUsage.limit) {
         return NextResponse.json(
@@ -153,6 +158,9 @@ export async function POST(request: Request) {
   const start = Date.now();
   const perfConfig = getModelPerformanceConfig(modelId);
 
+  /**
+   * Generate quiz questions with progressive retries for JSON correctness.
+   */
   const generateQuiz = async (retryCount: number = 0): Promise<{ questions: QuizQuestion[]; usage: any }> => {
     const { systemPrompt, userPrompt } = await buildQuizPrompts(section, questionsCount, avoidQuestions, userLanguage, customGuidelines);
 
@@ -290,6 +298,7 @@ export async function POST(request: Request) {
   // Save usage to Convex if user is authenticated
   if (clerkUserId) {
     try {
+      const convex = getConvexClient();
       await convex.mutation(api.usage.recordUsage, {
         source: "quiz",
         tokensIn: usageAgg?.promptTokens || 0,

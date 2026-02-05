@@ -4,6 +4,9 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 
+/**
+ * Configure Notion integration settings for exports.
+ */
 export function NotionTab() {
   const currentUser = useQuery(api.users.getCurrentUser);
   const clearNotionConfig = useMutation(api.users.clearNotionConfig);
@@ -25,6 +28,9 @@ export function NotionTab() {
     }
   }, [currentUser]);
 
+  /**
+   * Save or clear Notion settings via API endpoints.
+   */
   const handleSave = async () => {
     setLoading(true);
     setMessage(null);
@@ -94,15 +100,15 @@ export function NotionTab() {
     }
   };
 
+  /**
+   * Clear Notion configuration after confirmation.
+   */
   const handleClear = async () => {
     if (confirm("Are you sure you want to clear your Notion configuration?")) {
       setLoading(true);
       setMessage(null);
       try {
-        // Pass clerkUserId explicitly to avoid auth context issues
-        await clearNotionConfig({
-          clerkUserId: currentUser?.clerkUserId,
-        });
+        await clearNotionConfig({});
         setNotionToken("");
         setDatabaseId("");
         setExportMethod("database");

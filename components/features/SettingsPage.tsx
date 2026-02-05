@@ -15,6 +15,9 @@ const SETTINGS_TABS = [
   { id: "history", label: "History & Export" }
 ] as const;
 
+/**
+ * Legacy settings page for local device preferences.
+ */
 export function SettingsPage(): JSX.Element {
   const {
     theme,

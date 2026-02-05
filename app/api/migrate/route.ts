@@ -1,18 +1,29 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
-import { loadHistoryFromStorage, isHistoryEntry, historyEntryToDocument } from "@/lib/history-storage";
+import { isHistoryEntry, historyEntryToDocument } from "@/lib/history-storage";
+import { getConvexClient } from "@/lib/convex-server";
 
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
-
-export async function POST() {
+/**
+ * Migrate local history entries into Convex for an authenticated user.
+ */
+export async function POST(request: Request) {
   try {
     const { userId } = await auth();
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    // Parse request body to get history data from client
+    const body = await request.json();
+    const localStorageHistory = body.history || [];
+
+    if (!Array.isArray(localStorageHistory)) {
+      return NextResponse.json({ error: "Invalid request: history must be an array" }, { status: 400 });
+    }
+
+    const convex = getConvexClient();
 
     // Get user from Convex
     const user = await convex.query(api.users.getCurrentUser as any, {});
@@ -21,8 +32,7 @@ export async function POST() {
       return NextResponse.json({ error: "User not found in Convex" }, { status: 404 });
     }
 
-    // Load history from localStorage
-    const localStorageHistory = loadHistoryFromStorage();
+    // Validate history entries
     const validEntries = localStorageHistory.filter(isHistoryEntry);
 
     if (validEntries.length === 0) {

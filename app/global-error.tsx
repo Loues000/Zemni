@@ -4,6 +4,9 @@ import * as Sentry from "@sentry/nextjs";
 import NextError from "next/error";
 import { useEffect } from "react";
 
+/**
+ * App-level error boundary that reports errors to Sentry.
+ */
 export default function GlobalError({
   error,
 }: {

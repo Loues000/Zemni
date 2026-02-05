@@ -13,6 +13,9 @@ type ConfirmModalProps = {
   onConfirm: () => void;
 };
 
+/**
+ * Generic confirmation modal with cancel/confirm actions.
+ */
 export function ConfirmModal({
   isOpen,
   title,
@@ -25,6 +28,9 @@ export function ConfirmModal({
 }: ConfirmModalProps) {
   useEffect(() => {
     if (!isOpen) return;
+    /**
+     * Close the dialog on Escape.
+     */
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") onCancel();
     };

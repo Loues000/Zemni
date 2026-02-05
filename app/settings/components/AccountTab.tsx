@@ -36,6 +36,9 @@ export function AccountTab() {
     }
   }, [currentUser, user]);
 
+  /**
+   * Persist a new preferred output language.
+   */
   const handleLanguageChange = async (newLanguage: string) => {
     setLanguage(newLanguage);
     setSaving(true);
@@ -51,6 +54,9 @@ export function AccountTab() {
     }
   };
 
+  /**
+   * Persist a new preferred name.
+   */
   const handleNameChange = async (newName: string) => {
     setPreferredName(newName);
     setSaving(true);
@@ -66,10 +72,16 @@ export function AccountTab() {
     }
   };
 
+  /**
+   * Update the local guidelines draft.
+   */
   const handleGuidelinesChange = (value: string) => {
     setCustomGuidelines(value);
   };
 
+  /**
+   * Save custom guidelines to the user profile.
+   */
   const handleSaveGuidelines = async () => {
     setSaving(true);
     setMessage(null);
@@ -83,6 +95,9 @@ export function AccountTab() {
     }
   };
 
+  /**
+   * Revert to default guidelines after confirmation.
+   */
   const handleRevertGuidelines = async () => {
     if (!confirm("Are you sure you want to revert to default guidelines? Your custom guidelines will be lost.")) {
       return;
@@ -100,6 +115,9 @@ export function AccountTab() {
     }
   };
 
+  /**
+   * Anonymize the account and redirect after completion.
+   */
   const handleDeleteAccount = async () => {
     setSaving(true);
     setMessage(null);

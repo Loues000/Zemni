@@ -77,6 +77,9 @@ function getNextResetDate(user: { createdAt: number; subscriptionStartDate?: num
   return nextReset;
 }
 
+/**
+ * Layout wrapper for the settings area with sidebar and tabs.
+ */
 export function SettingsLayout({ children, activeTab, onTabChange }: SettingsLayoutProps) {
   const { user } = useUser();
   const currentUser = useQuery(api.users.getCurrentUser);
