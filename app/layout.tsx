@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/nextjs";
 import type { Metadata } from "next";
 import { Bricolage_Grotesque, IBM_Plex_Sans } from "next/font/google";
 import "./globals.css";
@@ -5,6 +6,8 @@ import "katex/dist/katex.min.css";
 import ConvexClientProvider from "@/lib/convex-client-provider";
 import { UserSync } from "@/components/auth/UserSync";
 import { SentryErrorBoundary } from "@/components/ui";
+import { Toaster } from "sonner";
+
 
 const display = Bricolage_Grotesque({
   subsets: ["latin"],
@@ -17,10 +20,15 @@ const body = IBM_Plex_Sans({
   variable: "--font-body"
 });
 
-export const metadata: Metadata = {
-  title: "Zemni",
-  description: "Summaries, flashcards and quizzes from PDFs/Markdown"
-};
+export function generateMetadata(): Metadata {
+  return {
+    title: "Zemni",
+    description: "Summaries, flashcards and quizzes from PDFs/Markdown",
+    other: {
+      ...Sentry.getTraceData()
+    }
+  };
+}
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   // Only include UserSync if Clerk is configured
@@ -52,6 +60,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ConvexClientProvider>
           {isClerkConfigured && <UserSync />}
           <SentryErrorBoundary>{children}</SentryErrorBoundary>
+          <Toaster 
+            position="top-right" 
+            richColors 
+            closeButton
+            duration={5000}
+          />
         </ConvexClientProvider>
       </body>
     </html>

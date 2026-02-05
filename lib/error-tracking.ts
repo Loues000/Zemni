@@ -12,6 +12,7 @@ export interface ErrorContext {
   action?: string;
   metadata?: Record<string, unknown>;
   timestamp?: string;
+  silent?: boolean; // If true, skip console logging (still sends to Sentry)
 }
 
 export interface EventContext {
@@ -43,8 +44,10 @@ export function trackError(error: Error | string, context?: ErrorContext): void 
     },
   };
 
-  // Always log to console
-  console.error("[Error Tracking]", logData);
+  // Log to console unless silent flag is set
+  if (!context?.silent) {
+    console.error("[Error Tracking]", logData);
+  }
 
   // Send to Sentry if configured
   try {
@@ -108,7 +111,7 @@ export function trackEvent(eventType: string, context?: Omit<EventContext, "even
  * Track a webhook error with detailed context
  * 
  * @param error - The error object or message
- * @param webhookType - Type of webhook (e.g., "stripe", "notion")
+ * @param webhookType - Type of webhook (e.g., "polar", "notion")
  * @param webhookData - The webhook payload
  * @param context - Additional context
  */

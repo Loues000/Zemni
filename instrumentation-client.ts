@@ -3,6 +3,9 @@
  * 
  * This file initializes Sentry for browser error tracking.
  * Automatically captures unhandled exceptions and performance data.
+ * 
+ * Note: This file replaces the deprecated sentry.client.config.ts
+ * https://docs.sentry.io/platforms/javascript/guides/nextjs/
  */
 import * as Sentry from "@sentry/nextjs";
 
@@ -42,3 +45,5 @@ if (dsn && dsn !== "YOUR_SENTRY_DSN") {
 } else {
   console.warn("[Sentry] Client DSN not configured. Error tracking disabled.");
 }
+
+export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;
