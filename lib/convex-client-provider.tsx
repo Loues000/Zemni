@@ -5,6 +5,17 @@ import { ConvexReactClient } from "convex/react";
 import { ConvexProviderWithClerk } from "convex/react-clerk";
 import { ClerkProvider, useAuth } from "@clerk/nextjs";
 
+/**
+ * Wraps `children` with Clerk and Convex providers when the corresponding environment keys are present and valid.
+ *
+ * When NEXT_PUBLIC_CONVEX_URL is missing the children are returned unwrapped. When NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is
+ * missing the children are returned unwrapped. When the Clerk key appears to be a placeholder the children are wrapped
+ * only with `ClerkProvider`. When both the Convex URL and a valid Clerk key are available the children are wrapped with
+ * `ClerkProvider` and `ConvexProviderWithClerk`.
+ *
+ * @param children - React nodes to be rendered inside the selected provider(s)
+ * @returns The provided `children` possibly wrapped with `ClerkProvider` and/or `ConvexProviderWithClerk` depending on environment configuration
+ */
 export default function ConvexClientProvider({ children }: { children: ReactNode }) {
   const clerkKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
   const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;

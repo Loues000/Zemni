@@ -6,6 +6,13 @@ import { validateTextSize, validatePdfSize, validatePagesSize } from "@/lib/requ
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
+/**
+ * Extracts and normalizes text from a POST Request supporting JSON payloads with `text` or `pages`, or file uploads via FormData, and returns the normalized text and optional page array.
+ *
+ * Validates text, PDF, and pages sizes and responds with HTTP 400 for missing inputs or HTTP 413 when a size validation fails.
+ *
+ * @returns A JSON object containing `text`, and `pages` when the request provided page-level input.
+ */
 export async function POST(request: Request) {
   const contentType = request.headers.get("content-type") || "";
 

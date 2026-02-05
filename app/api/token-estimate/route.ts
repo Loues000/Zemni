@@ -67,6 +67,16 @@ const estimateOutputTokens = (
   return { outputRatio, outputCap, estimatedOutputTokens, note: `Output estimate: min(${outputCap}, inputTokens x ${outputRatio})` };
 };
 
+/**
+ * Handle a POST request that builds prompts from provided text and returns model cost estimates and output-token heuristics.
+ *
+ * Expects the request JSON body to contain `extractedText` (string), and may include `structureHints` (string), `mode` ("summary" | "flashcards" | "quiz"), `n` (number), and `sectionsCount` (number).
+ *
+ * @param request - The incoming HTTP request whose JSON body supplies the input text and options.
+ * @returns An object with `modelCosts` (cost rows for each loaded model) and `heuristic` (contains `outputRatio`, `outputCap`, `estimatedOutputTokens`, and `note`).
+ *
+ * Responds with a 400 status and `{ error: "Missing extractedText" }` if `extractedText` is empty or omitted.
+ */
 export async function POST(request: Request) {
   const body = await request.json();
   const extractedText = String(body.extractedText ?? "");

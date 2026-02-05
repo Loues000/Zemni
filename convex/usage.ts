@@ -12,6 +12,12 @@ const USAGE_LIMITS: Record<string, number> = {
   pro: 200,
 };
 
+/**
+ * Resolve the monthly generation limit for a subscription tier, falling back to the free tier when the tier is missing or unrecognized.
+ *
+ * @param tier - Subscription tier name (e.g., `"free"`, `"basic"`, `"plus"`, `"pro"`); may be `null` or `undefined`.
+ * @returns The per-month generation limit for the given `tier`. Returns the free-tier limit if `tier` is `null`, `undefined`, or not present in the configured limits.
+ */
 function getUsageLimit(tier: string | null | undefined): number {
   if (!tier || !(tier in USAGE_LIMITS)) {
     return USAGE_LIMITS.free;
@@ -162,8 +168,11 @@ export const getUsageStats = query({
 });
 
 /**
- * Calculate billing cycle start date based on account/subscription creation
- * Returns the start of the current billing cycle month
+ * Compute the start timestamp of the user's current billing cycle using the day-of-month from their subscription start or account creation.
+ *
+ * @param user - Object containing `subscriptionStartDate` or `createdAt` (millisecond timestamps) which determine the cycle day.
+ * @param now - Current time as milliseconds since epoch used to decide which cycle applies.
+ * @returns The start of the current billing cycle as a timestamp in milliseconds since epoch.
  */
 function getBillingCycleStart(user: any, now: number): number {
   // Use subscription start date for paid users, otherwise use account creation date

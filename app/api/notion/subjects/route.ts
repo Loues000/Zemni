@@ -11,6 +11,11 @@ const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/**
+ * Fetches subjects from a Notion database, resolving the database ID and token from the request query/header, environment variables, or the authenticated user's stored configuration.
+ *
+ * @param request - The incoming HTTP Request. May include `databaseId` as a query parameter and `x-notion-token` as a header.
+ * @returns A JSON object with a `subjects` array. On failure returns `{ subjects: [], error: string }` describing the failure.
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const userDatabaseId = searchParams.get("databaseId");

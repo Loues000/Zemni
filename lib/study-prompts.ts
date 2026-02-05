@@ -17,6 +17,12 @@ const getBaseIdentity = (outputLanguage: string = "en"): string => {
   ].filter(Boolean).join("\n");
 };
 
+/**
+ * Map a two-letter language code to its English name.
+ *
+ * @param code - A two-letter language code (ISO 639-1), e.g. `en`, `de`
+ * @returns The language name in English (e.g. "German"); returns "English" if the code is unrecognized
+ */
 function getLanguageName(code: string): string {
   const names: Record<string, string> = {
     en: "English",

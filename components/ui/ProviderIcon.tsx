@@ -4,7 +4,11 @@ interface ProviderIconProps {
 }
 
 /**
- * Simple SVG icons for AI model providers
+ * Render a provider-specific SVG icon.
+ *
+ * @param provider - The provider name used to select which icon to render (case-insensitive).
+ * @param className - Optional CSS class names applied to the root SVG element.
+ * @returns The SVG element representing the specified provider; if the provider is unrecognized, returns a muted fallback circle displaying the provider's first letter or `"?"`.
  */
 export function ProviderIcon({ provider, className = "" }: ProviderIconProps) {
   const normalizedProvider = provider.toLowerCase();

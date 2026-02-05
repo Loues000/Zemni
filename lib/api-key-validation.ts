@@ -6,8 +6,11 @@
 export type ApiProvider = "openrouter" | "openai" | "anthropic" | "google";
 
 /**
- * Validate API key format by checking prefix only
- * Returns true if valid, false otherwise
+ * Check whether an API key matches a provider's expected prefix and basic length requirements.
+ *
+ * @param provider - The API provider whose expected key prefix is used ("openrouter", "openai", "anthropic", or "google").
+ * @param key - The API key to validate; whitespace is trimmed and a minimum length of 10 characters is required.
+ * @returns `true` if the key passes the provider-specific prefix check and length requirement (`true` for unknown providers), `false` otherwise.
  */
 export function validateApiKeyFormat(provider: ApiProvider, key: string): boolean {
   if (!key || typeof key !== "string") {
@@ -39,7 +42,10 @@ export function validateApiKeyFormat(provider: ApiProvider, key: string): boolea
 }
 
 /**
- * Get user-friendly error message for invalid key format
+ * Return a provider-specific user-facing message explaining the expected API key prefix.
+ *
+ * @param provider - The API provider to tailor the message for
+ * @returns A human-readable error message describing the expected key prefix for `provider`; returns a generic invalid-format message for unknown providers
  */
 export function getValidationErrorMessage(provider: ApiProvider): string {
   switch (provider) {

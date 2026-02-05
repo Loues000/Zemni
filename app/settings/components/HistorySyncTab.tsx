@@ -5,6 +5,16 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { exportHistoryAsZip } from "@/lib/export-history-zip";
 
+/**
+ * Renders the History & Sync settings UI for exporting, importing, and deleting chat history.
+ *
+ * The component displays export controls (JSON and ZIP), an import button that accepts a JSON export,
+ * and a list of chat history items with multi-select deletion. Importing upserts documents; exporting
+ * builds a downloadable JSON or ZIP. UI buttons are disabled when no documents are available or while
+ * an operation is in progress.
+ *
+ * @returns The settings section as a React element containing export/import controls and chat history list.
+ */
 export function HistorySyncTab() {
   const [selectedDocs, setSelectedDocs] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);

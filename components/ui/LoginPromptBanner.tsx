@@ -10,6 +10,14 @@ interface LoginPromptBannerProps {
   onDismiss?: () => void;
 }
 
+/**
+ * Displays a dismissible sign-up prompt for unauthenticated users and persists dismissal in localStorage.
+ *
+ * Shows a "Sign Up Free" button that opens Clerk's sign-in modal when rendered; the banner is rendered only after client mount and when not previously dismissed.
+ *
+ * @param onDismiss - Optional callback invoked after the banner is dismissed.
+ * @returns The banner element when visible, or `null` if hidden or before client mount.
+ */
 export function LoginPromptBanner({ onDismiss }: LoginPromptBannerProps) {
   const [isDismissed, setIsDismissed] = useState(false);
   const [mounted, setMounted] = useState(false);

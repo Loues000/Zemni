@@ -9,7 +9,10 @@ const MAX_REQUESTS_KEY_MANAGEMENT = 5; // 5 operations per hour for key manageme
 const MAX_REQUESTS_GENERATION = 30; // 30 operations per hour for generation endpoints
 
 /**
- * Get the maximum requests allowed for a rate limit type
+ * Returns the maximum number of requests allowed for the given rate limit category.
+ *
+ * @param type - The rate limit category: `"key_management"` for key management operations, `"generation"` for content generation operations.
+ * @returns The maximum allowed requests for `type` within the configured rate limit window.
  */
 function getMaxRequests(type: "key_management" | "generation"): number {
   return type === "key_management" ? MAX_REQUESTS_KEY_MANAGEMENT : MAX_REQUESTS_GENERATION;

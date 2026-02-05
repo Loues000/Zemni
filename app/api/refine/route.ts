@@ -16,6 +16,19 @@ export const runtime = "nodejs";
 
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
+/**
+ * Handles refine-generation POST requests: validates input and model access, resolves which API key to use,
+ * streams model completions, and returns a streaming HTTP response that includes usage metadata.
+ *
+ * Expects the request JSON body to include `summary` (string) and `modelId` (string); `messages` may be an array of message objects.
+ *
+ * @param request - Incoming HTTP Request whose JSON body must contain `summary` and `modelId`; may include `messages`.
+ * @returns The HTTP Response streaming the model's output and appended usage events. On error returns JSON with:
+ * - 400 for missing/invalid input, missing API key, or unknown model
+ * - 403 when the user lacks access to the requested model
+ * - 413 when the summary exceeds allowed byte size
+ * - 429 when rate limiting prevents the request (includes `Retry-After` header)
+ */
 export async function POST(request: Request) {
   const userContext = await getUserContext();
   

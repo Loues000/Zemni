@@ -3,7 +3,15 @@
 import { useEffect, useState } from "react";
 
 /**
- * Safely use Clerk's useUser hook, returning null if Clerk is not configured
+ * Exposes Clerk user data and a readiness flag when running in a browser with Clerk configured.
+ *
+ * The hook returns an object with two properties:
+ * - `user`: the Clerk user object when available, or `null` when Clerk is not configured or user data is not available.
+ * - `isLoaded`: `true` after Clerk initialization has completed and `user` has been populated, `false` otherwise.
+ *
+ * If Clerk is not configured via NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY or the code runs outside a browser environment, `user` remains `null` and `isLoaded` remains `false`.
+ *
+ * @returns An object containing `user` and `isLoaded`.
  */
 export function useClerkUser() {
   const [user, setUser] = useState<any>(null);

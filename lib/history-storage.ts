@@ -51,8 +51,11 @@ export const saveHistoryToStorage = (entries: HistoryEntry[]): void => {
 };
 
 /**
- * Convert Convex document to HistoryEntry format
- */
+  * Convert a Convex document object into a HistoryEntry.
+  *
+  * @param doc - Convex document containing fields from the database; `_id` is used as `id`, and `outputs` may be missing or falsy.
+  * @returns A HistoryEntry with `id` mapped from `doc._id`, all primary fields copied, `outputs` defaulted to `{}` when falsy, and optional `exportedSubject` and `notionPageId` preserved.
+  */
 export function documentToHistoryEntry(doc: {
   _id: string;
   title: string;
@@ -79,6 +82,13 @@ export function documentToHistoryEntry(doc: {
   };
 }/**
  * Convert HistoryEntry to Convex document format
+ */
+/**
+ * Convert a HistoryEntry into a Convex document-like object.
+ *
+ * @param entry - The history entry to convert
+ * @param userId - The user identifier (not included in the returned document)
+ * @returns An object with `title`, `fileName`, `extractedText`, `outputs`, `structureHints`, `createdAt`, `updatedAt`, and optional `exportedSubject` and `notionPageId`
  */
 export function historyEntryToDocument(entry: HistoryEntry, userId: string): {
   title: string;

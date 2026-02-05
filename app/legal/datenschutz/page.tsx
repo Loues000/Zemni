@@ -1,5 +1,10 @@
 "use client";
 
+/**
+ * Render a client-side placeholder page for the Datenschutzerklärung (privacy policy).
+ *
+ * @returns A React element that displays a non-binding placeholder privacy policy with a banner, three informational sections, and a link back to the homepage.
+ */
 export default function DatenschutzPage() {
   return (
     <div className="legal-page">
@@ -268,5 +273,4 @@ export default function DatenschutzPage() {
     </div>
   );
 }
-
 

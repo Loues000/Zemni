@@ -12,6 +12,18 @@ interface HistorySidebarProps {
   footer?: ReactNode;
 }
 
+/**
+ * Render a history sidebar UI that supports searching, grouping by recency, selection, and deletion of entries.
+ *
+ * @param isOpen - Whether the sidebar is visible
+ * @param history - Array of history entries to display
+ * @param currentHistoryId - Id of the currently active/selected history entry, or `null`
+ * @param onClose - Callback invoked when the sidebar or its backdrop is closed
+ * @param onSelectEntry - Callback invoked with a `HistoryEntry` when an entry is selected
+ * @param onDeleteEntry - Callback invoked with the entry `id` and the click event when a delete button is pressed
+ * @param footer - Optional content rendered in the footer area of the sidebar
+ * @returns The rendered history sidebar element
+ */
 export function HistorySidebar({
   isOpen,
   history,

@@ -3,8 +3,11 @@ import type { BlockObjectRequest, PageObjectResponse } from "@notionhq/client/bu
 import { markdownToBlocks } from "./markdown";
 
 /**
- * Create a Notion client with optional token
- * If no token is provided, uses the default from environment variables
+ * Create a Notion client configured with a provided token or the NOTION_TOKEN environment variable.
+ *
+ * @param token - Optional Notion integration token; when omitted, the `NOTION_TOKEN` environment variable is used
+ * @returns A configured Notion API client
+ * @throws If no token is provided and `NOTION_TOKEN` is not set
  */
 export function createNotionClient(token?: string) {
   const authToken = token || process.env.NOTION_TOKEN;
@@ -16,6 +19,11 @@ export function createNotionClient(token?: string) {
 
 // Lazy initialization - only create client when actually needed
 let notionInstance: Client | null = null;
+/**
+ * Return a cached Notion Client instance, creating and caching it on first use.
+ *
+ * @returns The initialized Notion `Client`
+ */
 function getNotionClient(): Client {
   if (!notionInstance) {
     notionInstance = createNotionClient();

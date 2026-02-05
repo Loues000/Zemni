@@ -3,8 +3,10 @@
 import Link from "next/link";
 
 /**
- * Legal links component for footer areas
- * Displays links to legal pages: Impressum, Datenschutz, AGB, Widerruf
+ * Render a horizontal list of footer links to legal pages.
+ *
+ * @param className - Optional additional CSS class names appended to the root container
+ * @returns The rendered container element with links to Impressum, Datenschutz, AGB, and Widerruf
  */
 export function LegalLinks({ className = "" }: { className?: string }) {
   return (
@@ -71,7 +73,10 @@ export function LegalLinks({ className = "" }: { className?: string }) {
 }
 
 /**
- * Compact version for tight spaces
+ * Renders a compact horizontal list of legal page links suitable for tight spaces.
+ *
+ * @param className - Optional additional CSS class name(s) applied to the container.
+ * @returns The rendered compact legal links element containing Impressum, Datenschutz, and AGB links.
  */
 export function LegalLinksCompact({ className = "" }: { className?: string }) {
   return (

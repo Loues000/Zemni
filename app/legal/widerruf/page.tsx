@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * Render a placeholder "Widerrufsbelehrung" (right of withdrawal) legal page intended for draft use.
+ *
+ * The page displays a prominent draft banner, a title, several placeholder sections (Hinweis, Platzhaltertext, Kontakt)
+ * and a footer link back to the homepage. The full original legal text is preserved in the component as a commented block.
+ *
+ * @returns A React element representing the styled placeholder Widerrufsbelehrung page.
+ */
 export default function WiderrufPage() {
   return (
     <div className="legal-page">
@@ -234,5 +242,4 @@ export default function WiderrufPage() {
     </div>
   );
 }
-
 

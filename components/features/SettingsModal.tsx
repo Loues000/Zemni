@@ -18,6 +18,24 @@ interface SettingsModalProps {
   historyCount?: number;
 }
 
+/**
+ * Renders a settings modal that lets the user view and update the default model and default structure hints.
+ *
+ * The modal syncs its local inputs from the provided defaults when opened, closes when clicking outside
+ * the dialog or pressing Escape, and persists changes via `onSave`.
+ *
+ * @param isOpen - Whether the modal is visible
+ * @param onClose - Callback to close the modal
+ * @param models - Available model options for selection
+ * @param selectedModel - Currently active model (used as fallback when no local default is set)
+ * @param defaultModel - Initial default model value used to populate the modal when opened
+ * @param structureHints - Current structure hints (not directly edited by this modal)
+ * @param defaultStructureHints - Initial default structure hints used to populate the modal when opened
+ * @param onSave - Callback invoked with `{ defaultModel, defaultStructureHints }` to persist changes
+ * @param onExportZip - Optional callback to export history as a ZIP archive
+ * @param historyCount - Number of history entries; export option is shown only when this is greater than zero
+ * @returns The modal element when open, or `null` when closed
+ */
 export function SettingsModal({
   isOpen,
   onClose,

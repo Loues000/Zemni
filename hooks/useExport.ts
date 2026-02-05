@@ -19,7 +19,29 @@ export interface UseExportReturn {
 }
 
 /**
- * Manages Notion export functionality
+ * Provides state and handlers for exporting data to Notion and managing export-related UI.
+ *
+ * @param currentKind - The type of output to export (e.g., lesson, summary).
+ * @param currentSummary - The textual summary associated with the current export.
+ * @param fileName - Desired filename or title for the exported Notion page or database entry.
+ * @param selectedSubject - Identifier of the currently selected subject for the export.
+ * @param subjects - Available subjects the user can choose from.
+ * @param extractedText - The main extracted text content to include in the export.
+ * @param outputs - Auxiliary output data keyed by identifier used during export.
+ * @param structureHints - Hints about how to structure the exported content.
+ * @param currentHistoryId - Identifier of the currently loaded history entry, or `null` if none.
+ * @param setError - Setter for presenting an error message to the user.
+ * @param setStatus - Setter for updating the overall export status.
+ * @param setSelectedSubject - Setter to change the selected subject.
+ * @param setLoadedFromHistory - Setter to mark whether content was loaded from history.
+ * @param updateHistoryState - Function to update the local history entries array.
+ * @returns An object exposing export state and actions:
+ * - `exportProgress` / `setExportProgress`: current and total progress for ongoing exports.
+ * - `lastExportedPageId` / `setLastExportedPageId`: Notion page id of the most recent export.
+ * - `subjectPickerOpen` / `setSubjectPickerOpen`: UI state for the subject picker.
+ * - `pendingExport` / `setPendingExport`: whether an export is in progress.
+ * - `handleExport(overrideSubjectId?)`: triggers an export, optionally overriding the selected subject.
+ * - `handleSubjectPicked(subjectId)`: handles a subject selection and may initiate export flow.
  */
 export function useExport(
   currentKind: OutputKind,

@@ -22,11 +22,14 @@ export function getUsageLimit(tier: string | null | undefined): number {
 }
 
 /**
- * Get the usage limit for a specific source (summarize, flashcards, quiz)
- * Currently all sources share the same limit, but this allows for future differentiation
- * @param tier - Subscription tier
- * @param source - Generation source type
- * @returns Monthly limit for the tier
+ * Get the monthly generation limit for a subscription tier and content source.
+ *
+ * Currently all sources share the same per-tier limit; this function exists to allow
+ * future per-source differentiation.
+ *
+ * @param tier - Subscription tier identifier (e.g., "free", "plus", "pro")
+ * @param source - Content generation source ("summarize", "flashcards", or "quiz")
+ * @returns The monthly limit for the specified tier and source
  */
 export function getUsageLimitForSource(
   tier: string | null | undefined,

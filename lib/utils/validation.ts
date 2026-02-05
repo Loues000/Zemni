@@ -11,8 +11,11 @@ const MAX_STRUCTURE_HINTS_LENGTH = 10_000; // 10K characters for structure hints
 const MAX_MESSAGES_ARRAY_LENGTH = 100; // Maximum number of messages in refine endpoint
 
 /**
- * Validate text length (character count, not byte size)
- * Returns validation result with error message if invalid
+ * Validate that a text's character count does not exceed a maximum.
+ *
+ * @param text - The text to validate
+ * @param maxLength - Maximum allowed number of characters (defaults to MAX_TEXT_LENGTH)
+ * @returns `{ valid: true }` if `text.length` is less than or equal to `maxLength`, `{ valid: false, error }` otherwise. `error` reports current and maximum lengths in thousands of characters.
  */
 export function validateTextLength(text: string, maxLength: number = MAX_TEXT_LENGTH): { valid: boolean; error?: string } {
   if (text.length > maxLength) {
@@ -28,8 +31,12 @@ export function validateTextLength(text: string, maxLength: number = MAX_TEXT_LE
 }
 
 /**
- * Validate structure hints format and length
- * Structure hints should be plain text with optional headings
+ * Validate that structure hints are plain text within the allowed length and do not contain simple suspicious patterns.
+ *
+ * Accepts empty or whitespace-only input (optional field) and allows plain headings; rejects inputs that exceed the maximum configured length or match basic malicious patterns such as `<script>`, `javascript:` URIs, or inline event handlers.
+ *
+ * @param structureHints - The structure hints text to validate; may be empty or contain plain headings.
+ * @returns `{ valid: true }` if the input is acceptable; otherwise `{ valid: false, error }` with a concise error message describing the failure.
  */
 export function validateStructureHints(structureHints: string): { valid: boolean; error?: string } {
   if (!structureHints || structureHints.trim().length === 0) {
@@ -67,8 +74,10 @@ export function validateStructureHints(structureHints: string): { valid: boolean
 }
 
 /**
- * Validate model ID exists in available models
- * Returns validation result with error message if invalid
+ * Check that a model ID corresponds to an available model.
+ *
+ * @param modelId - The model's OpenRouter identifier (`openrouterId`)
+ * @returns An object with `valid: true` when a model with the given ID exists; otherwise `valid: false` and an `error` message describing the problem.
  */
 export async function validateModelId(modelId: string): Promise<{ valid: boolean; error?: string }> {
   if (!modelId || typeof modelId !== "string" || modelId.trim().length === 0) {
@@ -98,8 +107,11 @@ export async function validateModelId(modelId: string): Promise<{ valid: boolean
 }
 
 /**
- * Validate file type (PDF or Markdown)
- * Returns validation result with error message if invalid
+ * Validate that a filename (and optional MIME type) corresponds to an allowed file type (PDF or Markdown).
+ *
+ * @param fileName - The uploaded file's name; required for extension-based detection
+ * @param mimeType - Optional MIME type to assist detection when provided
+ * @returns `{ valid: true }` if the file is a PDF or Markdown file, ` { valid: false, error }` otherwise; the `error` explains the failure (missing file name or unsupported type)
  */
 export function validateFileType(fileName: string, mimeType?: string): { valid: boolean; error?: string } {
   if (!fileName) {
@@ -127,8 +139,10 @@ export function validateFileType(fileName: string, mimeType?: string): { valid: 
 }
 
 /**
- * Validate messages array for refine endpoint
- * Checks array length and individual message structure
+ * Validate an array of message objects intended for the refine endpoint.
+ *
+ * @param messages - The messages array to validate; each item must be an object with string `role` and `content` fields.
+ * @returns `{ valid: true }` if all messages conform; otherwise `{ valid: false, error }` describing the first validation failure.
  */
 export function validateMessagesArray(messages: unknown[]): { valid: boolean; error?: string } {
   if (!Array.isArray(messages)) {
@@ -177,8 +191,12 @@ export function validateMessagesArray(messages: unknown[]): { valid: boolean; er
 }
 
 /**
- * Validate summary text for refine endpoint
- * Checks length and basic format
+ * Validate summary text for the refine endpoint.
+ *
+ * Ensures `summary` is a non-empty string and does not exceed the configured maximum text length.
+ *
+ * @param summary - The summary text to validate.
+ * @returns An object with `valid: true` when `summary` passes validation; when invalid `error` contains a descriptive message.
  */
 export function validateSummaryText(summary: string): { valid: boolean; error?: string } {
   if (!summary || typeof summary !== "string") {
@@ -193,8 +211,10 @@ export function validateSummaryText(summary: string): { valid: boolean; error?: 
 }
 
 /**
- * Validate flashcards density value
- * Must be between 1 and 5 (inclusive)
+ * Validate that the flashcards density is an integer from 1 (lowest) to 5 (highest).
+ *
+ * @param density - Desired flashcards density level; expected to be an integer in the range 1..5
+ * @returns An object of the form `{ valid: true }` when the value is valid; otherwise `{ valid: false, error: string }` with a human-readable error message
  */
 export function validateFlashcardsDensity(density: unknown): { valid: boolean; error?: string } {
   if (typeof density !== "number") {
@@ -215,8 +235,11 @@ export function validateFlashcardsDensity(density: unknown): { valid: boolean; e
 }
 
 /**
- * Validate quiz questions count
- * Must be a positive integer within reasonable bounds
+ * Validate that a quiz questions count is an integer between 1 and the allowed maximum.
+ *
+ * @param count - The number of questions to validate
+ * @param maxCount - The maximum allowed questions (default: 50)
+ * @returns `{ valid: true }` if `count` is an integer between 1 and `maxCount`, `{ valid: false, error: string }` otherwise
  */
 export function validateQuestionsCount(count: unknown, maxCount: number = 50): { valid: boolean; error?: string } {
   if (typeof count !== "number") {

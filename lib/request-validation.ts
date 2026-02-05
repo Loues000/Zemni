@@ -15,8 +15,10 @@ function getTextSizeInBytes(text: string): number {
 }
 
 /**
- * Validate text input size
- * Returns validation result with error message if invalid
+ * Checks whether a UTF-8 text string meets the maximum allowed text size.
+ *
+ * @param text - The UTF-8 string to validate.
+ * @returns An object with `valid: true` when the text size is within `MAX_TEXT_SIZE`; otherwise `valid: false` and an `error` string describing the maximum and current sizes in megabytes.
  */
 export function validateTextSize(text: string): { valid: boolean; error?: string } {
   const size = getTextSizeInBytes(text);
@@ -34,8 +36,10 @@ export function validateTextSize(text: string): { valid: boolean; error?: string
 }
 
 /**
- * Validate PDF file size
- * Returns validation result with error message if invalid
+ * Validate that a PDF buffer does not exceed the configured maximum size.
+ *
+ * @param buffer - Buffer containing the PDF file bytes to validate
+ * @returns An object with `valid: true` when the buffer size is within the limit. If `valid` is `false`, `error` contains a message that includes the maximum allowed size and the current size in megabytes.
  */
 export function validatePdfSize(buffer: Buffer): { valid: boolean; error?: string } {
   const size = buffer.length;
@@ -53,8 +57,10 @@ export function validatePdfSize(buffer: Buffer): { valid: boolean; error?: strin
 }
 
 /**
- * Validate total size of multiple text pages
- * Used for PDF pages array
+ * Validate that the combined UTF-8 byte size of multiple text pages does not exceed the maximum allowed text size.
+ *
+ * @param pages - Array of page contents whose UTF-8 byte sizes will be summed
+ * @returns An object with `valid: true` if the combined size is less than or equal to the maximum; otherwise `valid: false` and `error` contains a message with the maximum and current sizes in MB
  */
 export function validatePagesSize(pages: string[]): { valid: boolean; error?: string } {
   const totalSize = pages.reduce((sum, page) => sum + getTextSizeInBytes(page), 0);

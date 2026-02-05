@@ -5,8 +5,11 @@ import { api } from "@/convex/_generated/api";
 const convexClient = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
 /**
- * Get current user from Clerk and sync to Convex
- * Call this in API routes to ensure user exists in Convex
+ * Retrieve the current Clerk user's identifier and a placeholder email for syncing with Convex.
+ *
+ * Returns an object containing the Clerk user id and a generated placeholder email, or `null` if no user is authenticated.
+ *
+ * @returns `{ clerkUserId: string; email: string }` with the Clerk user id and a generated placeholder email, or `null` if no authenticated user
  */
 export async function getOrCreateConvexUser() {
   const { userId } = await auth();
@@ -30,8 +33,11 @@ export async function getOrCreateConvexUser() {
 }
 
 /**
- * Get Convex user ID from Clerk user ID
- * This should be called from authenticated client components
+ * Provide Convex-related identity information for an authenticated client component.
+ *
+ * @param clerkUserId - The Clerk user's unique identifier used to correlate with Convex
+ * @param email - An email address associated with the Clerk user; may be a placeholder
+ * @returns An object containing `clerkUserId` and `email`
  */
 export async function getConvexUserId(clerkUserId: string, email: string) {
   // This will be called from client-side with proper authentication

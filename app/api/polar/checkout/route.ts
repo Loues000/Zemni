@@ -6,6 +6,16 @@ import { api } from "@/convex/_generated/api";
 
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
+/**
+ * Initiates a Polar subscription checkout for the authenticated user based on the requested tier.
+ *
+ * Validates billing is enabled, ensures the caller is signed in, resolves the user's email,
+ * verifies the requested `tier` is "plus" or "pro", ensures the user exists in the Convex DB,
+ * and creates a Polar checkout that returns a redirect URL.
+ *
+ * @param request - HTTP request whose JSON body must include a `tier` field ("plus" or "pro")
+ * @returns A NextResponse JSON object. On success: `{ url: string }`. On error: `{ error: string }` with an appropriate HTTP status code.
+ */
 export async function POST(request: Request) {
   try {
     if (process.env.NEXT_PUBLIC_ENABLE_BILLING !== "true") {

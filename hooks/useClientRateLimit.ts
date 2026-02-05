@@ -39,19 +39,18 @@ interface UseClientRateLimitOptions {
 }
 
 /**
- * Client-side rate limiting hook
- * 
- * @example
- * ```tsx
- * const { execute, isRateLimited, isExecuting } = useClientRateLimit({
- *   fn: handleGenerate,
- *   minInterval: 2000 // 2 seconds between requests
- * });
- * 
- * <button onClick={execute} disabled={isRateLimited || isExecuting}>
- *   {isExecuting ? "Generating..." : "Generate"}
- * </button>
- * ```
+ * Provide a client-side rate-limited wrapper around a function.
+ *
+ * Enforces a minimum interval between invocations, prevents concurrent executions,
+ * and exposes cooldown state.
+ *
+ * @param fn - The function to invoke when `execute` is called.
+ * @param minInterval - Minimum time in milliseconds required between successive executions. Defaults to 2000.
+ * @returns An object with:
+ *   - `execute`: a function that invokes `fn` while enforcing the rate limit and ignoring calls during cooldown or concurrent execution.
+ *   - `isRateLimited`: `true` if a cooldown is active, `false` otherwise.
+ *   - `cooldownRemaining`: the number of whole seconds remaining in the current cooldown.
+ *   - `isExecuting`: `true` while `fn` is running, `false` otherwise.
  */
 export function useClientRateLimit({
   fn,

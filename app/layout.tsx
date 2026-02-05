@@ -20,6 +20,13 @@ const body = IBM_Plex_Sans({
   variable: "--font-body"
 });
 
+/**
+ * Provide page metadata for the application.
+ *
+ * Includes the site title and description and embeds Sentry trace data in the `other` field.
+ *
+ * @returns A Metadata object with `title`, `description`, and an `other` field merged with Sentry trace data.
+ */
 export function generateMetadata(): Metadata {
   return {
     title: "Zemni",
@@ -30,6 +37,15 @@ export function generateMetadata(): Metadata {
   };
 }
 
+/**
+ * Application root layout that renders the global HTML structure and app-level providers.
+ *
+ * Initializes the page theme, applies global fonts, wraps content with client providers and an error boundary,
+ * renders the notification Toaster, and conditionally includes user synchronization when Clerk is properly configured.
+ *
+ * @param children - The application content to render within the layout
+ * @returns The root HTML element tree for the application
+ */
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   // Only include UserSync if Clerk is configured
   const clerkKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;

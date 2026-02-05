@@ -4,6 +4,16 @@ import type { LanguageModelUsage } from "ai";
 import type { ProviderResult } from "./openai";
 
 
+/**
+ * Creates an Anthropic text provider configured with the given API key.
+ *
+ * The returned provider exposes two methods for interacting with Anthropic models:
+ * - `generateText(modelId, messages, options)`: produces a completed response and returns its text, usage, and `costInUsd: 0`.
+ * - `streamText(modelId, messages, options)`: returns `{ textStream, getUsage }` where `textStream` is an `AsyncIterable<string>` of streamed chunks and `getUsage` consumes the stream to produce the full text, an estimated token usage (prompt, completion, total), and `costInUsd: 0`.
+ *
+ * @param apiKey - The Anthropic API key used to construct the client.
+ * @returns An object exposing `generateText` and `streamText` methods for calling Anthropic models.
+ */
 export function createAnthropicProvider(apiKey: string) {
   const anthropic = createAnthropic({ apiKey });
 

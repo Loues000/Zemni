@@ -13,6 +13,13 @@ const PROVIDERS = [
   { id: "google", label: "Google (Gemini)", placeholder: "AIza..." },
 ] as const;
 
+/**
+ * Renders the API Keys settings section allowing the user to manage provider API keys and the preference to use their own keys.
+ *
+ * Provides controls to toggle between using user-provided keys and system keys, add new keys for each supported provider, delete existing active keys, and view key status and last-used information. Shows a security note about key encryption and storage.
+ *
+ * @returns A React element containing the API Keys settings UI
+ */
 export function ApiKeysTab() {
   const { user } = useUser();
   const [keyValues, setKeyValues] = useState<Record<string, string>>({});

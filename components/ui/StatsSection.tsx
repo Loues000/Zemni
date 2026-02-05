@@ -1,6 +1,15 @@
 import type { UsageStats } from "@/types";
 import { IconChevron } from "./Icons";
 
+/**
+ * Renders a collapsible stats panel showing token counts, throughput, duration, and optionally cost.
+ *
+ * @param currentUsage - The usage metrics to display; if `null`, the component renders nothing.
+ * @param isOpen - Whether the stats panel is expanded.
+ * @param onToggle - Callback invoked when the panel's toggle button is clicked.
+ * @param showCost - When `true`, displays the Cost stat if currency information is available (default: `false`).
+ * @returns The stats panel element, or `null` when `currentUsage` is `null`.
+ */
 export function StatsSection({ 
   currentUsage, 
   isOpen, 

@@ -9,6 +9,17 @@ const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
 export const runtime = "nodejs";
 
+/**
+ * Handles POST requests to export a markdown summary to Notion, supporting both a non-streaming response and an NDJSON streaming mode for progress events.
+ *
+ * Expects a JSON body with optional `subjectId` (database target) or `pageId` (page target), `title`, `markdown`, optional `stream` (boolean) to enable streaming, and optional `notionToken` (plain or encrypted). If `notionToken` is not provided in the request or environment, the handler will attempt to retrieve and decrypt a stored token for the authenticated user. Validates presence of a Notion token and export data before performing the export.
+ *
+ * @param request - Incoming HTTP request whose JSON body contains the export parameters described above.
+ * @returns A Response:
+ *  - For non-streaming requests: JSON { pageId: string } with the created Notion page ID.
+ *  - For streaming requests: an application/x-ndjson stream that emits `ExportProgress` events (including error events).
+ *  - For validation failures: a 400 JSON response with an `error` message.
+ */
 export async function POST(request: Request) {
   const body = await request.json();
   const subjectId = body.subjectId ? String(body.subjectId) : undefined;

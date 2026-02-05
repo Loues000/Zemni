@@ -15,6 +15,12 @@ export const TIER_PRODUCT_IDS: Record<string, string | undefined> = {
   pro: process.env.POLAR_PRODUCT_ID_PRO,
 };
 
+/**
+ * Map a Polar product ID to its corresponding subscription tier.
+ *
+ * @param productId - The Polar product ID to look up.
+ * @returns `'plus'` or `'pro'` if `productId` matches a configured tier product ID, `null` otherwise.
+ */
 export function getTierFromProductId(productId: string): "plus" | "pro" | null {
   for (const [tier, id] of Object.entries(TIER_PRODUCT_IDS)) {
     if (id === productId) {

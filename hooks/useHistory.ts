@@ -29,6 +29,24 @@ export interface UseHistoryReturn {
   retryFailedSaves: () => Promise<void>;
 }
 
+/**
+ * Provides history state and persistence helpers for reading, updating, and saving user documents.
+ *
+ * Exposes the current history entries and flags for loading/saving, plus helpers to modify state and persist entries to Convex or localStorage.
+ *
+ * @returns An object containing:
+ *  - `history` — the sorted list of `HistoryEntry` items.
+ *  - `isLoading` — `true` while initial history is being loaded.
+ *  - `isSaving` — `true` while one or more entries are being saved.
+ *  - `saveError` — last save error message, or `null` if none.
+ *  - `lastSavedAt` — `Date` of the most recent successful save, or `null`.
+ *  - `pendingSaves` — number of saves currently pending.
+ *  - `updateHistoryState` — a function `(updater) => void` to apply local updates to history; will persist changed entries (to Convex when authenticated, otherwise to localStorage).
+ *  - `saveEntryToConvex` — a function `(entry) => Promise<string>` that persists a single entry to Convex and returns its document ID.
+ *  - `saveAllEntriesToConvex` — a function `(entries) => Promise<void>` that persists multiple entries sequentially.
+ *  - `clearSaveError` — a function `() => void` to clear the current save error.
+ *  - `retryFailedSaves` — a function `() => Promise<void>` to retry any previously failed saves.
+ */
 export function useHistory(): UseHistoryReturn {
   const currentUser = useQuery(api.users.getCurrentUser);
   const documents = useQuery(api.documents.getAll);

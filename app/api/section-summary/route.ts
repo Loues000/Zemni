@@ -101,6 +101,15 @@ const toSections = (value: unknown): DocumentSection[] => {
   return sections;
 };
 
+/**
+ * Summarizes document sections into a structured summary using the specified model.
+ *
+ * @param request - Request whose JSON body must include `sections` (array of objects with at least `id` and `text`), `modelId`, and may include `structure` and `titleHint`.
+ * @returns JSON with `{ summary, usage, meta }` on success where `meta` contains `chunked` (boolean) and `totalChars` (number); or `{ error }` with an HTTP status on failure. Possible error statuses:
+ * - 400: missing OpenRouter key, missing `modelId` or `sections`, or model not found
+ * - 403: model not available for the user's subscription tier (suggest adding an API key)
+ * - 504: summary generation timed out
+ */
 export async function POST(request: Request) {
   const { userId: clerkUserId } = await auth();
   const userContext = await getUserContext();

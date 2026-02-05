@@ -19,6 +19,13 @@ import { ContactTab } from "./components/ContactTab";
 
 const VALID_TABS = ["account", "subscription", "api-keys", "notion", "history", "models", "customization", "contact"];
 
+/**
+ * Renders the settings page content, showing the selected settings tab when signed in and a sign-in prompt when signed out.
+ *
+ * The active tab is derived from the `tab` URL query parameter (validated against the known tab list) and kept in sync with URL changes.
+ *
+ * @returns The React element containing either the authenticated settings layout with the active tab content or a sign-in gated UI with a sign-in button and legal notice.
+ */
 function SettingsContent() {
   const searchParams = useSearchParams();
   const tabFromUrl = searchParams.get("tab");
@@ -84,6 +91,11 @@ function SettingsContent() {
   );
 }
 
+/**
+ * Client route component for the Settings page that displays a loading fallback while the settings content loads.
+ *
+ * @returns A React element that renders a centered "Loading settings..." fallback UI until SettingsContent is ready, then renders the SettingsContent component.
+ */
 export default function SettingsRoute() {
   return (
     <Suspense fallback={

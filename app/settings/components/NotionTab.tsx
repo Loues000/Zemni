@@ -4,6 +4,13 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 
+/**
+ * Render the Notion integration settings UI and manage saving, verification, and clearing of a user's Notion configuration.
+ *
+ * Renders inputs for a Notion API token, an export method selector (database or page), and an optional database ID when database export is selected. Provides actions to save the configuration (which sends data to server endpoints and optionally verifies a database connection) and to clear the configuration (using a Convex mutation). Displays loading states and success/error messages to the user.
+ *
+ * @returns The settings section JSX for configuring Notion integration, including inputs for token and database ID, export method radios, save/clear buttons, verification feedback, and setup instructions.
+ */
 export function NotionTab() {
   const currentUser = useQuery(api.users.getCurrentUser);
   const clearNotionConfig = useMutation(api.users.clearNotionConfig);

@@ -63,6 +63,21 @@ const clampInt = (value: number, min: number, max: number): number => {
   return Math.max(min, Math.min(max, Math.floor(value)));
 };
 
+/**
+ * Generate flashcards for the provided document sections using a language model.
+ *
+ * Generates, validates, deduplicates, and returns flashcards produced by the selected model; records usage when a Clerk user is present.
+ *
+ * @returns A JSON object containing:
+ * - `flashcards`: an array of flashcards with `id`, `sectionId`, `sectionTitle`, `type` (`"qa"` or `"cloze"`), `front`, `back`, `sourceSnippet`, and optional `page`.
+ * - `usage`: aggregated usage statistics or `null` if unavailable.
+ * - `meta`: `{ requestedCardsPerSection, usedCardsPerSection }` describing the requested and actually used per-section card targets.
+ *
+ * Possible error responses:
+ * - 400 for missing/invalid inputs (missing API key, modelId, sections, or invalid modelId).
+ * - 403 if the selected model is not available to the user.
+ * - 429 if the user's monthly generation limit is reached.
+ */
 export async function POST(request: Request) {
   const { userId: clerkUserId } = await auth();
   const userContext = await getUserContext();

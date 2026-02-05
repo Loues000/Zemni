@@ -10,6 +10,20 @@ interface RefineBarProps {
   onClose?: () => void;
 }
 
+/**
+ * Render a refine input bar for submitting change requests.
+ *
+ * Renders a form containing an input and submit button for refining a current summary; on mobile it can optionally include a close button.
+ *
+ * @param input - Current value of the input field
+ * @param isRefining - Whether a refinement operation is in progress; disables controls and changes the submit label
+ * @param hasCurrentSummary - Whether there is an existing summary available to refine; disables input and submit when false
+ * @param onInputChange - Change event handler for the input element
+ * @param onSubmit - Form submit handler invoked when the user submits a refinement
+ * @param isMobile - If true, applies mobile styling and enables rendering of the close button
+ * @param onClose - Optional handler invoked when the mobile close button is pressed
+ * @returns The JSX element for the refine bar
+ */
 export function RefineBar({
   input,
   isRefining,

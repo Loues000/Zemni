@@ -13,8 +13,10 @@ export interface ModelAvailability {
 }
 
 /**
- * Extract provider from model ID
- * E.g., "openai/gpt-4" -> "openai", "anthropic/claude-3" -> "anthropic"
+ * Determines the API provider indicated by a model identifier of the form "provider/model".
+ *
+ * @param modelId - Model identifier where the provider is the segment before the first "/" (e.g., "openai/gpt-4")
+ * @returns The matching ApiProvider ("openrouter", "openai", "anthropic", or "google") if recognized, `null` otherwise.
  */
 export function getProviderFromModelId(modelId: string): ApiProvider | null {
   const parts = modelId.split("/");
@@ -82,7 +84,11 @@ function checkModelTierAvailability(
 }
 
 /**
- * Check if a model is available through user's API keys
+ * Determines whether the given model can be accessed using the user's API provider keys.
+ *
+ * @param modelId - The model identifier (expected format like `"provider/modelName"`, e.g., `"openai/gpt-4"`)
+ * @param userApiKeys - List of provider API keys the user possesses (values from `ApiProvider`)
+ * @returns `true` if the user has an API key that grants access to the model, `false` otherwise.
  */
 export function isModelAvailableViaApiKey(
   modelId: string,
@@ -114,8 +120,16 @@ export function isModelAvailableViaApiKey(
 }
 
 /**
- * Determines full model availability including API keys
- * Returns detailed information about why a model is available or locked
+ * Determine whether a model is accessible to a user via subscription or the user's API keys and provide the reason for accessibility or lock.
+ *
+ * @param model - Object describing the model; `id` or `openrouterId` is used to evaluate API-key access and `subscriptionTier` is used to evaluate subscription access.
+ * @param userTier - The user's subscription tier (e.g., `"free"`, `"basic"`, `"plus"`, `"pro"`), or `null` if the user is not logged in.
+ * @param userApiKeys - List of API providers for which the user has supplied keys.
+ * @returns An object describing availability:
+ * - `isAvailable`: `true` if the model is accessible via subscription or API key, `false` otherwise.
+ * - `isCoveredBySubscription`: `true` if access is granted by the user's subscription tier.
+ * - `requiresOwnKey`: `true` if access requires the user's own API key (even when available).
+ * - `reason`: `"subscription"` if subscription grants access, `"api_key"` if access is only via API key, or `"locked"` if not accessible.
  */
 export function getModelAvailability(
   model: { 

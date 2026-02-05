@@ -58,6 +58,18 @@ interface ActivityBarProps {
   isCancellable?: boolean;
 }
 
+/**
+ * Displays an activity bar for ongoing document processing, showing stage, status label, elapsed time, estimated completion, export progress, and an optional cancel control.
+ *
+ * @param status - Current processing status
+ * @param exportProgress - Progress object with `current` and `total` for export phase, or `null`
+ * @param outputKind - The kind of output being produced (affects mode label)
+ * @param documentSize - Optional approximate document size used to estimate completion time (defaults to 10000)
+ * @param modelId - Optional model identifier used to compute estimated completion time
+ * @param onCancel - Optional callback invoked when the user requests cancellation
+ * @param isCancellable - Whether the cancel control should be shown
+ * @returns The activity bar element when the status indicates ongoing work (parsing, summarizing, refining, or exporting); otherwise `null`.
+ */
 export function ActivityBar({
   status,
   exportProgress,

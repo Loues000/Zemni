@@ -15,6 +15,14 @@ const SETTINGS_TABS = [
   { id: "history", label: "History & Export" }
 ] as const;
 
+/**
+ * Render the Settings page UI for managing local device preferences, theme, default model and hints, and history import/export.
+ *
+ * The component displays tabs (General, Customization, History & Export), shows local history metrics, allows saving defaults,
+ * exporting history as JSON or ZIP, and importing history with merge rules that prefer newer entries.
+ *
+ * @returns The settings page as a JSX element
+ */
 export function SettingsPage(): JSX.Element {
   const {
     theme,

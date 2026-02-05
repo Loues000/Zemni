@@ -6,6 +6,11 @@ import { useState, useEffect, useRef } from "react";
 import { IconCheck } from "@/components/ui/Icons";
 import { useToastContext } from "./ToastProvider";
 
+/**
+ * Renders the Subscription settings panel, showing the current plan, tier comparison, transient tier-change and error notices, and controls to manage billing.
+ *
+ * @returns The SubscriptionTab React element that displays subscription state, notifications, and management actions.
+ */
 export function SubscriptionTab() {
   const currentUser = useQuery(api.users.getCurrentUser);
   const [loading, setLoading] = useState(false);
@@ -182,4 +187,3 @@ export function SubscriptionTab() {
     </section>
   );
 }
-

@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * Renders a placeholder Impressum page intended as a non-binding draft legal notice.
+ *
+ * The page includes a prominent placeholder banner, headings and placeholder sections
+ * for notice, sample text, and contact information, plus a link back to the home page.
+ *
+ * @returns The JSX tree for the placeholder Impressum page
+ */
 export default function ImpressumPage() {
   return (
     <div className="legal-page">
@@ -188,5 +196,4 @@ export default function ImpressumPage() {
     </div>
   );
 }
-
 

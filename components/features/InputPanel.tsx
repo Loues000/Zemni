@@ -21,6 +21,28 @@ interface InputPanelProps {
   children?: React.ReactNode;
 }
 
+/**
+ * Render the input panel used to upload a document, choose a model, and optionally provide structure hints.
+ *
+ * @param fileName - Current uploaded file name; empty when no file is selected
+ * @param selectedModel - ID of the currently selected model
+ * @param models - Available models to present in the model selector
+ * @param structureHints - Current text for the optional structure hints textarea
+ * @param showStructureHints - When true, show the Structure (optional) textarea
+ * @param dragActive - When true, apply drag styling to the dropzone
+ * @param dropzoneCorner - Optional node rendered in the top-right corner of the dropzone
+ * @param topBarLeft - Optional content for the left side of the panel top bar
+ * @param topBarRight - Optional content for the right side of the panel top bar
+ * @param userTier - Optional user tier used to tailor model selector options
+ * @param onDrop - Handler invoked when a file is dropped onto the dropzone
+ * @param onDragOver - Handler invoked while a dragged item is over the dropzone
+ * @param onDragLeave - Handler invoked when a dragged item leaves the dropzone
+ * @param onSelectFile - Handler invoked when a file is selected via the hidden file input
+ * @param onModelChange - Handler invoked with the new model id when model selection changes
+ * @param onStructureChange - Handler invoked with the new structure hints text when the textarea changes
+ * @param children - Additional nodes to render below the panel fields
+ * @returns The panel's React element containing the dropzone, model selector, optional structure hints, and any children
+ */
 export function InputPanel({
   fileName,
   selectedModel,

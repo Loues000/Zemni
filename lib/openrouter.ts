@@ -4,8 +4,10 @@ import OpenAI from "openai";
 const defaultApiKey = process.env.OPENROUTER_API_KEY;
 
 /**
- * Create OpenRouter client with optional API key using AI SDK
- * If apiKey is provided, use it; otherwise use the default system key
+ * Create an OpenRouter-configured OpenAI client, using the provided API key or the default environment key.
+ *
+ * @param apiKey - Optional API key to use; if omitted the `OPENROUTER_API_KEY` environment variable will be used.
+ * @returns An OpenAI client configured with OpenRouter's base URL and default headers (`HTTP-Referer` and `X-Title`).
  */
 export function createOpenRouterClient(apiKey?: string) {
   const key = apiKey || defaultApiKey;
@@ -25,8 +27,11 @@ export function createOpenRouterClient(apiKey?: string) {
 }
 
 /**
- * Create OpenRouter client using native OpenAI SDK (bypass AI SDK)
- * This may fix authentication issues with custom baseURLs
+ * Create an OpenRouter-compatible OpenAI client using the native OpenAI SDK.
+ *
+ * @param apiKey - Optional OpenRouter API key. If omitted, the `OPENROUTER_API_KEY` environment variable is used.
+ * @returns An OpenAI client instance configured to use the OpenRouter API base URL and default headers.
+ * @throws Error if no API key is provided either via `apiKey` or the `OPENROUTER_API_KEY` environment variable.
  */
 export function createOpenRouterNativeClient(apiKey?: string) {
   const key = apiKey || defaultApiKey;

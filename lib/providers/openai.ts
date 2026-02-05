@@ -15,6 +15,14 @@ export interface StreamResult {
 }
 
 
+/**
+ * Create an OpenAI provider exposing methods to generate full responses or stream responses incrementally.
+ *
+ * @param apiKey - The OpenAI API key used to initialize the provider client.
+ * @returns An object with:
+ *  - `generateText(modelId, messages, options)`: generates a complete response and returns `{ text, usage, costInUsd }`.
+ *  - `streamText(modelId, messages, options)`: returns `{ textStream, getUsage() }` where `textStream` is an AsyncIterable of text chunks and `getUsage()` consumes the stream to produce `{ text, usage, costInUsd }` (usage is estimated after stream consumption). Cost values are returned as `0`.
+ */
 export function createOpenAIProvider(apiKey: string) {
   const openai = createOpenAI({ apiKey });
 

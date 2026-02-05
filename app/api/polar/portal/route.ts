@@ -6,6 +6,14 @@ import { getUserContext } from "@/lib/api-helpers";
 
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
+/**
+ * Handles POST requests to open the Polar subscription management portal for the authenticated user.
+ *
+ * Attempts to authenticate the request, load the current user, verify an active paid subscription,
+ * create a Polar customer session (by `polarCustomerId` or `clerkUserId`), and return the portal URL.
+ *
+ * @returns A JSON NextResponse containing `{ url: string }` when successful, or `{ error: string }` with an appropriate HTTP status on failure.
+ */
 export async function POST() {
   try {
     // Use getUserContext to verify authentication and get user

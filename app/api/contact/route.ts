@@ -7,6 +7,12 @@ export const runtime = "nodejs";
 
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
+/**
+ * Handle contact form POST requests: validate required fields, resolve the submitting user's email and name when available, log the submission, and respond with a JSON result.
+ *
+ * @param request - The incoming POST request whose JSON body must include `subject` and `message`
+ * @returns A NextResponse with a JSON payload: on success `{ success: true, message: string }` (status 200); on client error `{ error: string }` (status 400) when required fields are missing; on server error `{ error: string }` (status 500) when processing fails.
+ */
 export async function POST(request: Request) {
   try {
     const { userId } = await auth();

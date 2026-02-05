@@ -24,10 +24,10 @@ export interface EventContext {
 }
 
 /**
- * Track an error with context
- * 
- * @param error - The error object or message
- * @param context - Additional context about the error
+ * Records an error to console (unless suppressed) and forwards it to Sentry with contextual data and tags.
+ *
+ * @param error - Error instance or error message to record
+ * @param context - Optional contextual information; if `silent` is true console logging is skipped. `timestamp` defaults to the current time when omitted. `action` and `userTier` are attached as Sentry tags and default to `"unknown"` when not provided.
  */
 export function trackError(error: Error | string, context?: ErrorContext): void {
   const errorMessage = error instanceof Error ? error.message : error;
@@ -70,10 +70,10 @@ export function trackError(error: Error | string, context?: ErrorContext): void 
 }
 
 /**
- * Track an event (non-error)
- * 
- * @param eventType - Type of event (e.g., "subscription_upgrade", "api_key_saved")
- * @param context - Additional context about the event
+ * Record a non-error user event by logging it and adding a Sentry breadcrumb.
+ *
+ * @param eventType - The event name or type (e.g., "subscription_upgrade", "api_key_saved")
+ * @param context - Optional contextual fields to include with the event; if `timestamp` is omitted, the current time is used
  */
 export function trackEvent(eventType: string, context?: Omit<EventContext, "eventType">): void {
   const timestamp = context?.timestamp || new Date().toISOString();
@@ -108,12 +108,12 @@ export function trackEvent(eventType: string, context?: Omit<EventContext, "even
 }
 
 /**
- * Track a webhook error with detailed context
- * 
+ * Records an error that occurred while handling a webhook and attaches webhook-specific context.
+ *
  * @param error - The error object or message
- * @param webhookType - Type of webhook (e.g., "polar", "notion")
- * @param webhookData - The webhook payload
- * @param context - Additional context
+ * @param webhookType - Webhook identifier (e.g., "polar", "notion") used to set the action
+ * @param webhookData - The webhook payload; if provided it will be stringified and included in metadata
+ * @param context - Optional additional context (e.g., userId, userTier, metadata, timestamp, silent)
  */
 export function trackWebhookError(
   error: Error | string,
@@ -133,12 +133,14 @@ export function trackWebhookError(
 }
 
 /**
- * Set user context for Sentry
- * Useful for associating errors with specific users
- * 
- * @param userId - The user's ID
- * @param userTier - The user's subscription tier
- * @param additionalContext - Any additional user context
+ * Attach user information and tier to Sentry's current scope.
+ *
+ * Sets the Sentry user id, merges any provided `additionalContext` into the user object,
+ * and sets a `user_tier` tag (defaults to `"unknown"` when not provided).
+ *
+ * @param userId - The user's unique identifier
+ * @param userTier - The user's subscription tier (used for the `user_tier` tag)
+ * @param additionalContext - Additional user properties to merge into the Sentry user object
  */
 export function setUserContext(
   userId: string,
@@ -158,8 +160,10 @@ export function setUserContext(
 }
 
 /**
- * Clear user context from Sentry
- * Call this on logout
+ * Remove the current user from Sentry's context and mark the user tier as "anonymous".
+ *
+ * Attempts to clear Sentry's user information and set the `user_tier` tag to `"anonymous"`.
+ * If Sentry operations fail, a console warning is emitted.
  */
 export function clearUserContext(): void {
   try {

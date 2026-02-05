@@ -2,6 +2,13 @@
 
 import { useState } from "react";
 
+/**
+ * Renders a contact form for users to send a subject and message, handling submission to `/api/contact` and showing loading, success, and error states.
+ *
+ * The component manages form state, disables the submit button while sending or after success, clears the form on successful send, and shows a brief confirmation message. It also exposes resource links for keyboard shortcuts, bug reports, and feature requests.
+ *
+ * @returns A JSX element containing the contact form and related resources.
+ */
 export function ContactTab() {
   const [formData, setFormData] = useState({
     subject: "",

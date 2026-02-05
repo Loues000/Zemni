@@ -27,8 +27,20 @@ export interface UserContext {
 }
 
 /**
- * Get user context for API routes
- * Returns user authentication, tier, and API key preferences
+ * Builds the authenticated user's runtime context, including subscription tier,
+ * per-provider API keys (decrypted), and the user's preference for using their own keys.
+ *
+ * If there is no authenticated Clerk user or no matching user record in Convex, returns `null`.
+ * Provider keys that fail decryption are skipped and logged; decryption failures do not throw.
+ *
+ * @returns A `UserContext` object containing:
+ * - `userId`: the Convex user id
+ * - `userTier`: the user's subscription tier
+ * - `useOwnKey`: `true` if the user has enabled using any of their own provider keys
+ * - `apiKey`: an optional primary key (prefers the user's openrouter key when present)
+ * - `apiKeys`: an array of `ApiKeyInfo` entries with decrypted per-provider keys
+ * - `preferredLanguage` and `customGuidelines`
+ * Or `null` when there is no authenticated user or no user record.
  */
 export async function getUserContext(): Promise<UserContext | null> {
   const { userId } = await auth();
@@ -113,13 +125,12 @@ export async function getUserContext(): Promise<UserContext | null> {
 }
 
 /**
- * Get the appropriate API key for a specific model
- * Returns the key and provider info for making the API call
- * 
- * Logic:
- * - If model is available via subscription AND useOwnKey is not enabled: return null (use system key)
- * - If model is NOT available via subscription OR useOwnKey is enabled: use direct provider key if available
- * - Fallback to OpenRouter key if no provider-specific key exists
+ * Selects a user's API key suitable for calling a specific model.
+ *
+ * @param modelId - The model identifier used to derive the provider (for example "openai/gpt-4" or "anthropic/claude").
+ * @param userContext - The user's context including available apiKeys and the `useOwnKey` preference; when null or contains no keys, selection returns `null`.
+ * @param model - Optional model metadata used to evaluate subscription-based availability; when provided, subscription availability may cause the function to prefer the system key (return `null`) unless `useOwnKey` is enabled.
+ * @returns An object with `key` (the API key string), `provider` (the target ApiProvider), and `isOwnKey` (`true` if the key belongs to the user), or `null` if the system/default key should be used or no suitable user key is available.
  */
 export function getApiKeyForModel(
   modelId: string,
@@ -174,7 +185,10 @@ export function getApiKeyForModel(
 }
 
 /**
- * Extract provider from model ID
+ * Determine the API provider indicated by a model identifier.
+ *
+ * @param modelId - Model identifier in the form "provider/modelName"
+ * @returns The `ApiProvider` corresponding to the identifier's provider segment, or `null` if the provider is unrecognized or the identifier is malformed
  */
 function getProviderFromModelId(modelId: string): ApiProvider | null {
   const parts = modelId.split("/");
@@ -195,11 +209,11 @@ function getProviderFromModelId(modelId: string): ApiProvider | null {
 }
 
 /**
- * Check if a model is available for the user
- * Considers both subscription tier AND API keys
- * 
- * Priority: API keys are checked FIRST, then subscription tier
- * This allows users with API keys to access higher tier models
+ * Determines whether a model is accessible to a user by checking API-key-based access first, then subscription tier.
+ *
+ * @param model - Object identifying the model. Use `id` or `openrouterId` to specify the model identifier; `subscriptionTier` is the model's required tier if known.
+ * @param userContext - The user's context including subscription tier and any configured API keys; may be `null` for unauthenticated users.
+ * @returns `true` if the model is available to the user (either via an API key the user holds or their subscription tier), `false` otherwise.
  */
 export function checkModelAvailability(
   model: { 
@@ -240,10 +254,11 @@ export function checkModelAvailability(
 }
 
 /**
- * Get API key to use (user's key if preferred, otherwise system key)
- * This is a simplified version of getApiKeyForModel for cases where we don't have a specific model.
- * 
- * Note: For model-specific key selection, use getApiKeyForModel() instead.
+ * Selects the API key to use based on the user's preference.
+ *
+ * Prefers the user's primary API key when `useOwnKey` is true and a user key is present; otherwise returns the system OpenRouter key from the environment.
+ *
+ * @returns The API key string to use, or `undefined` if no system key is configured.
  */
 export function getApiKeyToUse(userContext: UserContext | null): string | undefined {
   // Use getApiKeyForModel with null model to leverage the same logic

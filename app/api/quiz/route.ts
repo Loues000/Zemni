@@ -48,6 +48,26 @@ type QuizResult = {
   questions: ModelQuizQuestion[];
 };
 
+/**
+ * Generate a multiple-choice quiz from a provided document section and return structured questions with usage metrics.
+ *
+ * Accepts a JSON request body containing `section` (DocumentSection-like), `modelId`, and optional `questionsCount`/`n` and `avoidQuestions`.
+ * Validates inputs and model access, enforces monthly limits, selects an API key path (system or user-provided), calls the configured model with progressive retries and strict JSON parsing, normalizes and validates returned questions, records usage for authenticated users, and returns the resulting questions and usage summary.
+ *
+ * @param request - Incoming HTTP request whose JSON body should include:
+ *   - `section`: object with `id`, `text`, optional `title` and `page`.
+ *   - `modelId`: model identifier to use for generation.
+ *   - `questionsCount` or `n`: desired number of questions (1–30).
+ *   - `avoidQuestions`: optional array of question strings to avoid.
+ * @returns JSON object with:
+ *   - `questions`: array of validated QuizQuestion objects (id, sectionId, sectionTitle, question, options, correctIndex, optional explanation, sourceSnippet, page).
+ *   - `usage`: usage statistics object or `null` if not available.
+ *
+ * Error responses (JSON with `error`):
+ *   - 400: missing/invalid inputs or unknown model.
+ *   - 403: model not available for user's subscription and no valid API key.
+ *   - 429: monthly generation limit reached.
+ */
 export async function POST(request: Request) {
   const { userId: clerkUserId } = await auth();
   const userContext = await getUserContext();

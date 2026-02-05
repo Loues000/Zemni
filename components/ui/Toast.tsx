@@ -17,6 +17,16 @@ interface ToastProps {
   onClose: (id: string) => void;
 }
 
+/**
+ * Renders a single toast notification with type-specific styling and a close control.
+ *
+ * Renders the toast's message, applies a CSS class based on `toast.type`, and calls `onClose(toast.id)` when the close button is clicked.
+ * If `toast.duration` is a number greater than 0, automatically calls `onClose(toast.id)` after `toast.duration` milliseconds.
+ *
+ * @param toast - The toast data (id, message, type, and optional duration in milliseconds)
+ * @param onClose - Callback invoked with the toast `id` when the toast is dismissed
+ * @returns The rendered toast element
+ */
 export function Toast({ toast, onClose }: ToastProps) {
   useEffect(() => {
     if (toast.duration && toast.duration > 0) {
@@ -56,6 +66,13 @@ interface ToastContainerProps {
   onClose: (id: string) => void;
 }
 
+/**
+ * Renders a live-region container for a list of toast notifications.
+ *
+ * @param toasts - Array of toast objects to render inside the container
+ * @param onClose - Callback invoked with a toast `id` when that toast requests to close
+ * @returns The container element with rendered toasts, or `null` when `toasts` is empty
+ */
 export function ToastContainer({ toasts, onClose }: ToastContainerProps) {
   if (toasts.length === 0) return null;
 

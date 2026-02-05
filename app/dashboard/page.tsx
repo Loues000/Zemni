@@ -11,6 +11,11 @@ import { LegalNotice } from "@/components/ui/LegalNotice";
 // Prevent static generation - requires authentication
 export const dynamic = 'force-dynamic';
 
+/**
+ * Renders the user dashboard for managing documents, including search, listing, open and delete actions, and an authentication-gated sign-in prompt.
+ *
+ * @returns The dashboard page UI as a JSX element.
+ */
 export default function DashboardPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const router = useRouter();

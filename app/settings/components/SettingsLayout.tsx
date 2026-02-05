@@ -33,7 +33,18 @@ const TABS = [
 ] as const;
 
 /**
- * Calculate the next billing cycle reset date based on account/subscription creation
+ * Compute the next billing-cycle reset date for a user account.
+ *
+ * Uses the user's subscriptionStartDate when present, otherwise the account createdAt date,
+ * and returns the next calendar date whose day-of-month matches that start day. If that day
+ * does not exist in the target month (e.g., 31st in a shorter month), the last day of the
+ * applicable month is used. When `user` is null or undefined, returns the first day of the
+ * next month.
+ *
+ * The returned Date is normalized to midnight (00:00:00) in the local timezone.
+ *
+ * @param user - Object containing `createdAt` (timestamp) and an optional `subscriptionStartDate` (timestamp)
+ * @returns The next reset Date at midnight for the current billing cycle (in the current or next month)
  */
 function getNextResetDate(user: { createdAt: number; subscriptionStartDate?: number } | null | undefined): Date {
   if (!user) {
@@ -77,6 +88,16 @@ function getNextResetDate(user: { createdAt: number; subscriptionStartDate?: num
   return nextReset;
 }
 
+/**
+ * Render the settings page layout with user profile, subscription usage, and horizontal tab navigation.
+ *
+ * Renders a sidebar with the user's avatar, name, tier badge, and monthly usage visualization; a header with a back link and sign-out control; a main area with tabs and provided children; and a footer with legal links.
+ *
+ * @param children - The content to display in the main settings content area for the active tab.
+ * @param activeTab - The id of the currently active tab.
+ * @param onTabChange - Callback invoked with a tab id when the user selects a different tab.
+ * @returns The rendered settings page element.
+ */
 export function SettingsLayout({ children, activeTab, onTabChange }: SettingsLayoutProps) {
   const { user } = useUser();
   const currentUser = useQuery(api.users.getCurrentUser);

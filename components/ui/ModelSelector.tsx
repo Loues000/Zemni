@@ -25,6 +25,19 @@ const TIER_LABELS: Record<string, string> = {
 
 const TIER_ORDER = ["free", "basic", "plus", "pro"];
 
+/**
+ * Renders a model selection control: a button that opens a portal-based dropdown of available models grouped and labeled by subscription tier.
+ *
+ * The dropdown is positioned relative to the trigger, supports keyboard navigation (Arrow keys, Home/End, Enter/Space), closes on outside click or Escape, and indicates model availability and "own key" status. When billing is enabled and the user tier is not "pro", an upgrade CTA is shown.
+ *
+ * @param models - Array of models to display; each model may include subscriptionTier, displayName, id, isAvailable, requiresOwnKey, and isCoveredBySubscription.
+ * @param selectedModel - The id of the currently selected model.
+ * @param onModelChange - Callback invoked with the id of the model chosen by the user.
+ * @param userTier - The current user's subscription tier used to determine availability; defaults to `"free"`.
+ * @param id - Optional id applied to the selector button for integration or testing.
+ * @param className - Optional additional CSS class names appended to the root container.
+ * @returns The rendered model selector JSX element.
+ */
 export function ModelSelector({
   models,
   selectedModel,

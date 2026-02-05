@@ -3,10 +3,9 @@
 import Link from "next/link";
 
 /**
- * Legal notice for login/signup areas
- * Displays required legal information and links to AGB/Datenschutz
- * 
- * Usage: Place below SignIn/SignUp buttons
+ * Render a legal notice containing links to AGB, Datenschutzerklärung, and Widerrufsbelehrung.
+ *
+ * @param showCheckbox - Whether to include a consent checkbox next to the notice; default is `false`.
  */
 export function LegalNotice({ showCheckbox = false }: { showCheckbox?: boolean }) {
   return (
@@ -84,7 +83,9 @@ export function LegalNotice({ showCheckbox = false }: { showCheckbox?: boolean }
 }
 
 /**
- * Compact version for tight spaces
+ * Compact legal notice suitable for tight layouts.
+ *
+ * @returns A React element that renders a small, centered notice containing links to the AGB and Datenschutzerklärung.
  */
 export function LegalNoticeCompact() {
   return (

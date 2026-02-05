@@ -22,14 +22,19 @@ const MAX_REQUESTS_KEY_MANAGEMENT = 5; // 5 operations per hour for key manageme
 const MAX_REQUESTS_GENERATION = 30; // 30 operations per hour for generation endpoints
 
 /**
- * Get the storage key for a rate limit entry
+ * Build the in-memory store key for a user's rate limit entry.
+ *
+ * @returns The storage key in the format `"<type>:<userId>"`.
  */
 function getRateLimitKey(userId: string, type: RateLimitType): string {
   return `${type}:${userId}`;
 }
 
 /**
- * Get the maximum requests allowed for a rate limit type
+ * Return the maximum allowed requests for the specified rate limit type.
+ *
+ * @param type - The rate limit category (`"key_management"` or `"generation"`)
+ * @returns The maximum number of requests for `type` (`5` for `"key_management"`, `30` for `"generation"`)
  */
 function getMaxRequests(type: RateLimitType): number {
   return type === "key_management" ? MAX_REQUESTS_KEY_MANAGEMENT : MAX_REQUESTS_GENERATION;
@@ -48,11 +53,11 @@ if (typeof global !== "undefined" && typeof setInterval !== "undefined") {
 }
 
 /**
- * Check if user has exceeded rate limit
- * Returns { allowed: boolean, retryAfter?: number }
- * 
- * @param userId - User ID to check rate limit for
- * @param type - Type of rate limit (defaults to "key_management" for backward compatibility)
+ * Determine whether a user's request for a given rate limit type is permitted under the current window.
+ *
+ * @param userId - ID of the user to check
+ * @param type - Rate limit category to evaluate; defaults to `"key_management"` for backward compatibility
+ * @returns An object with `allowed` set to `true` if the request is permitted, `false` otherwise. When `allowed` is `false`, `retryAfter` contains the number of seconds until the current window resets.
  */
 export function checkRateLimit(
   userId: string,
@@ -84,10 +89,13 @@ export function checkRateLimit(
 }
 
 /**
- * Reset rate limit for a user (useful for testing)
- * 
- * @param userId - User ID to reset rate limit for
- * @param type - Type of rate limit (optional, resets all types if not specified)
+ * Clear stored rate limit state for a user.
+ *
+ * If `type` is provided, clears only that rate limit; otherwise clears both
+ * "key_management" and "generation" entries.
+ *
+ * @param userId - The user identifier whose rate limit state will be cleared
+ * @param type - Optional rate limit type to clear; when omitted, clears all types
  */
 export function resetRateLimit(userId: string, type?: RateLimitType): void {
   if (type) {

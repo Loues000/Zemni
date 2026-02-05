@@ -21,8 +21,16 @@ export interface UseSessionPersistenceReturn {
 }
 
 /**
- * Manages session persistence for tab state and outputs
- * Persists to sessionStorage so state survives navigation to settings
+ * Persist and restore UI session state (tabs, outputs, extracted text, and related metadata) to sessionStorage.
+ *
+ * Persists changes to sessionStorage (with size-aware truncation and fallback) and provides functions to restore or clear the saved session.
+ *
+ * @param shouldPersist - When false, prevents saving session state to sessionStorage
+ * @param status - Optional status string to include in the persisted session
+ * @returns An object with:
+ *  - `restoreSession`: a function that returns the persisted SessionState or `null` if none or already restored,
+ *  - `clearSession`: a function that removes any saved session,
+ *  - `isRestored`: a boolean indicating whether a session has been restored
  */
 export function useSessionPersistence(
   outputs: Record<string, OutputEntry>,

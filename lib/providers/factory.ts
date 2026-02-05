@@ -16,7 +16,10 @@ export interface ProviderInfo {
 
 
 /**
- * Extract provider from model ID
+ * Determine the API provider implied by a model identifier in the form "provider/model".
+ *
+ * @param modelId - Model identifier expected to include a provider prefix (e.g., "openai/gpt-4o").
+ * @returns The inferred ApiProvider (`"openai"`, `"anthropic"`, `"google"`, or `"openrouter"`) if recognized, `null` otherwise.
  */
 export function getProviderFromModelId(modelId: string): ApiProvider | null {
   const parts = modelId.split("/");
@@ -37,7 +40,11 @@ export function getProviderFromModelId(modelId: string): ApiProvider | null {
 }
 
 /**
- * Determines which provider to use based on model ID and available API keys
+ * Selects the API key to use for a given model identifier from a list of available provider keys.
+ *
+ * @param modelId - The model identifier (may include provider prefix like `provider/model`)
+ * @param apiKeys - Available provider keys to choose from
+ * @returns The selected ProviderInfo if a suitable owned key is found, or `null` if none is available
  */
 export function getProviderForModel(modelId: string, apiKeys: ProviderInfo[]): ProviderInfo | null {
   const modelProvider = getProviderFromModelId(modelId);
@@ -59,14 +66,23 @@ export function getProviderForModel(modelId: string, apiKeys: ProviderInfo[]): P
   return null;
 }
 
+/**
+ * Extracts the model identifier from a full model string.
+ *
+ * @param fullModelId - A model string in either "provider/model" format or a bare model name
+ * @returns The model segment (the substring after the first '/'), or `fullModelId` unchanged if no '/' is present
+ */
 function getModelId(fullModelId: string): string {
   const parts = fullModelId.split("/");
   return parts.length > 1 ? parts[1] : fullModelId;
 }
 
 /**
- * Map OpenRouter model names to provider-specific API model names
- * Some providers use different naming conventions than OpenRouter
+ * Map a model identifier to the corresponding model name for the specified provider.
+ *
+ * @param modelId - Full or namespaced model identifier or base model name (e.g., "provider/model" or "model")
+ * @param provider - Target provider for which the model name should be mapped
+ * @returns The provider-specific model name if a mapping exists, otherwise the original base model name
  */
 function mapModelName(modelId: string, provider: ApiProvider): string {
   const model = getModelId(modelId);
@@ -104,11 +120,23 @@ function mapModelName(modelId: string, provider: ApiProvider): string {
   return model;
 }
 
+/**
+ * Normalize a full model identifier to its base model name.
+ *
+ * @param modelId - A full model identifier like "provider/model" or a bare model name.
+ * @returns The base model name (the segment after the first '/'), or the original `modelId` if no '/' is present.
+ */
 function getEffectiveModelId(modelId: string): string {
   return getModelId(modelId);
 }
 
 
+/**
+ * Creates a provider-agnostic interface for text generation and streaming using the given provider credentials.
+ *
+ * @param providerInfo - Information about the provider to create (provider type, API key, and ownership flag)
+ * @returns An object with `generateText` and `streamText` functions that invoke the selected provider using the provided credentials. `generateText` produces a ProviderResult containing `text`, `usage`, and `costInUsd`. `streamText` returns a streaming interface exposing `textStream` and a `getUsage()` method that resolves to a ProviderResult after the stream completes.
+ */
 export function createProvider(providerInfo: ProviderInfo) {
   switch (providerInfo.provider) {
     case "openai": {
@@ -192,6 +220,16 @@ export function createProvider(providerInfo: ProviderInfo) {
   }
 }
 
+/**
+ * Produces model output for the given messages by selecting an appropriate API key and invoking the matching provider.
+ *
+ * @param modelId - Full or namespaced model identifier (for example, "provider/model-name")
+ * @param messages - Array of conversation messages, each with a `role` and `content`
+ * @param apiKeys - Available provider keys and their metadata used to choose which provider to call
+ * @param options - Generation options such as `maxTokens`, `temperature`, and `maxRetries`
+ * @returns A ProviderResult containing the generated text, usage metrics, and cost information
+ * @throws Error when no API key is available for the requested model
+ */
 export async function generateWithProvider(
   modelId: string,
   messages: Array<{ role: string; content: string }>,
@@ -208,6 +246,15 @@ export async function generateWithProvider(
   return provider.generateText(modelId, messages, options);
 }
 
+/**
+ * Stream text from the provider selected for the given model using the available API keys.
+ *
+ * @param modelId - The model identifier to use (may include provider prefix, e.g., `openai/gpt-4`).
+ * @param messages - Conversation messages to send to the model, each with a `role` and `content`.
+ * @param apiKeys - Available provider API keys and metadata used to select which provider to call.
+ * @param options - Generation options such as `maxTokens` and `temperature`.
+ * @returns An object with `textStream`, an async iterable that yields text chunks as they arrive, and `getUsage`, a function that returns the provider's final `ProviderResult` (aggregated text, usage, and cost).
+ */
 export async function streamWithProvider(
   modelId: string,
   messages: Array<{ role: string; content: string }>,

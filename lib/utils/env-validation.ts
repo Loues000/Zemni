@@ -10,14 +10,21 @@ export interface EnvValidationResult {
 }
 
 /**
- * Validate that a string is a valid hexadecimal string of exact length
+ * Check whether a string is a hexadecimal string of an exact character length.
+ *
+ * @param value - The string to validate
+ * @param length - The required number of characters in `value`
+ * @returns `true` if `value` contains only hexadecimal characters and its length equals `length`, `false` otherwise
  */
 function isValidHex(value: string, length: number): boolean {
   return /^[0-9a-f]+$/i.test(value) && value.length === length;
 }
 
 /**
- * Validate that a string is a valid URL
+ * Determines whether a string is a well-formed HTTP or HTTPS URL.
+ *
+ * @param value - The string to validate as a URL
+ * @returns `true` if `value` is a valid URL with the `http:` or `https:` protocol, `false` otherwise
  */
 function isValidUrl(value: string): boolean {
   try {
@@ -29,8 +36,11 @@ function isValidUrl(value: string): boolean {
 }
 
 /**
- * Validate all required and optional environment variables
- * Returns validation result with missing and invalid variables
+ * Validate required and optional environment variables and report any missing or incorrectly formatted entries.
+ *
+ * Performs presence checks for required variables and format checks for specific values (e.g., `ENCRYPTION_KEY` must be a 64-character hex string, URL-valued variables must be valid `http`/`https` URLs, Clerk keys must start with `pk_`/`sk_`, etc.). Optional variables are validated only when set.
+ *
+ * @returns An `EnvValidationResult` containing `valid` (true when no missing or invalid entries), `missing` (names of required variables that are unset or empty), and `invalid` (array of `{ name, reason }` objects describing variables that failed validation)
  */
 export function validateEnvVars(): EnvValidationResult {
   const missing: string[] = [];
@@ -151,7 +161,10 @@ export function validateEnvVars(): EnvValidationResult {
 }
 
 /**
- * Get a human-readable validation report
+ * Produce a human-readable report of environment variable validation results.
+ *
+ * @param result - The validation outcome containing `valid`, `missing`, and `invalid` fields.
+ * @returns A string containing a success message when all variables are valid, otherwise a newline-separated report listing missing required variables and invalid variables with reasons.
  */
 export function getValidationReport(result: EnvValidationResult): string {
   if (result.valid) {

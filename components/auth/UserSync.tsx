@@ -7,9 +7,11 @@ import { api } from "@/convex/_generated/api";
 import { setUserContext, clearUserContext, trackError } from "@/lib/error-tracking";
 
 /**
- * Component to sync Clerk user to Convex on mount
- * Should be included in the root layout or main app component
- * Only rendered when Clerk is properly configured
+ * Synchronizes the authenticated Clerk user to the Convex backend and keeps monitoring context updated.
+ *
+ * On Clerk load, creates or updates the Convex user record, attempts a non-fatal subscription-tier reconciliation,
+ * and retries fatal sync failures up to three times with exponential backoff while exposing sync status and errors
+ * for monitoring. Clears user context when the Clerk user logs out.
  */
 export function UserSync() {
   const { user, isLoaded } = useUser();

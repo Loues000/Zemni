@@ -6,7 +6,17 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useState, useMemo } from "react";
 
-// SVG Model Icon component
+/**
+ * Render a compact SVG icon that represents the model family inferred from `modelId`.
+ *
+ * The `modelId` is matched using simple substring checks (case-sensitive) to select
+ * a family-specific icon (e.g., "gpt-5" or "openai" → GPT-like icon, "claude" or "anthropic" → Claude-like icon,
+ * "gemini" or "google" → Gemini-like icon, "grok" or "x-ai" → Grok-like icon, "kimi" or "moonshotai" → Kimi-like icon,
+ * "deepseek" → Deepseek-like icon). If no known family is found, a generic icon is returned.
+ *
+ * @param modelId - Identifier for the model used to choose the icon via substring matching
+ * @returns An SVG element visually representing the model's family
+ */
 function ModelIcon({ modelId }: { modelId: string }) {
   // Different model families have different visual representations
   if (modelId.includes("gpt-5") || modelId.includes("openai")) {
@@ -67,7 +77,12 @@ function ModelIcon({ modelId }: { modelId: string }) {
   );
 }
 
-// Get 1-line description for model based on ID
+/**
+ * Provide a one-line human-readable description for the given model identifier.
+ *
+ * @param modelId - The model identifier (for example, "openai/gpt-5.2" or "anthropic/claude-opus-4.5")
+ * @returns A one-line description for the model; falls back to "General-purpose language model for content generation" if the modelId is not recognized
+ */
 function getModelDescription(modelId: string): string {
   const descriptions: Record<string, string> = {
     "openai/gpt-5.2-chat": "Fast responses with GPT-5.2 capabilities for rapid prototyping",
@@ -93,6 +108,18 @@ function getModelDescription(modelId: string): string {
   return descriptions[modelId] || "General-purpose language model for content generation";
 }
 
+/**
+ * Render the Models settings section for viewing and selecting available language models.
+ *
+ * Displays a Default Model selector and a searchable list of available models, showing each
+ * model's icon, name, tier, and description. Models are filtered by the current user's
+ * subscription tier and an optional per-model availability flag. Unavailable models show
+ * an "Upgrade required" or "Key required" badge with actions to navigate to the subscription
+ * or API keys settings.
+ *
+ * @returns The settings section JSX containing the default model selector, search input,
+ * and list of models with availability indicators and upgrade/API-key actions.
+ */
 export function ModelsTab() {
   const { models, selectedModel, setSelectedModel, defaultModel, setDefaultModel } = useAppState();
   const currentUser = useQuery(api.users.getCurrentUser);

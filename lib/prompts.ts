@@ -19,6 +19,12 @@ const getBaseIdentity = (outputLanguage: string = "en"): string => {
   ].filter(Boolean).join("\n");
 };
 
+/**
+ * Maps a short language code to its English language name.
+ *
+ * @param code - Two-letter language code (e.g. "en", "de", "es", "fr", "it")
+ * @returns The language name in English corresponding to `code`. Returns "English" if `code` is unrecognized.
+ */
 function getLanguageName(code: string): string {
   const names: Record<string, string> = {
     en: "English",

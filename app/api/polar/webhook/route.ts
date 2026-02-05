@@ -9,6 +9,12 @@ const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
 type SubscriptionPayload = Record<string, any>;
 
+/**
+ * Return the first non-empty string from the provided values.
+ *
+ * @param values - Values to inspect for a non-empty string
+ * @returns The first value that is a string containing at least one non-whitespace character, or `undefined` if none found.
+ */
 function firstString(...values: Array<unknown>): string | undefined {
   for (const value of values) {
     if (typeof value === "string" && value.trim().length > 0) {
@@ -18,6 +24,12 @@ function firstString(...values: Array<unknown>): string | undefined {
   return undefined;
 }
 
+/**
+ * Normalize a numeric timestamp to milliseconds.
+ *
+ * @param value - Timestamp in seconds or milliseconds; values less than 1_000_000_000_000 are treated as seconds and converted to milliseconds
+ * @returns The timestamp expressed in milliseconds, or `undefined` if `value` is not a number
+ */
 function normalizeTimestamp(value?: number): number | undefined {
   if (typeof value !== "number") {
     return undefined;
@@ -25,6 +37,12 @@ function normalizeTimestamp(value?: number): number | undefined {
   return value < 1_000_000_000_000 ? value * 1000 : value;
 }
 
+/**
+ * Converts a Date, numeric timestamp, or timestamp string into milliseconds since the UNIX epoch.
+ *
+ * @param value - A Date, a number (seconds or milliseconds), or a parsable date string.
+ * @returns The timestamp in milliseconds, or `undefined` if `value` is missing or cannot be parsed.
+ */
 function parseDate(value?: unknown): number | undefined {
   if (value instanceof Date) {
     return value.getTime();
@@ -39,6 +57,14 @@ function parseDate(value?: unknown): number | undefined {
   return undefined;
 }
 
+/**
+ * Extracts a subscription start timestamp from known timestamp fields on a subscription payload.
+ *
+ * Checks `startedAt`, `started_at`, `createdAt`, `created_at`, `currentPeriodStart`, and `current_period_start` (in that order) and returns the first valid date converted to a numeric timestamp in milliseconds.
+ *
+ * @param subscription - The subscription payload to inspect
+ * @returns The start timestamp in milliseconds if a valid date is found, `undefined` otherwise
+ */
 function getSubscriptionStartDate(subscription: SubscriptionPayload): number | undefined {
   return (
     parseDate(subscription.startedAt) ??
@@ -50,6 +76,12 @@ function getSubscriptionStartDate(subscription: SubscriptionPayload): number | u
   );
 }
 
+/**
+ * Extracts a product identifier from a Polar subscription payload.
+ *
+ * @param subscription - The subscription payload that may contain product identifiers in several possible fields/shapes
+ * @returns The first non-empty product id found, or `undefined` if none is present
+ */
 function getProductId(subscription: SubscriptionPayload): string | undefined {
   return firstString(
     subscription.productId,
@@ -63,6 +95,12 @@ function getProductId(subscription: SubscriptionPayload): string | undefined {
   );
 }
 
+/**
+ * Extracts the customer identifier from a Polar subscription payload.
+ *
+ * @param subscription - The subscription payload to read identifiers from.
+ * @returns The first non-empty customer id found in known fields, or `undefined` if none are present.
+ */
 function getCustomerId(subscription: SubscriptionPayload): string | undefined {
   return firstString(
     subscription.customerId,
@@ -72,6 +110,14 @@ function getCustomerId(subscription: SubscriptionPayload): string | undefined {
   );
 }
 
+/**
+ * Extracts an external customer identifier from a subscription payload.
+ *
+ * Checks common field names used for external or Clerk customer IDs and returns the first non-empty string found.
+ *
+ * @param subscription - The subscription payload to search for an external customer identifier
+ * @returns The first non-empty external customer ID found, or `undefined` if none are present
+ */
 function getExternalCustomerId(subscription: SubscriptionPayload): string | undefined {
   return firstString(
     subscription.externalCustomerId,
@@ -83,6 +129,13 @@ function getExternalCustomerId(subscription: SubscriptionPayload): string | unde
   );
 }
 
+/**
+ * Handles Polar webhook POST requests: verifies the signature, parses subscription events, updates user subscription state in Convex, and records telemetry.
+ *
+ * Processes only events whose type begins with "subscription."; ignored or malformed payloads return a harmless acknowledgement. On valid subscription events the handler extracts identifiers (product, customer, external user, subscription id, start date), determines active vs. inactive state, updates the user's tier via Convex mutations (by external user id or Polar customer id), and tracks update/downgrade events or errors.
+ *
+ * @returns A JSON NextResponse describing the result: on success or ignored payloads `{ received: true }`; on invalid signature a 403 response with `{ error: "Invalid signature" }`; on webhook verification failure a 400 response with `{ error: "Webhook verification failed" }`; on internal errors a 500 response with `{ error: "Webhook handler failed" }`.
+ */
 export async function POST(request: Request) {
   const bodyBuffer = Buffer.from(await request.arrayBuffer());
   const headers = Object.fromEntries(request.headers);

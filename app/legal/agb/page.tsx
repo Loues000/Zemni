@@ -1,5 +1,10 @@
 "use client";
 
+/**
+ * Renders a placeholder "Allgemeine Geschäftsbedingungen" (AGB) page for non-commercial testing.
+ *
+ * @returns A JSX element containing a styled placeholder AGB page with a dashed informational banner, a main title, sections for notice, placeholder text and contact, and a footer link back to the homepage.
+ */
 export default function AGBPage() {
   return (
     <div className="legal-page">
@@ -301,5 +306,4 @@ export default function AGBPage() {
     </div>
   );
 }
-
 

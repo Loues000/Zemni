@@ -13,6 +13,19 @@ type ConfirmModalProps = {
   onConfirm: () => void;
 };
 
+/**
+ * Render a confirmation modal dialog with a title, message, and cancel/confirm actions.
+ *
+ * @param isOpen - Whether the modal is visible
+ * @param title - Title text shown in the dialog's header
+ * @param message - Body text shown in the dialog
+ * @param confirmLabel - Label for the confirm button (defaults to "Confirm")
+ * @param cancelLabel - Label for the cancel button (defaults to "Cancel")
+ * @param variant - Visual variant of the confirm button; `"danger"` renders a danger-style button, otherwise the default primary style
+ * @param onCancel - Callback invoked when the dialog is dismissed (backdrop click, Escape key, or cancel button)
+ * @param onConfirm - Callback invoked when the confirm button is clicked
+ * @returns The modal element when `isOpen` is true, or `null` when `isOpen` is false
+ */
 export function ConfirmModal({
   isOpen,
   title,

@@ -31,7 +31,14 @@ export interface UseAppStateReturn {
 }
 
 /**
- * Manages core application state: theme, models, subjects, status, error, and UI state
+ * Provides and manages the application's central UI and data state.
+ *
+ * Exposes theme, available models and subjects, selected model/subject, structure hints,
+ * status and error state, input-device and layout flags, stats panel state, and persisted defaults.
+ *
+ * @returns An object containing state values and setter functions for theme, models, subjects,
+ * selectedModel, selectedSubject, structureHints, status, error, isCoarsePointer, isSmallScreen,
+ * statsOpen, defaultModel, defaultStructureHints, and their corresponding setters
  */
 export function useAppState(): UseAppStateReturn {
   const currentUser = useQuery(api.users.getCurrentUser);

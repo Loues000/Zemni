@@ -11,6 +11,19 @@ interface OutputTabsProps {
   onCloseTab: (tabId: string, event: React.MouseEvent) => void;
 }
 
+/**
+ * Render a horizontal list of output tabs with selection, split-view hint, and close controls.
+ *
+ * @param outputs - Map of output entries keyed by ID; used to build the list of tabs.
+ * @param selectedTabId - ID of the currently active tab, or `null` if none.
+ * @param secondTabId - ID of the tab shown in the secondary/split position, or `null` if none.
+ * @param generatingTabId - ID of the tab currently generating output, or `null` if none.
+ * @param showSplitHint - Whether to show the "Ctrl+Click for split view" hint on splittable tabs (default `true`).
+ * @param onTabChange - Callback invoked when a tab is clicked; receives the tab ID and the mouse event.
+ * @param onCloseTab - Callback invoked when a tab's close button is clicked; receives the tab ID and the mouse event.
+ *
+ * @returns The rendered React element containing the output tabs or an empty-state message when there are no outputs.
+ */
 export function OutputTabs({
   outputs,
   selectedTabId,

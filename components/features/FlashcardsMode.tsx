@@ -34,6 +34,18 @@ const baseNameFor = (fileName: string): string => {
   return trimmed.replace(/\.[^.]+$/, "");
 };
 
+/**
+ * Render the flashcards UI mode, including card thumbnails, export actions, and a fullscreen study player with keyboard navigation and flip/seek controls.
+ *
+ * Renders appropriate empty, loading, or error states when there is no extracted text or output, and provides export handlers for Markdown and TSV when cards are available.
+ *
+ * @param extractedText - The source text extracted from the uploaded file; used to determine initial empty state.
+ * @param fileName - Original file name used to derive export file names.
+ * @param output - The flashcards generation result which may contain flashcards, generation state, caching flag, and error information.
+ * @param showKeyboardHints - When true, include keyboard hint text in UI controls (default: true).
+ * @param onRetry - Optional callback invoked to retry generation when output indicates retry is possible.
+ * @returns The React element representing the flashcards mode UI.
+ */
 export function FlashcardsMode({ extractedText, fileName, output, showKeyboardHints = true, onRetry }: FlashcardsModeProps) {
   const cards = output?.flashcards ?? [];
 

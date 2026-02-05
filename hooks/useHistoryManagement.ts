@@ -38,7 +38,15 @@ interface UseHistoryManagementProps {
 }
 
 /**
- * Manages history operations: save, load, delete
+ * Provide handlers to save, load, and delete history entries for the current document and outputs.
+ *
+ * saveToHistory persists the current file, extracted text, outputs, and metadata to local history and,
+ * when an async saver is provided and a user is available, also attempts optional remote persistence.
+ *
+ * @returns An object with:
+ *  - `saveToHistory` — save the current UI state and outputs to history (optionally triggers remote save);
+ *  - `loadFromHistory` — load a given `HistoryEntry` into the UI and app state;
+ *  - `deleteHistoryEntry` — remove a history entry by id.
  */
 export function useHistoryManagement({
   fileHandling,

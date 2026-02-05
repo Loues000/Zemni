@@ -5,6 +5,13 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useAppState } from "@/hooks";
 
+/**
+ * Renders the customization settings UI for selecting theme, toggling nerd stats, and editing default structure hints.
+ *
+ * The component syncs default structure hints from the current user, persists theme and nerd-stats preferences to localStorage, applies the selected theme to the document element, and saves edited hints to the backend.
+ *
+ * @returns The settings UI for customizing theme, nerd-stats visibility, and default structure hints.
+ */
 export function CustomizationTab() {
   const {
     theme,

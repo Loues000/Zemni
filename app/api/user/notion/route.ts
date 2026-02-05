@@ -6,6 +6,12 @@ import { encryptKey } from "@/lib/encryption";
 
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
+/**
+ * Save the authenticated user's Notion configuration (encrypting the token) and persist it associated with their Clerk user ID.
+ *
+ * @param request - HTTP request with a JSON body containing `token` (required), and optional `databaseId` and `exportMethod`.
+ * @returns A JSON response: on success `{ success: true }`; on error `{ error: string }` with an appropriate HTTP status code (`401` for unauthorized, `400` for bad request, `500` for server errors).
+ */
 export async function POST(request: Request) {
   try {
     const { userId } = await auth();
@@ -42,6 +48,11 @@ export async function POST(request: Request) {
   }
 }
 
+/**
+ * Clears the authenticated user's stored Notion configuration.
+ *
+ * @returns `{ success: true }` on success; `{ error: "Unauthorized" }` with HTTP status 401 if the request is not authenticated; `{ error: string }` with HTTP status 500 if an internal error occurs
+ */
 export async function DELETE() {
   try {
     const { userId } = await auth();

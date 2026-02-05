@@ -10,8 +10,12 @@ const KEY_LENGTH = 32; // 256 bits
 const IV_LENGTH = 16; // 128 bits
 
 /**
- * Get encryption key from environment variable
- * Derives a 32-byte key using scrypt for key stretching
+ * Retrieve the 32-byte encryption key used for AES-256-GCM operations.
+ *
+ * If the ENCRYPTION_KEY environment variable is set, derives a 32-byte key from it using scrypt.
+ * If ENCRYPTION_KEY is not set and NODE_ENV is "production", throws an error; in non-production, logs a warning and returns a 32-byte key derived from a fixed development fallback.
+ *
+ * @returns A 32-byte Buffer suitable for use as an AES-256-GCM key.
  */
 function getEncryptionKey(): Buffer {
   const envKey = process.env.ENCRYPTION_KEY;
@@ -30,8 +34,10 @@ function getEncryptionKey(): Buffer {
 }
 
 /**
- * Encrypt a string using AES-256-GCM
- * Returns format: iv:tag:encrypted (all hex-encoded)
+ * Encrypts a plaintext API key using AES-256-GCM.
+ *
+ * @param key - The plaintext API key to encrypt
+ * @returns A hex-encoded string in the format `iv:tag:encrypted`, where `iv` is the initialization vector, `tag` is the authentication tag, and `encrypted` is the ciphertext
  */
 export function encryptKey(key: string): string {
   const encryptionKey = getEncryptionKey();
@@ -48,8 +54,14 @@ export function encryptKey(key: string): string {
 }
 
 /**
- * Decrypt a string using AES-256-GCM
- * Expects format: iv:tag:encrypted (all hex-encoded)
+ * Decrypts an AES-256-GCM encrypted value encoded as `iv:tag:encrypted` (hex).
+ *
+ * @param encryptedKey - The encrypted input formatted as three hex-encoded parts separated by `:`
+ *   — initialization vector, authentication tag, and ciphertext.
+ * @returns The decrypted plaintext string.
+ * @throws If `encryptedKey` is empty, not a string, does not contain exactly three `:`-separated parts,
+ *   contains non-hex characters, or if the IV length is incorrect.
+ * @throws If decryption fails (for example due to corrupted data or an encryption key mismatch).
  */
 export function decryptKey(encryptedKey: string): string {
   const encryptionKey = getEncryptionKey();
@@ -105,18 +117,11 @@ export function decryptKey(encryptedKey: string): string {
 }
 
 /**
- * Hash a key for storage (one-way, for verification purposes)
- * 
- * NOTE: This function is currently UNUSED in the codebase.
- * 
- * IMPORTANT: The `ENCRYPTION_KEY` environment variable already uses SHA-256 
- * (via scrypt key derivation) for encryption key derivation in `getEncryptionKey()`.
- * This function is separate and would be for a different purpose if needed.
- * 
- * If this function is needed in the future, it should be updated to use SHA-256
- * using Node.js crypto module for security-sensitive operations.
- * 
- * @deprecated Currently unused - remove if not needed, or implement SHA-256 if required
+ * Produces a non-cryptographically-secure one-way hash of a string for simple verification or indexing.
+ *
+ * @param key - Input string to hash
+ * @deprecated This function is unused and is not suitable for security-sensitive purposes; replace with a SHA-256-based implementation if needed.
+ * @returns A base-36 string representation of a 32-bit integer hash
  */
 export function hashKey(key: string): string {
   // Simple hash algorithm - NOT cryptographically secure

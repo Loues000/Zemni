@@ -6,6 +6,17 @@ import { loadHistoryFromStorage, isHistoryEntry, historyEntryToDocument } from "
 
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
+/**
+ * Migrates valid history entries from the browser's local storage into Convex for the authenticated user.
+ *
+ * Attempts to upsert each valid local history entry as a Convex document tied to the current user's Convex ID. Responds with a summary of how many entries were migrated and the total examined. Returns appropriate HTTP error responses when the request is unauthenticated or the user is not found in Convex, and a 500 response for unexpected failures.
+ *
+ * @returns A JSON payload describing the result:
+ * - On success: `{ message: string, migrated: number, total: number }` where `migrated` is the number of entries successfully migrated and `total` is the number of valid entries processed.
+ * - On authentication failure: `{ error: "Unauthorized" }` with HTTP status 401.
+ * - If the Convex user is not found: `{ error: "User not found in Convex" }` with HTTP status 404.
+ * - On unexpected errors: `{ error: string }` with HTTP status 500 (error message when available).
+ */
 export async function POST() {
   try {
     const { userId } = await auth();

@@ -2,28 +2,16 @@ import { NextResponse } from "next/server";
 import { validateEnvVars } from "@/lib/utils/env-validation";
 
 /**
- * Health check endpoint
- * Returns application status for monitoring and load balancer health checks
- * 
- * GET /api/health
- * GET /api/health?validate=true
- * 
- * Response (default):
- * {
- *   "status": "ok",
- *   "timestamp": "2026-02-XXT..."
- * }
- * 
- * Response (with ?validate=true):
- * {
- *   "status": "ok",
- *   "timestamp": "2026-02-XXT...",
- *   "validation": {
- *     "valid": true,
- *     "missing": [],
- *     "invalid": []
- *   }
- * }
+ * Health-check endpoint that reports application status and, optionally, environment-variable validation.
+ *
+ * If the query parameter `validate=true` is present, the response includes a `validation` object describing
+ * whether required environment variables are present and any that are missing or invalid.
+ *
+ * @param request - Incoming HTTP request; supports the `validate` query parameter (`validate=true`) to enable validation.
+ * @returns JSON object with:
+ *  - `status`: service status string (e.g., `"ok"`),
+ *  - `timestamp`: ISO 8601 timestamp string of the response,
+ *  - `validation` (optional): object with `valid` (boolean), `missing` (string[]), and `invalid` (array of `{ name, reason }`).
  */
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);

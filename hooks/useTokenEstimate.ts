@@ -1,6 +1,19 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { CostRow, CostHeuristic, OutputKind } from "@/types";
 
+/**
+ * Provides debounced token cost estimation state and a request function for extracted text.
+ *
+ * The returned `fetchTokenEstimate` debounces calls (300ms), cancels any in-flight request when a new one starts, and updates `modelCosts`, `costHeuristic`, and `isEstimating` based on the latest successful API response.
+ *
+ * @returns An object with:
+ * - `modelCosts`: current array of cost rows calculated per model.
+ * - `costHeuristic`: optional heuristic summary of costs or `null`.
+ * - `isEstimating`: `true` when an estimate request is in progress, `false` otherwise.
+ * - `fetchTokenEstimate`: function `(text: string, hints: string, options?: { mode?: OutputKind; n?: number; sectionsCount?: number })` that requests a token estimate for `text` using `hints` and optional `options` (`mode` defaults to `"summary"`, `n` and `sectionsCount` may be `null`).
+ * - `setModelCosts`: state setter for `modelCosts`.
+ * - `setCostHeuristic`: state setter for `costHeuristic`.
+ */
 export function useTokenEstimate() {
   const [modelCosts, setModelCosts] = useState<CostRow[]>([]);
   const [costHeuristic, setCostHeuristic] = useState<CostHeuristic | null>(null);

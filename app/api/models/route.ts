@@ -38,6 +38,20 @@ const getCurrentUserContext = async (): Promise<{
   };
 };
 
+/**
+ * Builds a JSON payload listing models with access metadata tailored to the current user.
+ *
+ * Each model entry includes identifying and display fields plus availability information derived from
+ * the user's subscription tier and active API key providers.
+ *
+ * @returns A JSON response with a `models` array where each item contains:
+ * - `id`, `name`, `provider`, `displayName`, `tokenizer`, `pricing`
+ * - `subscriptionTier` (if the model is tiered)
+ * - `isAvailable` (`true` if the model can be used by the current user)
+ * - `isCoveredBySubscription` (`true` if access is granted via the user's subscription)
+ * - `requiresOwnKey` (`true` if the model requires the user's own API key and is available)
+ * - `requiredTier` (the tier required to unlock the model, when not available)
+ */
 export async function GET() {
   const models = await loadModels();
   const tiersEnabled = isSubscriptionTiersEnabled();

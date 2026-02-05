@@ -8,6 +8,11 @@ import { validateApiKeyFormat, getValidationErrorMessage, type ApiProvider } fro
 // Create unauthenticated Convex client (auth happens via clerkUserId param)
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
+/**
+ * Retrieve the authenticated user's API key metadata (excluding secret key values).
+ *
+ * @returns A NextResponse containing a JSON object with a `keys` array; each entry includes `id`, `provider`, `isActive`, `lastUsed`, and `useOwnKey`. On failure returns a JSON error response with an appropriate HTTP status.
+ */
 export async function GET() {
   try {
     const { userId } = await auth();
@@ -38,6 +43,14 @@ export async function GET() {
   }
 }
 
+/**
+ * Creates or updates an authenticated user's API key for a supported provider.
+ *
+ * Validates request body (`provider` and `key`), enforces provider-specific key format, applies rate limiting, encrypts the key, and persists it tied to the authenticated user.
+ *
+ * @param request - Incoming HTTP request whose JSON body must include `provider` (one of "openrouter", "openai", "anthropic", "google") and `key` (the provider API key to store)
+ * @returns A JSON response object. On success: `{ success: true }`. On failure: `{ error: string }` with an appropriate HTTP status code (`400` for validation/format errors or invalid JSON, `401` for unauthenticated requests, `429` for rate-limited requests, `500` for server/encryption/persistence errors)
+ */
 export async function POST(request: Request) {
   try {
     const { userId } = await auth();
@@ -135,6 +148,11 @@ export async function POST(request: Request) {
   }
 }
 
+/**
+ * Delete the authenticated user's API key specified by the `keyId` query parameter, enforcing authentication and rate limiting.
+ *
+ * @returns A JSON response with `{ success: true }` on successful deletion, or an error object and corresponding HTTP status: `401` if unauthenticated, `400` if `keyId` is missing, `429` if rate limited, and `500` for server-side failures.
+ */
 export async function DELETE(request: Request) {
   try {
     const { userId } = await auth();

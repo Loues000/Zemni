@@ -54,6 +54,13 @@ import { createSummaryContext } from "@/lib/handlers/summary-context";
 import { useSummaryWrappers } from "@/lib/handlers/summary-wrappers";
 import { handleRetryGeneration } from "@/lib/handlers/retry-handlers";
 
+/**
+ * Main client-side application component that composes app-wide state, file handling, generation, history, export, authentication, and UI for Zemni.
+ *
+ * This component wires together hooks and sub-systems — including routing, model/subject selection, file extraction, generation (summary/flashcards/quiz), chat/refine, history and session persistence, token estimation, export (Notion), user/subscription state, keyboard shortcuts, and numerous UI panels and modals — and renders the complete interactive application layout.
+ *
+ * @returns The top-level JSX element that renders the Zemni client UI.
+ */
 export default function AppClient() {
   const router = useRouter();
   // Core app state

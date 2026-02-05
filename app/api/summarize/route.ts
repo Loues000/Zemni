@@ -21,6 +21,17 @@ export const maxDuration = 120;
 const MODEL_CALL_TIMEOUT_MS = 70_000;
 const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
+/**
+ * Handle POST summarization requests: validate input, generate a summary with the chosen model/key, record usage, and return the summary and usage metadata.
+ *
+ * @param request - Fetch Request whose JSON body must include `text` and `modelId`, and may include `structure` and `titleHint`.
+ * @returns A JSON object with:
+ * - `summary`: the processed summary string (starts with an H1 and contains no metadata),
+ * - `usage`: generation token/cost statistics,
+ * - `ownKeyInfo` (optional): `{ provider, costUsd, note }` when the user's own API key was used.
+ *
+ * Possible error responses include 400 for missing/invalid input or model, 403 for model access restrictions, 413 for oversized text, 429 for rate or monthly limits, and 504 for generation timeouts.
+ */
 export async function POST(request: Request) {
   const { userId: clerkUserId } = await auth();
   const userContext = await getUserContext();

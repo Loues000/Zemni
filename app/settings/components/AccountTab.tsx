@@ -7,8 +7,11 @@ import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 
 /**
- * AccountTab displays the current user's account information from Clerk and Convex.
- * Assumes it's rendered within a ClerkProvider and that the user is signed in.
+ * Render the account settings UI for the currently signed-in user, exposing profile fields, preferences, custom guidelines, and account deletion.
+ *
+ * Reads user information and preferences, allows updating preferred name and language, saving or reverting custom guidelines, and anonymizing the account; displays loading, saving, and success/error messages as appropriate.
+ *
+ * @returns A JSX element that renders the account settings interface
  */
 export function AccountTab() {
   const router = useRouter();
