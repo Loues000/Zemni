@@ -48,6 +48,8 @@ vi.mock("@/convex/_generated/api", () => ({
 
 // Mock history storage
 vi.mock("@/lib/history-storage", () => ({
+  loadHistoryFromStorage: () => [],
+  saveHistoryToStorage: () => {},
   documentToHistoryEntry: (doc: any) => ({
     id: doc._id,
     title: doc.title,
@@ -99,12 +101,16 @@ describe("useHistory", () => {
     updatedAt: Date.now(),
   };
 
+  let mockDocuments: any[] = [];
+
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useFakeTimers();
+    mockDocuments = [];
     // Default: authenticated user with no documents
     mockUseQuery.mockImplementation((query: any) => {
       if (query === "users.getCurrentUser") return mockUser;
-      if (query === "documents.getAll") return [];
+      if (query === "documents.getAll") return mockDocuments;
       return undefined;
     });
     mockUpsertDocument.mockResolvedValue("k1234567890123456789012346");
@@ -112,6 +118,7 @@ describe("useHistory", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -119,7 +126,7 @@ describe("useHistory", () => {
     it("should initialize with empty history for authenticated user", async () => {
       const { result } = renderHook(() => useHistory());
       
-      expect(result.current.isLoading).toBe(true);
+      expect(result.current.isLoading).toBe(false);
       expect(result.current.history).toEqual([]);
       expect(result.current.isSaving).toBe(false);
       expect(result.current.saveError).toBeNull();
@@ -145,12 +152,13 @@ describe("useHistory", () => {
       const { result } = renderHook(() => useHistory());
 
       await act(async () => {
-        const returnedId = await result.current.saveEntryToConvex(mockEntry);
+        const promise = result.current.saveEntryToConvex(mockEntry);
+        await vi.runAllTimersAsync();
+        const returnedId = await promise;
         expect(returnedId).toBe("k1234567890123456789012346");
       });
 
       expect(mockUpsertDocument).toHaveBeenCalledWith({
-        documentId: undefined,
         title: mockEntry.title,
         fileName: mockEntry.fileName,
         extractedText: mockEntry.extractedText,
@@ -165,7 +173,9 @@ describe("useHistory", () => {
       const beforeSave = Date.now();
 
       await act(async () => {
-        await result.current.saveEntryToConvex(mockEntry);
+        const promise = result.current.saveEntryToConvex(mockEntry);
+        await vi.runAllTimersAsync();
+        await promise;
       });
 
       const afterSave = Date.now();
@@ -173,7 +183,7 @@ describe("useHistory", () => {
       expect(result.current.lastSavedAt?.getTime()).toBeLessThanOrEqual(afterSave);
     });
 
-    it("should use existing Convex ID if entry id is valid", async () => {
+    it("should not pass documentId (upsert dedup handles identity)", async () => {
       const entryWithConvexId: HistoryEntry = {
         ...mockEntry,
         id: "k1234567890123456789012347",
@@ -182,14 +192,14 @@ describe("useHistory", () => {
       const { result } = renderHook(() => useHistory());
 
       await act(async () => {
-        await result.current.saveEntryToConvex(entryWithConvexId);
+        const promise = result.current.saveEntryToConvex(entryWithConvexId);
+        await vi.runAllTimersAsync();
+        await promise;
       });
 
-      expect(mockUpsertDocument).toHaveBeenCalledWith(
-        expect.objectContaining({
-          documentId: "k1234567890123456789012347",
-        })
-      );
+      const [firstCallArgs] = mockUpsertDocument.mock.calls[0] || [];
+      expect(firstCallArgs).toBeTruthy();
+      expect(firstCallArgs).not.toHaveProperty("documentId");
     });
 
     it("should throw error when user is not authenticated", async () => {
@@ -202,7 +212,10 @@ describe("useHistory", () => {
       const { result } = renderHook(() => useHistory());
 
       await act(async () => {
-        await expect(result.current.saveEntryToConvex(mockEntry)).rejects.toThrow("Not authenticated");
+        const promise = result.current.saveEntryToConvex(mockEntry);
+        const assertion = expect(promise).rejects.toThrow("Not authenticated");
+        await vi.runAllTimersAsync();
+        await assertion;
       });
     });
   });
@@ -217,7 +230,9 @@ describe("useHistory", () => {
       const { result } = renderHook(() => useHistory());
 
       await act(async () => {
-        const returnedId = await result.current.saveEntryToConvex(mockEntry);
+        const promise = result.current.saveEntryToConvex(mockEntry);
+        await vi.runAllTimersAsync();
+        const returnedId = await promise;
         expect(returnedId).toBe("k1234567890123456789012346");
       });
 
@@ -230,11 +245,11 @@ describe("useHistory", () => {
       const { result } = renderHook(() => useHistory());
 
       await act(async () => {
-        try {
-          await result.current.saveEntryToConvex(mockEntry);
-        } catch (e) {
-          // Expected to throw
-        }
+        const handled = result.current
+          .saveEntryToConvex(mockEntry)
+          .catch(() => undefined);
+        await vi.runAllTimersAsync();
+        await handled;
       });
 
       expect(mockUpsertDocument).toHaveBeenCalledTimes(4); // Initial + 3 retries
@@ -248,20 +263,22 @@ describe("useHistory", () => {
       const { result } = renderHook(() => useHistory());
 
       await act(async () => {
-        try {
-          await result.current.saveEntryToConvex(mockEntry);
-        } catch (e) {
-          // Expected to throw
-        }
+        const handled = result.current
+          .saveEntryToConvex(mockEntry)
+          .catch(() => undefined);
+        await vi.runAllTimersAsync();
+        await handled;
       });
 
       // Failed entry should be tracked
       await act(async () => {
-        await result.current.retryFailedSaves();
+        const promise = result.current.retryFailedSaves();
+        await vi.runAllTimersAsync();
+        await promise;
       });
 
       // Should attempt to retry (but will fail again in this test)
-      expect(mockUpsertDocument).toHaveBeenCalledTimes(5); // 4 initial + 1 retry
+      expect(mockUpsertDocument).toHaveBeenCalledTimes(8); // 4 initial + 4 retry
     });
   });
 
@@ -276,7 +293,9 @@ describe("useHistory", () => {
       const { result } = renderHook(() => useHistory());
 
       await act(async () => {
-        await result.current.saveAllEntriesToConvex(entries);
+        const promise = result.current.saveAllEntriesToConvex(entries);
+        await vi.runAllTimersAsync();
+        await promise;
       });
 
       expect(mockUpsertDocument).toHaveBeenCalledTimes(3);
@@ -292,12 +311,14 @@ describe("useHistory", () => {
 
       mockUpsertDocument
         .mockResolvedValueOnce("id-1")
-        .mockRejectedValueOnce(new Error("Save failed"));
+        .mockRejectedValue(new Error("Save failed"));
 
       const { result } = renderHook(() => useHistory());
 
       await act(async () => {
-        await result.current.saveAllEntriesToConvex(entries);
+        const promise = result.current.saveAllEntriesToConvex(entries);
+        await vi.runAllTimersAsync();
+        await promise;
       });
 
       // Should have attempted 3 retries for the failed one
@@ -311,7 +332,9 @@ describe("useHistory", () => {
       const { result } = renderHook(() => useHistory());
 
       await act(async () => {
-        await result.current.retryFailedSaves();
+        const promise = result.current.retryFailedSaves();
+        await vi.runAllTimersAsync();
+        await promise;
       });
 
       expect(toast.info).toHaveBeenCalledWith("No failed saves to retry");
@@ -321,14 +344,14 @@ describe("useHistory", () => {
       const { result } = renderHook(() => useHistory());
 
       // First save fails
-      mockUpsertDocument.mockRejectedValueOnce(new Error("Network error"));
+      mockUpsertDocument.mockRejectedValue(new Error("Network error"));
       
       await act(async () => {
-        try {
-          await result.current.saveEntryToConvex(mockEntry);
-        } catch (e) {
-          // Expected
-        }
+        const handled = result.current
+          .saveEntryToConvex(mockEntry)
+          .catch(() => undefined);
+        await vi.runAllTimersAsync();
+        await handled;
       });
 
       // Then retry succeeds
@@ -336,7 +359,9 @@ describe("useHistory", () => {
       vi.clearAllMocks();
 
       await act(async () => {
-        await result.current.retryFailedSaves();
+        const promise = result.current.retryFailedSaves();
+        await vi.runAllTimersAsync();
+        await promise;
       });
 
       expect(toast.success).toHaveBeenCalledWith(expect.stringContaining("Successfully saved"));
@@ -354,23 +379,25 @@ describe("useHistory", () => {
       
       for (const entry of entries) {
         await act(async () => {
-          try {
-            await result.current.saveEntryToConvex(entry);
-          } catch (e) {
-            // Expected
-          }
+          const handled = result.current
+            .saveEntryToConvex(entry)
+            .catch(() => undefined);
+          await vi.runAllTimersAsync();
+          await handled;
         });
       }
 
       // One succeeds on retry, one fails
       mockUpsertDocument
         .mockResolvedValueOnce("success-1")
-        .mockRejectedValueOnce(new Error("Still failing"));
+        .mockRejectedValue(new Error("Still failing"));
       
       vi.clearAllMocks();
 
       await act(async () => {
-        await result.current.retryFailedSaves();
+        const promise = result.current.retryFailedSaves();
+        await vi.runAllTimersAsync();
+        await promise;
       });
 
       expect(toast.warning).toHaveBeenCalledWith(expect.stringContaining("Saved"));
@@ -383,11 +410,11 @@ describe("useHistory", () => {
       const { result } = renderHook(() => useHistory());
 
       await act(async () => {
-        try {
-          await result.current.saveEntryToConvex(mockEntry);
-        } catch (e) {
-          // Expected
-        }
+        const handled = result.current
+          .saveEntryToConvex(mockEntry)
+          .catch(() => undefined);
+        await vi.runAllTimersAsync();
+        await handled;
       });
 
       expect(result.current.saveError).toBe("Save failed");

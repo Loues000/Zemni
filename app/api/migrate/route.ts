@@ -44,10 +44,7 @@ export async function POST(request: Request) {
     for (const entry of validEntries) {
       try {
         const docData = historyEntryToDocument(entry, user._id);
-        await convex.mutation(api.documents.upsert, {
-          documentId: entry.id as any, // Try to use existing ID
-          ...docData,
-        });
+        await convex.mutation(api.documents.upsert, docData as any);
         migrated++;
       } catch (err) {
         console.error(`Failed to migrate entry ${entry.id}:`, err);

@@ -18,7 +18,7 @@
  */
 
 import { ConvexHttpClient } from "convex/browser";
-import { api } from "../convex/_generated/api";
+import { internal } from "../convex/_generated/api";
 import crypto from "node:crypto";
 
 const ALGORITHM = "aes-256-gcm";
@@ -86,7 +86,7 @@ function encryptWithKey(key: string, encryptionKey: Buffer): string {
  * Get all API keys from Convex
  */
 async function getAllApiKeys(convex: ConvexHttpClient): Promise<ApiKey[]> {
-  return await convex.query(api.apiKeys.getAllKeysForRotation, {});
+  return await convex.query(internal.apiKeys.getAllKeysForRotationInternal as any, {});
 }
 
 interface ApiKey {
@@ -212,7 +212,7 @@ async function main() {
         const reEncrypted = encryptWithKey(decrypted, newEncryptionKey);
         
         // Update in database
-        await convex.mutation(api.apiKeys.updateKeyHash, {
+        await convex.mutation(internal.apiKeys.updateKeyHashInternal as any, {
           keyId: key._id as any,
           newKeyHash: reEncrypted,
         });

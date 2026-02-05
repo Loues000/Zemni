@@ -403,6 +403,10 @@ export const anonymizeAccount = mutation({
 export const getAllUsersDebug = query({
   args: {},
   handler: async (ctx) => {
+    if (process.env.NODE_ENV !== "development") {
+      throw new Error("Not available in production");
+    }
+
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) {
       throw new Error("Not authenticated");
@@ -420,11 +424,10 @@ export const getAllUsersDebug = query({
     const users = await ctx.db.query("users").collect();
     return users.map((u) => ({
       _id: u._id,
-      clerkUserId: u.clerkUserId,
-      email: u.email,
       subscriptionTier: u.subscriptionTier,
-      polarCustomerId: u.polarCustomerId,
-      polarSubscriptionId: u.polarSubscriptionId,
+      isAnonymized: u.isAnonymized,
+      createdAt: u.createdAt,
+      updatedAt: u.updatedAt,
     }));
   },
 });

@@ -32,6 +32,8 @@ export function HistorySyncTab() {
           structureHints: doc.structureHints,
           createdAt: doc.createdAt,
           updatedAt: doc.updatedAt,
+          exportedSubject: doc.exportedSubject,
+          notionPageId: doc.notionPageId,
         })),
       };
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
@@ -61,6 +63,8 @@ export function HistorySyncTab() {
         structureHints: doc.structureHints,
         createdAt: doc.createdAt,
         updatedAt: doc.updatedAt,
+        exportedSubject: doc.exportedSubject,
+        notionPageId: doc.notionPageId,
       }));
       await exportHistoryAsZip(historyEntries as any);
     } catch (err) {
@@ -98,6 +102,10 @@ export function HistorySyncTab() {
           const extractedText = String(entryObj.extractedText ?? "");
           const outputs = entryObj.outputs ?? {};
           const structureHints = String(entryObj.structureHints ?? "");
+          const exportedSubject =
+            typeof entryObj.exportedSubject === "string" ? entryObj.exportedSubject : undefined;
+          const notionPageId =
+            typeof entryObj.notionPageId === "string" ? entryObj.notionPageId : undefined;
 
           // Skip entries without text content
           if (!extractedText.trim()) {
@@ -112,6 +120,8 @@ export function HistorySyncTab() {
             extractedText,
             outputs,
             structureHints,
+            exportedSubject,
+            notionPageId,
           });
 
           imported++;

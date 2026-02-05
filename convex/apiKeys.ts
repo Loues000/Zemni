@@ -1,5 +1,24 @@
-import { mutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+
+function parseAdminAllowlist(): string[] {
+  return (process.env.ADMIN_CLERK_USER_IDS || "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+}
+
+async function requireAdmin(ctx: any): Promise<void> {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) {
+    throw new Error("Not authenticated");
+  }
+
+  const adminList = parseAdminAllowlist();
+  if (!adminList.includes(identity.subject)) {
+    throw new Error("Unauthorized");
+  }
+}
 
 /**
  * Get user's API keys
@@ -317,11 +336,32 @@ export const getActiveProviders = query({
 export const getAllKeysForRotation = query({
   args: {},
   handler: async (ctx) => {
-    // WARNING: This returns all API keys - should be restricted in production
-    // For now, we'll return all keys. In production, add admin authentication check.
+    await requireAdmin(ctx);
+
+    // Admin-only: return minimal, non-secret fields (do NOT return keyHash).
     const allKeys = await ctx.db.query("apiKeys").collect();
     
     return allKeys.map(key => ({
+      _id: key._id,
+      userId: key.userId,
+      provider: key.provider,
+      isActive: key.isActive,
+      useOwnKey: key.useOwnKey ?? false,
+      lastUsed: key.lastUsed,
+      createdAt: key.createdAt,
+    }));
+  },
+});
+
+/**
+ * Internal: fetch encrypted API keys for rotation workflows.
+ * Not accessible from the client.
+ */
+export const getAllKeysForRotationInternal = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const allKeys = await ctx.db.query("apiKeys").collect();
+    return allKeys.map((key) => ({
       _id: key._id,
       userId: key.userId,
       provider: key.provider,
@@ -340,8 +380,30 @@ export const updateKeyHash = mutation({
     newKeyHash: v.string(),
   },
   handler: async (ctx, args) => {
-    // WARNING: This allows updating any key hash - should be restricted in production
-    // For now, we'll allow it. In production, add admin authentication check.
+    await requireAdmin(ctx);
+
+    const key = await ctx.db.get(args.keyId);
+    if (!key) {
+      throw new Error("API key not found");
+    }
+
+    await ctx.db.patch(args.keyId, {
+      keyHash: args.newKeyHash,
+    });
+
+    return { success: true };
+  },
+});
+
+/**
+ * Internal: update API key hash (rotation). Not accessible from the client.
+ */
+export const updateKeyHashInternal = internalMutation({
+  args: {
+    keyId: v.id("apiKeys"),
+    newKeyHash: v.string(),
+  },
+  handler: async (ctx, args) => {
     const key = await ctx.db.get(args.keyId);
     if (!key) {
       throw new Error("API key not found");

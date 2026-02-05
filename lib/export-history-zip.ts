@@ -21,7 +21,8 @@ export async function exportHistoryAsZip(history: HistoryEntry[]): Promise<void>
       fileName: entry.fileName,
       createdAt: new Date(entry.createdAt).toISOString(),
       updatedAt: new Date(entry.updatedAt).toISOString(),
-      exportedSubject: entry.exportedSubject
+      exportedSubject: entry.exportedSubject,
+      notionPageId: entry.notionPageId,
     }, null, 2));
 
     // Add each output

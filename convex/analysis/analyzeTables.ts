@@ -7,7 +7,21 @@ import { query } from "../_generated/server";
 export default query({
   args: {},
   handler: async (ctx) => {
-    // Get ALL documents and usage (no auth for analysis)
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const adminList = (process.env.ADMIN_CLERK_USER_IDS || "")
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean);
+
+    if (!adminList.includes(identity.subject)) {
+      throw new Error("Unauthorized");
+    }
+
+    // Get ALL documents and usage (admin-only analysis)
     const allDocuments = await ctx.db.query("documents").collect();
     const allUsage = await ctx.db.query("usage").collect();
     const allUsers = await ctx.db.query("users").collect();

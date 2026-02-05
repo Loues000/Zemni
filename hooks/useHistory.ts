@@ -1,15 +1,15 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import type { HistoryEntry, OutputEntry } from "@/types";
-import type { Id } from "@/convex/_generated/dataModel";
-import { documentToHistoryEntry, historyEntryToDocument, sortHistory } from "@/lib/history-storage";
+import type { HistoryEntry } from "@/types";
+import {
+  documentToHistoryEntry,
+  historyEntryToDocument,
+  loadHistoryFromStorage,
+  saveHistoryToStorage,
+  sortHistory,
+} from "@/lib/history-storage";
 import { toast } from "sonner";
-
-// Helper to check if a string is a valid Convex ID
-const isValidConvexId = (id: string): boolean => {
-  return typeof id === "string" && /^[jk][a-z0-9]{24}$/.test(id);
-};
 
 // Retry configuration
 const MAX_RETRIES = 3;
@@ -71,7 +71,6 @@ export function useHistory(): UseHistoryReturn {
     } else if (!currentUser) {
       // Not authenticated, fallback to localStorage
       setIsLoading(false);
-      const { loadHistoryFromStorage } = require("@/lib/history-storage");
       setHistory(loadHistoryFromStorage());
     }
   }, [currentUser, documents, historyFromConvex]);
@@ -89,18 +88,22 @@ export function useHistory(): UseHistoryReturn {
 
     try {
       const docData = historyEntryToDocument(entry, currentUser._id);
-      
-      // Try to use entry.id as documentId if it's a valid Convex ID
-      const documentId: Id<"documents"> | undefined = isValidConvexId(entry.id) ? (entry.id as Id<"documents">) : undefined;
 
-      const returnedId = await upsertDocument({
-        documentId,
+      const upsertArgs: Record<string, unknown> = {
         title: docData.title,
         fileName: docData.fileName,
         extractedText: docData.extractedText,
         outputs: docData.outputs,
         structureHints: docData.structureHints,
-      });
+      };
+      if (docData.exportedSubject !== undefined) {
+        upsertArgs.exportedSubject = docData.exportedSubject;
+      }
+      if (docData.notionPageId !== undefined) {
+        upsertArgs.notionPageId = docData.notionPageId;
+      }
+
+      const returnedId = await upsertDocument(upsertArgs as any);
 
       // If we got a new ID from Convex, update the entry in local state
       if (returnedId && returnedId !== entry.id) {
@@ -185,7 +188,6 @@ export function useHistory(): UseHistoryReturn {
     
     if (!currentUser) {
       // Not authenticated, use localStorage fallback
-      const { loadHistoryFromStorage, saveHistoryToStorage } = require("@/lib/history-storage");
       const current = loadHistoryFromStorage();
       const next = sortHistory(updater(current));
       saveHistoryToStorage(next);

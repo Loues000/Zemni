@@ -78,6 +78,8 @@ export const upsert = mutation({
     extractedText: v.string(),
     outputs: v.any(),
     structureHints: v.string(),
+    exportedSubject: v.optional(v.string()),
+    notionPageId: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -128,17 +130,27 @@ export const upsert = mutation({
           structureHints: args.structureHints,
           createdAt: now,
           updatedAt: now,
+          ...(args.exportedSubject !== undefined ? { exportedSubject: args.exportedSubject } : {}),
+          ...(args.notionPageId !== undefined ? { notionPageId: args.notionPageId } : {}),
         });
       }
 
-      await ctx.db.patch(idToUpdate, {
+      const patch: Record<string, unknown> = {
         title: args.title,
         fileName: args.fileName,
         extractedText: args.extractedText,
         outputs: args.outputs,
         structureHints: args.structureHints,
         updatedAt: now,
-      });
+      };
+      if (args.exportedSubject !== undefined) {
+        patch.exportedSubject = args.exportedSubject;
+      }
+      if (args.notionPageId !== undefined) {
+        patch.notionPageId = args.notionPageId;
+      }
+
+      await ctx.db.patch(idToUpdate, patch);
 
       return idToUpdate;
     } else {
@@ -152,6 +164,8 @@ export const upsert = mutation({
         structureHints: args.structureHints,
         createdAt: now,
         updatedAt: now,
+        ...(args.exportedSubject !== undefined ? { exportedSubject: args.exportedSubject } : {}),
+        ...(args.notionPageId !== undefined ? { notionPageId: args.notionPageId } : {}),
       });
     }
   },

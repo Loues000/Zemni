@@ -14,11 +14,19 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const userDatabaseId = searchParams.get("databaseId");
-  const userToken = request.headers.get("x-notion-token");
+  const envDatabaseId = process.env.NOTION_SUBJECTS_DATABASE_ID;
+  const envNotionToken = process.env.NOTION_TOKEN;
 
-  let databaseId = userDatabaseId || process.env.NOTION_SUBJECTS_DATABASE_ID;
-  let notionToken = userToken || process.env.NOTION_TOKEN;
+  const userDatabaseId = searchParams.get("databaseId")?.trim() || null;
+  const userToken = request.headers.get("x-notion-token")?.trim() || null;
+
+  let databaseId = userDatabaseId || envDatabaseId;
+  let notionToken = userToken || envNotionToken;
+  let tokenSource: "header" | "env" | "convex" | "none" = userToken
+    ? "header"
+    : notionToken
+      ? "env"
+      : "none";
 
   // If no token provided via header, try to get from Convex (server-side decryption)
   if (!notionToken) {
@@ -31,6 +39,7 @@ export async function GET(request: Request) {
         });
         if (user?.notionToken) {
           notionToken = decryptKey(user.notionToken);
+          tokenSource = "convex";
           if (!databaseId && user.notionDatabaseId) {
             databaseId = user.notionDatabaseId;
           }
@@ -39,6 +48,14 @@ export async function GET(request: Request) {
     } catch (error) {
       // Fall back to env var if Convex lookup fails
       console.warn("Failed to get Notion config from Convex:", error);
+    }
+  }
+
+  // Guard: never allow using the env NOTION_TOKEN against a caller-supplied databaseId.
+  // Env token may only be used for the default database.
+  if (userDatabaseId && !userToken && tokenSource === "env") {
+    if (!envDatabaseId || databaseId !== envDatabaseId) {
+      return NextResponse.json({ subjects: [], error: "Unauthorized" }, { status: 401 });
     }
   }
 
