@@ -331,6 +331,7 @@ export const anonymizeAccount = mutation({
     const anonymousId = `anon_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
     await ctx.db.patch(user._id, {
+      clerkUserId: undefined,
       email: `${anonymousId}@anonymized.local`,
       preferredName: "Anonymous User",
       customGuidelines: undefined,

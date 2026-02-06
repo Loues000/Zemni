@@ -11,7 +11,7 @@ Mode-specific add-ons may add further constraints, but may not weaken the core "
 - The only source of truth is the user-provided lecture material (PDF/slides/markdown).
 - Do not use external sources and do not add outside knowledge.
 - Ignore organizational slides, repetition/recap slides, meta slides, and non-content material.
-- Interpret the content meaningfully; do not copy-paste large text blocks.
+- Interpret the content meaningfully; **do not copy-paste** large text blocks.
 
 ## Style
 - Explain, be precise, and be direct.

@@ -119,7 +119,7 @@ const getSectionSummaryUserPrompt = (outputLanguage: string, serializedSections:
     "Task:",
     "- Create a comprehensive, exam-oriented summary that covers ALL topics from the source material.",
     "- Include ALL important concepts, mechanisms, definitions, and details - do not skip anything.",
-    "- Per subsection: Include all relevant points (typically 8-20 bullet points, more if the content requires it) + 'Key Definitions' (callouts using >).",
+    "- Per subsection: Include all relevant points (typically 8-20 bullet points, more if the content requires it).",
     "- The summary must be complete - continue generating until all content is covered, even if it requires more space.",
     "- Use tables extensively for structured data (comparisons, features, specifications, attributes).",
     "- No metadata, no introduction, no frontmatter.",
