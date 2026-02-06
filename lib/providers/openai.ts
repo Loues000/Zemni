@@ -64,17 +64,17 @@ export function createOpenAIProvider(apiKey: string) {
         abortSignal: options.signal,
       });
 
-      return {
-        textStream: stream.textStream,
-        getUsage: async () => {
-          // Wait for stream to complete to get usage
-          const chunks: string[] = [];
-          for await (const chunk of stream.textStream) {
-            chunks.push(chunk);
-          }
+      const chunks: string[] = [];
+      const textStream = (async function* () {
+        for await (const chunk of stream.textStream) {
+          chunks.push(chunk);
+          yield chunk;
+        }
+      })();
 
-          // Note: streamText doesn't directly expose usage, we'll need to track tokens separately
-          // For now, return estimated usage based on text length
+      return {
+        textStream,
+        getUsage: async () => {
           const fullText = chunks.join("");
           const estimatedCompletionTokens = Math.ceil(fullText.length / 4);
           const estimatedPromptTokens = messages.reduce((acc, m) => acc + Math.ceil(m.content.length / 4), 0);

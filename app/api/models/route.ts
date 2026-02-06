@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { loadModels, isSubscriptionTiersEnabled } from "@/lib/models";
+import { loadModels } from "@/lib/models";
 import { getModelAvailability, type ApiProvider } from "@/lib/model-availability";
 import { api } from "@/convex/_generated/api";
 import { getConvexClient } from "@/lib/convex-server";
@@ -42,7 +42,6 @@ const getCurrentUserContext = async (): Promise<{
  */
 export async function GET() {
   const models = await loadModels();
-  const tiersEnabled = isSubscriptionTiersEnabled();
 
   // Get current user's tier and API keys
   const { userTier, apiKeyProviders } = await getCurrentUserContext();

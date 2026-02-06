@@ -52,6 +52,8 @@ export async function GET(request: Request) {
     databaseId = envDatabaseId || null;
   }
 
+  // Env tokens may only access the configured default database; any caller-supplied databaseId is rejected unless it
+  // matches NOTION_SUBJECTS_DATABASE_ID (and when that env var is unset, env token requests are denied entirely).
   if (userDatabaseId && !userToken && tokenSource === "env") {
     if (!envDatabaseId || databaseId !== envDatabaseId) {
       return NextResponse.json({ subjects: [], error: "Unauthorized" }, { status: 401 });

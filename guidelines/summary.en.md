@@ -53,6 +53,7 @@ These rules apply **in addition** to `guidelines/general.en.md` and only for the
 - Short prose is allowed when needed for understanding.
 - Use `**bold**` sparingly for central technical terms.
 - Definitions should be written as callouts using `> ` at the beginning of the line.
+- **Period usage**: Use periods (`.`) sparingly in bullet points - only add a period if the bullet point is a complete sentence, not for simple bullet points, fragments, or mathematical formulas.
 
 ## Lists (important for Notion export)
 - Bullets must use `- ` (dash + space).

@@ -53,14 +53,17 @@ export function createAnthropicProvider(apiKey: string) {
         abortSignal: options.signal,
       });
 
-      return {
-        textStream: stream.textStream,
-        getUsage: async () => {
-          const chunks: string[] = [];
-          for await (const chunk of stream.textStream) {
-            chunks.push(chunk);
-          }
+      const chunks: string[] = [];
+      const textStream = (async function* () {
+        for await (const chunk of stream.textStream) {
+          chunks.push(chunk);
+          yield chunk;
+        }
+      })();
 
+      return {
+        textStream,
+        getUsage: async () => {
           const fullText = chunks.join("");
           const estimatedCompletionTokens = Math.ceil(fullText.length / 4);
           const estimatedPromptTokens = messages.reduce((acc, m) => acc + Math.ceil(m.content.length / 4), 0);
