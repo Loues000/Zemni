@@ -1,6 +1,7 @@
 import * as Sentry from "@sentry/nextjs";
 import type { Metadata } from "next";
 import { Bricolage_Grotesque, IBM_Plex_Sans } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import "katex/dist/katex.min.css";
 import ConvexClientProvider from "@/lib/convex-client-provider";
@@ -39,23 +40,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${display.variable} ${body.variable}`}>
       <body suppressHydrationWarning>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              (function() {
-                try {
-                  const saved = localStorage.getItem('theme');
-                  const theme = saved === 'dark' || saved === 'light' 
-                    ? saved 
-                    : window.matchMedia('(prefers-color-scheme: dark)').matches 
-                      ? 'dark' 
-                      : 'light';
-                  document.documentElement.setAttribute('data-theme', theme);
-                } catch (e) {}
-              })();
-            `,
-          }}
-        />
+        <Script id="theme-init" strategy="beforeInteractive">
+          {`(function() {
+            try {
+              const saved = localStorage.getItem('theme');
+              const theme = saved === 'dark' || saved === 'light'
+                ? saved
+                : window.matchMedia('(prefers-color-scheme: dark)').matches
+                  ? 'dark'
+                  : 'light';
+              document.documentElement.setAttribute('data-theme', theme);
+            } catch (e) {}
+          })();`}
+        </Script>
         <ConvexClientProvider>
           {isClerkConfigured && <UserSync />}
           <SentryErrorBoundary>{children}</SentryErrorBoundary>

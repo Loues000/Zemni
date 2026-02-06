@@ -18,7 +18,7 @@ export function createGoogleProvider(apiKey: string) {
     async generateText(
       modelId: string,
       messages: Array<{ role: string; content: string }>,
-      options: { maxTokens?: number; temperature?: number; maxRetries?: number } = {}
+      options: { maxTokens?: number; temperature?: number; maxRetries?: number; signal?: AbortSignal } = {}
     ): Promise<ProviderResult> {
       const model = google(getModelId(modelId));
 
@@ -28,6 +28,7 @@ export function createGoogleProvider(apiKey: string) {
         maxTokens: options.maxTokens,
         temperature: options.temperature,
         maxRetries: options.maxRetries,
+        abortSignal: options.signal,
       });
 
       return {
@@ -40,7 +41,7 @@ export function createGoogleProvider(apiKey: string) {
     async streamText(
       modelId: string,
       messages: Array<{ role: string; content: string }>,
-      options: { maxTokens?: number; temperature?: number } = {}
+      options: { maxTokens?: number; temperature?: number; signal?: AbortSignal } = {}
     ): Promise<{ textStream: AsyncIterable<string>; getUsage: () => Promise<ProviderResult> }> {
       const model = google(getModelId(modelId));
 
@@ -49,6 +50,7 @@ export function createGoogleProvider(apiKey: string) {
         messages: messages as any,
         maxTokens: options.maxTokens,
         temperature: options.temperature,
+        abortSignal: options.signal,
       });
 
       return {

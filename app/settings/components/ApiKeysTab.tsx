@@ -24,7 +24,6 @@ export function ApiKeysTab() {
   const userKeys = useQuery(api.apiKeys.getUserKeys, {});
   const useOwnKeyPreference = useQuery(api.apiKeys.getUseOwnKeyPreference);
   const setUseOwnKeyPref = useMutation(api.apiKeys.setUseOwnKeyPreference);
-  const deleteKey = useMutation(api.apiKeys.deleteKey);
 
   /**
    * Persist the preference for using user-provided keys.
@@ -86,11 +85,19 @@ export function ApiKeysTab() {
 
     setLoading(true);
     try {
-      await deleteKey({ keyId: keyId as any });
+      const response = await fetch(`/api/user/keys?keyId=${encodeURIComponent(keyId)}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to delete API key");
+      }
       toast.success("API key deleted");
     } catch (error) {
       console.error("Failed to delete key:", error);
-      toast.error("Failed to delete API key");
+      const errorMessage = error instanceof Error ? error.message : "Failed to delete API key";
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }

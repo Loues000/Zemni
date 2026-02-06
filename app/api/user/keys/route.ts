@@ -89,8 +89,9 @@ export async function POST(request: Request) {
 
     const body = await request.json();
     const { provider, key } = body;
+    const trimmedKey = typeof key === "string" ? key.trim() : String(key ?? "").trim();
 
-    if (!provider || !key) {
+    if (!provider || !trimmedKey) {
       return NextResponse.json({ error: "Provider and key are required" }, { status: 400 });
     }
 
@@ -104,7 +105,7 @@ export async function POST(request: Request) {
     }
 
     // Validate key format (prefix check only)
-    if (!validateApiKeyFormat(provider as ApiProvider, key)) {
+    if (!validateApiKeyFormat(provider as ApiProvider, trimmedKey)) {
       return NextResponse.json(
         { error: getValidationErrorMessage(provider as ApiProvider) },
         { status: 400 }
@@ -114,7 +115,7 @@ export async function POST(request: Request) {
     // Encrypt the key
     let encryptedKey: string;
     try {
-      encryptedKey = encryptKey(key);
+      encryptedKey = encryptKey(trimmedKey);
     } catch (error) {
       console.error("Encryption error:", error);
       return NextResponse.json(

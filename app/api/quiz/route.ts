@@ -174,6 +174,7 @@ export async function POST(request: Request) {
           maxTokens,
           temperature: 0.2,
           maxRetries: 1,
+          signal: timeout.signal,
         });
         result = {
           text: providerResult.text,

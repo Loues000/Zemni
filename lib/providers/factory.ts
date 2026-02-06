@@ -147,7 +147,7 @@ export function createProvider(providerInfo: ProviderInfo) {
         generateText: async (
           modelId: string,
           messages: Array<{ role: string; content: string }>,
-          options: { maxTokens?: number; temperature?: number; maxRetries?: number } = {}
+          options: { maxTokens?: number; temperature?: number; maxRetries?: number; signal?: AbortSignal } = {}
         ): Promise<ProviderResult> => {
           const client = createOpenRouterClient(providerInfo.key);
           const result = await generateText({
@@ -156,6 +156,7 @@ export function createProvider(providerInfo: ProviderInfo) {
             maxTokens: options.maxTokens,
             temperature: options.temperature,
             maxRetries: options.maxRetries,
+            abortSignal: options.signal,
           });
           return {
             text: result.text,
@@ -166,7 +167,7 @@ export function createProvider(providerInfo: ProviderInfo) {
         streamText: async (
           modelId: string,
           messages: Array<{ role: string; content: string }>,
-          options: { maxTokens?: number; temperature?: number } = {}
+          options: { maxTokens?: number; temperature?: number; signal?: AbortSignal } = {}
         ) => {
           const client = createOpenRouterClient(providerInfo.key);
           const stream = await streamText({
@@ -174,6 +175,7 @@ export function createProvider(providerInfo: ProviderInfo) {
             messages: messages as any,
             maxTokens: options.maxTokens,
             temperature: options.temperature,
+            abortSignal: options.signal,
           });
 
           return {
@@ -196,7 +198,7 @@ export async function generateWithProvider(
   modelId: string,
   messages: Array<{ role: string; content: string }>,
   apiKeys: ProviderInfo[],
-  options: { maxTokens?: number; temperature?: number; maxRetries?: number } = {}
+  options: { maxTokens?: number; temperature?: number; maxRetries?: number; signal?: AbortSignal } = {}
 ): Promise<ProviderResult> {
   const providerInfo = getProviderForModel(modelId, apiKeys);
 
@@ -212,7 +214,7 @@ export async function streamWithProvider(
   modelId: string,
   messages: Array<{ role: string; content: string }>,
   apiKeys: ProviderInfo[],
-  options: { maxTokens?: number; temperature?: number } = {}
+  options: { maxTokens?: number; temperature?: number; signal?: AbortSignal } = {}
 ): Promise<{ textStream: AsyncIterable<string>; getUsage: () => Promise<ProviderResult> }> {
   const providerInfo = getProviderForModel(modelId, apiKeys);
 

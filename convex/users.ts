@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { encryptKey } from "../lib/encryption";
 
 export const getOrCreateUser = mutation({
   args: {
@@ -276,8 +277,11 @@ export const updateNotionConfig = mutation({
       throw new Error("User not found");
     }
 
+    const trimmedToken = args.token?.trim();
+    const encryptedToken = trimmedToken ? encryptKey(trimmedToken) : undefined;
+
     await ctx.db.patch(user._id, {
-      notionToken: args.token,
+      notionToken: encryptedToken,
       notionDatabaseId: args.databaseId || undefined,
       notionExportMethod: args.exportMethod || undefined,
       updatedAt: Date.now(),

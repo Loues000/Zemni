@@ -8,6 +8,7 @@ import crypto from "node:crypto";
 const ALGORITHM = "aes-256-gcm";
 const KEY_LENGTH = 32; // 256 bits
 const IV_LENGTH = 16; // 128 bits
+const AUTH_TAG_LENGTH = 16; // 128 bits
 
 /**
  * Get encryption key from environment variable
@@ -15,6 +16,11 @@ const IV_LENGTH = 16; // 128 bits
  */
 function getEncryptionKey(): Buffer {
   const envKey = process.env.ENCRYPTION_KEY;
+  const envSalt = process.env.ENCRYPTION_SALT;
+
+  if (!envSalt) {
+    throw new Error("ENCRYPTION_SALT environment variable is required");
+  }
   
   if (!envKey) {
     if (process.env.NODE_ENV === "production") {
@@ -22,11 +28,11 @@ function getEncryptionKey(): Buffer {
     }
     // Development fallback (warn but allow)
     console.warn("WARNING: ENCRYPTION_KEY not set, using insecure default. Set ENCRYPTION_KEY in production!");
-    return crypto.scryptSync("default-key-change-in-production", "salt", KEY_LENGTH);
+    return crypto.scryptSync("default-key-change-in-production", envSalt, KEY_LENGTH);
   }
   
   // Derive 32-byte key from environment variable using scrypt
-  return crypto.scryptSync(envKey, "salt", KEY_LENGTH);
+  return crypto.scryptSync(envKey, envSalt, KEY_LENGTH);
 }
 
 /**
@@ -85,6 +91,9 @@ export function decryptKey(encryptedKey: string): string {
     // Validate IV and tag lengths
     if (iv.length !== IV_LENGTH) {
       throw new Error(`Invalid IV length: expected ${IV_LENGTH} bytes, got ${iv.length}`);
+    }
+    if (tag.length !== AUTH_TAG_LENGTH) {
+      throw new Error(`Invalid auth tag length: expected ${AUTH_TAG_LENGTH} bytes, got ${tag.length}`);
     }
 
     const decipher = crypto.createDecipheriv(ALGORITHM, encryptionKey, iv);

@@ -74,38 +74,52 @@ export async function GET(request: Request) {
       errorAny.code === "object_not_found" || 
       errorAny.status === 404 || 
       (error instanceof Error && error.message.includes("Could not find database"));
+    const isTimeoutError =
+      errorAny.code === "ETIMEDOUT" ||
+      errorAny.status === 408 ||
+      (error instanceof Error && error.message.toLowerCase().includes("timed out"));
+    const isAuthError =
+      errorAny.status === 401 ||
+      (error instanceof Error &&
+        (error.message.includes("401") || error.message.includes("Unauthorized")));
       
     let errorMessage = "Failed to fetch subjects";
-    
-    if (error instanceof Error) {
-      if (isNotFoundError) {
-        errorMessage = "Database not found or not shared with your integration. Please check your database ID and ensure the database is shared with your Notion integration.";
-        console.warn(`[Notion] Database not found: ${databaseId}`);
-      } else if (error.message.includes("timed out") || errorAny.code === "ETIMEDOUT") {
-        errorMessage = "Request timed out. Please check your connection and try again.";
+    let status = 500;
+
+    if (isNotFoundError) {
+      errorMessage = "Database not found or not shared with your integration. Please check your database ID and ensure the database is shared with your Notion integration.";
+      console.warn(`[Notion] Database not found: ${databaseId}`);
+      status = 404;
+    } else if (isTimeoutError) {
+      errorMessage = "Request timed out. Please check your connection and try again.";
+      status = 408;
+      if (error instanceof Error) {
         trackError(error, {
           action: "notion_subjects_timeout",
           metadata: { databaseId },
         });
-      } else if (errorAny.status === 401 || error.message.includes("401") || error.message.includes("Unauthorized")) {
-        errorMessage = "Invalid Notion token. Please check your integration settings.";
+      }
+    } else if (isAuthError) {
+      errorMessage = "Invalid Notion token. Please check your integration settings.";
+      status = 401;
+      if (error instanceof Error) {
         trackError(error, {
           action: "notion_subjects_auth",
           metadata: { databaseId },
           silent: true,
         });
-      } else {
-        errorMessage = error.message || errorMessage;
-        trackError(error, {
-          action: "notion_subjects_unexpected",
-          metadata: { databaseId, errorCode: errorAny.code, status: errorAny.status },
-        });
       }
+    } else if (error instanceof Error) {
+      errorMessage = error.message || errorMessage;
+      trackError(error, {
+        action: "notion_subjects_unexpected",
+        metadata: { databaseId, errorCode: errorAny.code, status: errorAny.status },
+      });
     }
     
     return NextResponse.json(
       { subjects: [], error: errorMessage },
-      { status: 200 }
+      { status }
     );
   }
 }

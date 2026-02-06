@@ -163,6 +163,7 @@ export async function POST(request: Request) {
         maxTokens: allowUnlimitedOutput ? undefined : 2800,
         temperature: 0.2,
         maxRetries: 1,
+        signal: timeout.signal,
       });
     } else {
       const openrouterClient = createOpenRouterClient(finalApiKey);

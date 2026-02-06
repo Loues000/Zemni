@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { ConvexHttpClient } from "convex/browser";
 import { loadModels, isSubscriptionTiersEnabled } from "@/lib/models";
 import { getModelAvailability, type ApiProvider } from "@/lib/model-availability";
 import { api } from "@/convex/_generated/api";
+import { getConvexClient } from "@/lib/convex-server";
 
 export const runtime = "nodejs";
 
@@ -22,7 +22,7 @@ const getCurrentUserContext = async (): Promise<{
   const convexToken = await getToken({ template: "convex" });
   if (!convexToken) return { userTier: null, apiKeyProviders: [] };
 
-  const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+  const convex = getConvexClient();
   convex.setAuth(convexToken);
 
   const user = await convex.query(api.users.getCurrentUser, {});
