@@ -58,10 +58,11 @@ const nextConfig = {
             value: [
               "default-src 'self'",
               "script-src 'self' 'unsafe-eval' 'unsafe-inline' https://*.clerk.com https://*.clerk.accounts.dev",
+              "worker-src 'self' blob:",
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "font-src 'self' https://fonts.gstatic.com data:",
               "img-src 'self' data: https: blob:",
-              "connect-src 'self' https://*.clerk.com https://*.clerk.accounts.dev https://*.convex.cloud wss://*.convex.cloud https://api.openrouter.ai https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.ingest.sentry.io",
+              "connect-src 'self' https://*.clerk.com https://*.clerk.accounts.dev https://clerk-telemetry.com https://*.convex.cloud wss://*.convex.cloud https://api.openrouter.ai https://api.anthropic.com https://api.openai.com https://generativelanguage.googleapis.com https://*.ingest.sentry.io https://*.ingest.de.sentry.io",
               "frame-src 'self' https://*.clerk.com https://*.clerk.accounts.dev",
               "object-src 'none'",
               "base-uri 'self'",

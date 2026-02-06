@@ -13,6 +13,7 @@ export default defineSchema({
     ),
     polarCustomerId: v.optional(v.string()),
     polarSubscriptionId: v.optional(v.string()),
+    stripeCustomerId: v.optional(v.string()),
     subscriptionStartDate: v.optional(v.number()), // Timestamp when subscription started (for billing cycle)
     preferredLanguage: v.optional(v.string()),
     preferredName: v.optional(v.string()),

@@ -38,7 +38,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     !clerkKey.includes("YOUR_CLERK_PUBLISHABLE_KEY");
 
   return (
-    <html lang="en" className={`${display.variable} ${body.variable}`}>
+    <html lang="en" className={`${display.variable} ${body.variable}`} suppressHydrationWarning>
       <body suppressHydrationWarning>
         <Script id="theme-init" strategy="beforeInteractive">
           {`(function() {
