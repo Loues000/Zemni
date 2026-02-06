@@ -1,5 +1,6 @@
 import * as Sentry from "@sentry/nextjs";
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { Bricolage_Grotesque, IBM_Plex_Sans } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
@@ -32,6 +33,7 @@ export function generateMetadata(): Metadata {
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const nonce = headers().get("x-nonce") ?? undefined;
   const clerkKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
   const isClerkConfigured = clerkKey && 
     clerkKey.startsWith("pk_") && 
@@ -40,7 +42,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${display.variable} ${body.variable}`} suppressHydrationWarning>
       <body suppressHydrationWarning>
-        <Script id="theme-init" strategy="beforeInteractive">
+        <Script id="theme-init" strategy="beforeInteractive" nonce={nonce}>
           {`(function() {
             try {
               const saved = localStorage.getItem('theme');

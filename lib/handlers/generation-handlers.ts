@@ -141,7 +141,8 @@ export const handleGenerate = async (context: GenerationHandlersContext): Promis
         outputKind === "quiz"
           ? {
             questionCursor: 0,
-            revealAnswer: false
+            revealAnswer: false,
+            answersById: {}
           }
           : undefined
     }

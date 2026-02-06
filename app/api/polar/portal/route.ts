@@ -33,9 +33,17 @@ export async function POST() {
       );
     }
 
-    const session = await polar.customerSessions.create({
-      ...(user.polarCustomerId ? { customerId: user.polarCustomerId } : { externalCustomerId: user.clerkUserId }),
-    });
+    const sessionParams = user.polarCustomerId
+      ? { customerId: user.polarCustomerId }
+      : user.clerkUserId
+        ? { externalCustomerId: user.clerkUserId }
+        : null;
+
+    if (!sessionParams) {
+      return NextResponse.json({ error: "User identity missing." }, { status: 400 });
+    }
+
+    const session = await polar.customerSessions.create(sessionParams);
 
     const portalUrl =
       (session as any).customerPortalUrl || (session as any).customer_portal_url;

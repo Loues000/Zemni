@@ -217,9 +217,6 @@ export async function POST(request: Request) {
     const front = String(card.front ?? "").trim();
     const back = String(card.back ?? "").trim();
     const sourceSnippet = String(card.sourceSnippet ?? "").trim();
-    // Normalize type: accept "qa", "Q&A", "question", etc. and convert to "qa" or "cloze"
-    const typeRaw = String(card.type ?? "").toLowerCase();
-    const type = typeRaw === "cloze" || typeRaw.includes("cloze") ? "cloze" : "qa";
 
     return sectionId.length > 0 && front.length > 0 && back.length > 0 && sourceSnippet.length > 0;
   };

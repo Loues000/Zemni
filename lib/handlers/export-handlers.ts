@@ -180,7 +180,9 @@ export const handleExport = async (
 
     setStatus("ready");
     setExportProgress(null);
-    const subjectTitle = subjects.find((s) => s.id === selectedSubject)?.title;
+    // Prefer overrideSubjectId (subjectId) when provided to ensure history uses the exported subject.
+    const effectiveSubjectId = subjectId || selectedSubject;
+    const subjectTitle = subjects.find((s) => s.id === effectiveSubjectId)?.title;
     setLoadedFromHistory(false);
     if (outputs && extractedText && subjectTitle) {
       saveToHistory(

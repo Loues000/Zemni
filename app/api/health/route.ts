@@ -28,14 +28,15 @@ import { validateEnvVars } from "@/lib/utils/env-validation";
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const shouldValidate = searchParams.get("validate") === "true";
+  const isDev = process.env.NODE_ENV !== "production";
 
   const response: {
     status: string;
     timestamp: string;
     validation?: {
       valid: boolean;
-      missing: string[];
-      invalid: Array<{ name: string; reason: string }>;
+      missing?: string[];
+      invalid?: Array<{ name: string; reason: string }>;
     };
   } = {
     status: "ok",
@@ -47,8 +48,7 @@ export async function GET(request: Request) {
     const validation = validateEnvVars();
     response.validation = {
       valid: validation.valid,
-      missing: validation.missing,
-      invalid: validation.invalid,
+      ...(isDev ? { missing: validation.missing, invalid: validation.invalid } : {}),
     };
   }
 

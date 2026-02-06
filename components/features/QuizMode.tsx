@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { OutputEntry, QuizQuestion, Status } from "@/types";
 import { downloadTextFile } from "@/lib/download";
 import { quizToMarkdown } from "@/lib/exporters";
+import { getQuizAnswerState } from "@/lib/utils/quiz-state";
 import { ExportMenu } from "@/components/ui";
 
 /**
@@ -64,8 +65,9 @@ export function QuizMode({
 
   const cursor = state?.questionCursor ?? 0;
   const currentQuestion: QuizQuestion | undefined = quiz[cursor];
-  const reveal = Boolean(state?.revealAnswer);
-  const selectedIndex = state?.selectedOptionIndex;
+  const answerState = getQuizAnswerState(state, currentQuestion, cursor);
+  const reveal = Boolean(answerState?.revealAnswer ?? state?.revealAnswer);
+  const selectedIndex = answerState?.selectedOptionIndex ?? state?.selectedOptionIndex;
 
   const [focusIndex, setFocusIndex] = useState(0);
   const optionCount = currentQuestion?.options.length ?? 0;

@@ -98,7 +98,7 @@ export function ContactTab() {
 
           {submitted && (
             <p className="field-hint" style={{ color: "var(--success)" }}>
-              Thank you for your message! We'll get back to you soon.
+              Thank you for your message! This deployment logs submissions but does not send replies.
             </p>
           )}
         </form>
