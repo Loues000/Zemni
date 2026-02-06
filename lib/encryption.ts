@@ -103,29 +103,3 @@ export function decryptKey(encryptedKey: string): string {
     );
   }
 }
-
-/**
- * Hash a key for storage (one-way, for verification purposes)
- * 
- * NOTE: This function is currently UNUSED in the codebase.
- * 
- * IMPORTANT: The `ENCRYPTION_KEY` environment variable already uses SHA-256 
- * (via scrypt key derivation) for encryption key derivation in `getEncryptionKey()`.
- * This function is separate and would be for a different purpose if needed.
- * 
- * If this function is needed in the future, it should be updated to use SHA-256
- * using Node.js crypto module for security-sensitive operations.
- * 
- * @deprecated Currently unused - remove if not needed, or implement SHA-256 if required
- */
-export function hashKey(key: string): string {
-  // Simple hash algorithm - NOT cryptographically secure
-  // TODO: If this function is needed, replace with SHA-256 using crypto.createHash('sha256')
-  let hash = 0;
-  for (let i = 0; i < key.length; i++) {
-    const char = key.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash; // Convert to 32-bit integer
-  }
-  return hash.toString(36);
-}

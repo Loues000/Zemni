@@ -8,10 +8,6 @@ import { getConvexClient } from "@/lib/convex-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-/**
- * Fetch Notion subject list using configured database and token.
- */
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const envDatabaseId = process.env.NOTION_SUBJECTS_DATABASE_ID;
@@ -20,16 +16,11 @@ export async function GET(request: Request) {
   const userDatabaseId = searchParams.get("databaseId")?.trim() || null;
   const userToken = request.headers.get("x-notion-token")?.trim() || null;
 
-  let databaseId = userDatabaseId || envDatabaseId;
-  let notionToken = userToken || envNotionToken;
-  let tokenSource: "header" | "env" | "convex" | "none" = userToken
-    ? "header"
-    : notionToken
-      ? "env"
-      : "none";
+  let databaseId: string | null = userDatabaseId;
+  let notionToken: string | null = userToken;
+  let tokenSource: "header" | "env" | "convex" | "none" = userToken ? "header" : "none";
 
-  // If no token provided via header, try to get from Convex (server-side decryption)
-  if (!notionToken) {
+  if (!userToken) {
     try {
       const { userId } = await auth();
       if (userId) {
@@ -40,19 +31,27 @@ export async function GET(request: Request) {
         if (user?.notionToken) {
           notionToken = decryptKey(user.notionToken);
           tokenSource = "convex";
-          if (!databaseId && user.notionDatabaseId) {
-            databaseId = user.notionDatabaseId;
-          }
+          databaseId = userDatabaseId || user.notionDatabaseId || null;
         }
       }
     } catch (error) {
-      // Fall back to env var if Convex lookup fails
       console.warn("Failed to get Notion config from Convex:", error);
+    }
+
+    if (!notionToken && envNotionToken) {
+      notionToken = envNotionToken;
+      tokenSource = "env";
+    }
+    if (!databaseId && tokenSource === "env") {
+      databaseId = envDatabaseId || null;
     }
   }
 
-  // Guard: never allow using the env NOTION_TOKEN against a caller-supplied databaseId.
-  // Env token may only be used for the default database.
+  // Default database ID when using a header token (caller did not specify a databaseId).
+  if (userToken && !databaseId) {
+    databaseId = envDatabaseId || null;
+  }
+
   if (userDatabaseId && !userToken && tokenSource === "env") {
     if (!envDatabaseId || databaseId !== envDatabaseId) {
       return NextResponse.json({ subjects: [], error: "Unauthorized" }, { status: 401 });
@@ -60,7 +59,10 @@ export async function GET(request: Request) {
   }
 
   if (!databaseId || !notionToken) {
-    return NextResponse.json({ subjects: [] });
+    return NextResponse.json(
+      { error: "missing Notion configuration: databaseId and/or notionToken" },
+      { status: 400 }
+    );
   }
 
   try {
@@ -73,25 +75,20 @@ export async function GET(request: Request) {
       errorAny.status === 404 || 
       (error instanceof Error && error.message.includes("Could not find database"));
       
-    // Provide more specific error messages
     let errorMessage = "Failed to fetch subjects";
     
     if (error instanceof Error) {
-      // Check for Notion API specific error codes
       if (isNotFoundError) {
         errorMessage = "Database not found or not shared with your integration. Please check your database ID and ensure the database is shared with your Notion integration.";
-        // Log expected 404 errors at a lower level to reduce console noise
         console.warn(`[Notion] Database not found: ${databaseId}`);
       } else if (error.message.includes("timed out") || errorAny.code === "ETIMEDOUT") {
         errorMessage = "Request timed out. Please check your connection and try again.";
-        // Track timeout errors as they might indicate infrastructure issues
         trackError(error, {
           action: "notion_subjects_timeout",
           metadata: { databaseId },
         });
       } else if (errorAny.status === 401 || error.message.includes("401") || error.message.includes("Unauthorized")) {
         errorMessage = "Invalid Notion token. Please check your integration settings.";
-        // Track auth errors silently (still sent to Sentry for monitoring, but don't spam console)
         trackError(error, {
           action: "notion_subjects_auth",
           metadata: { databaseId },
@@ -99,7 +96,6 @@ export async function GET(request: Request) {
         });
       } else {
         errorMessage = error.message || errorMessage;
-        // Track unexpected errors
         trackError(error, {
           action: "notion_subjects_unexpected",
           metadata: { databaseId, errorCode: errorAny.code, status: errorAny.status },
@@ -107,7 +103,6 @@ export async function GET(request: Request) {
       }
     }
     
-    // Return 200 with error message instead of 500 to allow frontend to handle gracefully
     return NextResponse.json(
       { subjects: [], error: errorMessage },
       { status: 200 }

@@ -11,18 +11,12 @@ class SentryExampleFrontendError extends Error {
   }
 }
 
-/**
- * Render a demo page that triggers Sentry test errors.
- */
 export default function Page() {
   const [hasSentError, setHasSentError] = useState(false);
   const [isConnected, setIsConnected] = useState(true);
 
   useEffect(() => {
     Sentry.logger.info("Sentry example page loaded");
-    /**
-     * Check whether Sentry can be reached from the client.
-     */
     async function checkConnectivity() {
       const result = await Sentry.diagnoseSdkConnectivity();
       setIsConnected(result !== "sentry-unreachable");

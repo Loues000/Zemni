@@ -18,10 +18,6 @@ import { getConvexClient } from "@/lib/convex-server";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
-
-/**
- * Normalize a single section payload into a DocumentSection.
- */
 const toSection = (value: unknown): DocumentSection | null => {
   if (!value || typeof value !== "object") return null;
   const record = value as Record<string, unknown>;
@@ -48,10 +44,6 @@ type ModelQuizQuestion = {
 type QuizResult = {
   questions: ModelQuizQuestion[];
 };
-
-/**
- * Generate quiz questions for a section using the requested model.
- */
 export async function POST(request: Request) {
   const { userId: clerkUserId } = await auth();
   const userContext = await getUserContext();
@@ -77,19 +69,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Missing modelId or section" }, { status: 400 });
   }
 
-  // Validate model ID
   const modelValidation = await validateModelId(modelId);
   if (!modelValidation.valid) {
     return NextResponse.json({ error: modelValidation.error }, { status: 400 });
   }
 
-  // Validate questions count
   const questionsCountValidation = validateQuestionsCount(questionsCount, 30);
   if (!questionsCountValidation.valid) {
     return NextResponse.json({ error: questionsCountValidation.error }, { status: 400 });
   }
 
-  // Validate section structure
   if (!section.id || !section.text || section.text.trim().length === 0) {
     return NextResponse.json(
       { error: "Section is invalid: must have id and non-empty text" },
@@ -106,7 +95,6 @@ export async function POST(request: Request) {
 
   const allowUnlimitedOutput = model.pricing.output_per_1m === 0;
 
-  // Check if user has access to this model (subscription OR API key)
   const hasModelAccess = checkModelAvailability(
     { id: model.openrouterId, subscriptionTier: model.subscriptionTier },
     userContext
@@ -119,7 +107,6 @@ export async function POST(request: Request) {
     );
   }
 
-  // Check monthly usage limit
   if (userContext) {
     try {
       const convex = getConvexClient();
@@ -137,36 +124,26 @@ export async function POST(request: Request) {
       }
     } catch (err) {
       console.error("Failed to check usage limit:", err);
-      // Continue with generation if limit check fails (fail open)
     }
   }
 
-  // Determine which API key to use (system key for subscription models, user key for own-cost models)
   const modelApiKeyInfo = getApiKeyForModel(modelId, userContext, model);
   const finalApiKey = modelApiKeyInfo?.key || apiKey;
   const isOwnKey = !!modelApiKeyInfo?.isOwnKey;
 
-  // Debug logging (only when using own key)
   if (isOwnKey) {
     console.log(`[quiz] Using own ${modelApiKeyInfo?.provider || "openrouter"} key for ${modelId}`);
   }
 
-  // Get user preferences for language and custom guidelines
   const userLanguage = userContext?.preferredLanguage || "en";
   const customGuidelines = userContext?.customGuidelines;
 
   const start = Date.now();
   const perfConfig = getModelPerformanceConfig(modelId);
 
-  /**
-   * Generate quiz questions with progressive retries for JSON correctness.
-   */
   const generateQuiz = async (retryCount: number = 0): Promise<{ questions: QuizQuestion[]; usage: any }> => {
     const { systemPrompt, userPrompt } = await buildQuizPrompts(section, questionsCount, avoidQuestions, userLanguage, customGuidelines);
 
-    // Progressive retries:
-    // Retry 1: Add JSON format instructions
-    // Retry 2: Increase maxTokens and reduce count
     const currentQuestionsCount = retryCount < 2 ? questionsCount : Math.max(1, Math.floor(questionsCount * 0.7));
 
     const enhancedSystemPrompt = retryCount > 0
@@ -295,7 +272,6 @@ export async function POST(request: Request) {
   const { questions, usage: usageAgg } = await generateQuiz();
   const usage: UsageStats | null = buildUsageStats(usageAgg, Date.now() - start, model, "quiz");
 
-  // Save usage to Convex if user is authenticated
   if (clerkUserId) {
     try {
       const convex = getConvexClient();
@@ -309,7 +285,6 @@ export async function POST(request: Request) {
       });
     } catch (err) {
       console.error("Failed to record usage:", err);
-      // Don't fail the request if usage recording fails
     }
   }
 

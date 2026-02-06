@@ -1,9 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
-/**
- * Get or create user from Clerk user ID
- */
 export const getOrCreateUser = mutation({
   args: {
     clerkUserId: v.string(),
@@ -16,7 +13,6 @@ export const getOrCreateUser = mutation({
       .first();
 
     if (existing) {
-      // Fix: If existing user has no subscriptionTier, set to "free"
       if (!existing.subscriptionTier) {
         await ctx.db.patch(existing._id, {
           subscriptionTier: "free",
@@ -37,10 +33,6 @@ export const getOrCreateUser = mutation({
   },
 });
 
-/**
- * Ensure user has correct subscription tier (background fix)
- * Called periodically to fix any tier inconsistencies
- */
 export const ensureCorrectTier = mutation({
   args: {},
   handler: async (ctx) => {
@@ -58,7 +50,6 @@ export const ensureCorrectTier = mutation({
       throw new Error("User not found");
     }
 
-    // Fix tier if missing
     if (!user.subscriptionTier) {
       await ctx.db.patch(user._id, {
         subscriptionTier: "free",
@@ -72,10 +63,6 @@ export const ensureCorrectTier = mutation({
   },
 });
 
-/**
- * Get current user by Clerk user ID
- * Returns user with guaranteed subscriptionTier (defaults to "free" if missing)
- */
 export const getCurrentUser = query({
   args: {},
   handler: async (ctx) => {
@@ -93,7 +80,6 @@ export const getCurrentUser = query({
       return null;
     }
 
-    // DEFENSIVE: Ensure missing tier defaults to "free"
     if (!user.subscriptionTier) {
       return {
         ...user,
@@ -105,9 +91,6 @@ export const getCurrentUser = query({
   },
 });
 
-/**
- * Get user by Clerk user ID (for server-side use)
- */
 export const getUserByClerkUserId = query({
   args: {
     clerkUserId: v.string(),
@@ -120,9 +103,6 @@ export const getUserByClerkUserId = query({
   },
 });
 
-/**
- * Update user subscription tier
- */
 export const updateSubscriptionTier = mutation({
   args: {
     userId: v.id("users"),
@@ -140,9 +120,6 @@ export const updateSubscriptionTier = mutation({
   },
 });
 
-/**
- * Get user by ID
- */
 export const getUser = query({
   args: { userId: v.id("users") },
   handler: async (ctx, args) => {
@@ -150,9 +127,6 @@ export const getUser = query({
   },
 });
 
-/**
- * Update user language preference
- */
 export const updatePreferredLanguage = mutation({
   args: {
     language: v.string(),
@@ -179,9 +153,6 @@ export const updatePreferredLanguage = mutation({
   },
 });
 
-/**
- * Update user preferred name
- */
 export const updatePreferredName = mutation({
   args: {
     name: v.string(),
@@ -208,9 +179,6 @@ export const updatePreferredName = mutation({
   },
 });
 
-/**
- * Update user custom guidelines
- */
 export const updateCustomGuidelines = mutation({
   args: {
     guidelines: v.string(),
@@ -237,9 +205,6 @@ export const updateCustomGuidelines = mutation({
   },
 });
 
-/**
- * Clear user custom guidelines (revert to default)
- */
 export const clearCustomGuidelines = mutation({
   args: {},
   handler: async (ctx) => {
@@ -264,9 +229,6 @@ export const clearCustomGuidelines = mutation({
   },
 });
 
-/**
- * Update user default structure hints
- */
 export const updateDefaultStructureHints = mutation({
   args: {
     hints: v.string(),
@@ -293,9 +255,6 @@ export const updateDefaultStructureHints = mutation({
   },
 });
 
-/**
- * Update Notion configuration
- */
 export const updateNotionConfig = mutation({
   args: {
     token: v.string(),
@@ -317,8 +276,6 @@ export const updateNotionConfig = mutation({
       throw new Error("User not found");
     }
 
-    // Token is already encrypted by the API endpoint before reaching this mutation
-    // We store it directly as-is
     await ctx.db.patch(user._id, {
       notionToken: args.token,
       notionDatabaseId: args.databaseId || undefined,
@@ -328,9 +285,6 @@ export const updateNotionConfig = mutation({
   },
 });
 
-/**
- * Clear Notion configuration
- */
 export const clearNotionConfig = mutation({
   args: {},
   handler: async (ctx) => {
@@ -357,9 +311,6 @@ export const clearNotionConfig = mutation({
   },
 });
 
-/**
- * Anonymize user account - removes personal info but keeps usage data
- */
 export const anonymizeAccount = mutation({
   args: {},
   handler: async (ctx) => {
@@ -396,10 +347,6 @@ export const anonymizeAccount = mutation({
   },
 });
 
-/**
- * Debug: Get all users with their subscription tiers
- * Only for debugging - requires admin allowlist
- */
 export const getAllUsersDebug = query({
   args: {},
   handler: async (ctx) => {
@@ -432,10 +379,6 @@ export const getAllUsersDebug = query({
   },
 });
 
-/**
- * Fix: Update all users with missing subscriptionTier to "free"
- * This is a one-time migration function
- */
 export const fixSubscriptionTiers = mutation({
   args: {},
   handler: async (ctx) => {

@@ -1,9 +1,5 @@
 import { query } from "../_generated/server";
 
-/**
- * Analyze the relationship between documents and usage tables
- * Shows the fundamental differences between these two tables
- */
 export default query({
   args: {},
   handler: async (ctx) => {
@@ -21,12 +17,10 @@ export default query({
       throw new Error("Unauthorized");
     }
 
-    // Get ALL documents and usage (admin-only analysis)
     const allDocuments = await ctx.db.query("documents").collect();
     const allUsage = await ctx.db.query("usage").collect();
     const allUsers = await ctx.db.query("users").collect();
 
-    // STRUCTURAL DIFFERENCES
     const structuralDiffs = {
       documentsPurpose: "Stores uploaded PDFs with extracted text and generated outputs (summary, flashcards, quiz)",
       usagePurpose: "Tracks API calls - every LLM operation with token counts and costs",
@@ -54,7 +48,6 @@ export default query({
       },
     };
 
-    // QUANTITY ANALYSIS
     const quantityAnalysis = {
       totalDocuments: allDocuments.length,
       totalUsageEntries: allUsage.length,
@@ -62,8 +55,6 @@ export default query({
       ratio: allDocuments.length > 0 ? (allUsage.length / allDocuments.length).toFixed(2) : "N/A",
     };
 
-    // CARDINALITY ANALYSIS
-    // How many documents have usage entries?
     const docIdsWithUsage = new Set(allUsage.filter(u => u.documentId).map(u => u.documentId));
     const allDocIds = new Set(allDocuments.map(d => d._id));
     
@@ -74,7 +65,6 @@ export default query({
       usageWithoutDocumentReference: allUsage.filter(u => !u.documentId).length,
     };
 
-    // USAGE PATTERNS
     const usagePatterns = {
       bySource: {} as Record<string, number>,
       documentsWithMultipleOperations: 0,
@@ -82,12 +72,10 @@ export default query({
       maxOperationsPerDocument: 0,
     };
 
-    // Count by source type
     for (const u of allUsage) {
       usagePatterns.bySource[u.source] = (usagePatterns.bySource[u.source] || 0) + 1;
     }
 
-    // Count operations per document
     const opsPerDoc = new Map<string, number>();
     for (const u of allUsage) {
       if (u.documentId) {
@@ -106,7 +94,6 @@ export default query({
       }
     }
 
-    // SAMPLE DOCUMENT (show what documents table actually stores)
     const sampleDocument = allDocuments.length > 0 ? {
       id: allDocuments[0]._id,
       title: allDocuments[0].title,
@@ -117,7 +104,6 @@ export default query({
       createdAt: new Date(allDocuments[0].createdAt).toISOString(),
     } : null;
 
-    // SAMPLE USAGE ENTRIES (show what usage table actually stores)
     const sampleUsage = allUsage.slice(0, 5).map(u => ({
       id: u._id,
       source: u.source,
@@ -130,7 +116,6 @@ export default query({
       timestamp: new Date(u.timestamp).toISOString(),
     }));
 
-    // REAL-WORLD SCENARIO EXAMPLES
     const scenarios = [
       {
         scenario: "User uploads PDF",

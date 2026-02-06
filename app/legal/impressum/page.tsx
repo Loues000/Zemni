@@ -1,8 +1,5 @@
 "use client";
 
-/**
- * Render the placeholder imprint page.
- */
 export default function ImpressumPage() {
   return (
     <div className="legal-page">
@@ -29,78 +26,12 @@ export default function ImpressumPage() {
 
         <section className="legal-section">
           <h2>Kontakt (Platzhalter)</h2>
-          <p>
-            [Kontakt folgt]
-          </p>
+          <p>[Kontakt folgt]</p>
         </section>
 
         <div className="legal-footer">
           <a href="/">Zurueck zur Startseite</a>
         </div>
-
-        {/* ORIGINAL LEGAL TEXT (commented for later restore)
-        <h1>Impressum</h1>
-        
-        <section className="legal-section">
-          <h2>Angaben gemäß § 5 TMG</h2>
-          <p>
-            <strong>[Dein Name/Firma]</strong><br />
-            [Straße Hausnummer]<br />
-            [PLZ Ort]<br />
-            Deutschland
-          </p>
-        </section>
-
-        <section className="legal-section">
-          <h2>Kontakt</h2>
-          <p>
-            Telefon: [Telefonnummer]<br />
-            E-Mail: [E-Mail-Adresse]
-          </p>
-        </section>
-
-        <section className="legal-section">
-          <h2>Vertreten durch</h2>
-          <p>
-            [Dein Name]<br />
-            Geschäftsführer/Inhaber
-          </p>
-        </section>
-
-        <section className="legal-section">
-          <h2>Umsatzsteuer-ID</h2>
-          <p>
-            Umsatzsteuer-Identifikationsnummer gemäß §27 a Umsatzsteuergesetz:<br />
-            [USt-IdNr. falls vorhanden, sonst entfernen]
-          </p>
-        </section>
-
-        <section className="legal-section">
-          <h2>Verantwortlich für den Inhalt nach § 55 Abs. 2 RStV</h2>
-          <p>
-            [Dein Name]<br />
-            [Adresse wie oben]
-          </p>
-        </section>
-
-        <section className="legal-section">
-          <h2>Streitschlichtung</h2>
-          <p>
-            Die Europäische Kommission stellt eine Plattform zur Online-Streitbeilegung (OS) bereit: 
-            <a href="https://ec.europa.eu/consumers/odr" target="_blank" rel="noopener noreferrer">
-              https://ec.europa.eu/consumers/odr
-            </a>
-          </p>
-          <p>
-            Wir sind nicht bereit oder verpflichtet, an Streitbeilegungsverfahren vor einer 
-            Verbraucherschlichtungsstelle teilzunehmen.
-          </p>
-        </section>
-
-        <div className="legal-footer">
-          <a href="/">← Zurück zur Startseite</a>
-        </div>        */}
-
       </div>
 
       <style jsx>{`
@@ -135,8 +66,6 @@ export default function ImpressumPage() {
           margin-bottom: 6px;
         }
 
-
-        
         h1 {
           font-size: 2rem;
           margin-bottom: 32px;
@@ -191,5 +120,3 @@ export default function ImpressumPage() {
     </div>
   );
 }
-
-

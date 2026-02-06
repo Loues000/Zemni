@@ -21,7 +21,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Get user info if logged in
     let userEmail = "anonymous@user";
     let userName = "Anonymous User";
     
@@ -36,8 +35,6 @@ export async function POST(request: Request) {
       }
     }
 
-    // TODO: In production, send email via service like SendGrid, Resend, or store in database
-    // For now, log the contact form submission
     console.log("Contact form submission:", {
       userEmail,
       userName,
@@ -45,11 +42,6 @@ export async function POST(request: Request) {
       message: message.substring(0, 200) + (message.length > 200 ? "..." : ""),
       timestamp: new Date().toISOString(),
     });
-
-    // In production, you would:
-    // 1. Store in a database table (e.g., convex/contact.ts)
-    // 2. Send email notification to support team
-    // 3. Send confirmation email to user
 
     return NextResponse.json({
       success: true,

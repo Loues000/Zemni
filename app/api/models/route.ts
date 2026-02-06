@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import { ConvexHttpClient } from "convex/browser";
 import { loadModels, isSubscriptionTiersEnabled } from "@/lib/models";
 import { getModelAvailability, type ApiProvider } from "@/lib/model-availability";
 import { api } from "@/convex/_generated/api";
-import { getConvexClient } from "@/lib/convex-server";
 
 export const runtime = "nodejs";
 
@@ -16,18 +16,19 @@ const getCurrentUserContext = async (): Promise<{
   userTier: string | null; 
   apiKeyProviders: ApiProvider[];
 }> => {
-  const { userId } = await auth();
+  const { userId, getToken } = await auth();
   if (!userId) return { userTier: null, apiKeyProviders: [] }; // Not logged in
-  const convex = getConvexClient();
 
-  const user = await convex.query(api.users.getUserByClerkUserId, {
-    clerkUserId: userId,
-  });
+  const convexToken = await getToken({ template: "convex" });
+  if (!convexToken) return { userTier: null, apiKeyProviders: [] };
+
+  const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+  convex.setAuth(convexToken);
+
+  const user = await convex.query(api.users.getCurrentUser, {});
   
   // Get user's active API key providers
-  const activeProviders = await convex.query(api.apiKeys.getActiveProviders, { 
-    clerkUserId: userId 
-  });
+  const activeProviders = await convex.query(api.apiKeys.getActiveProviders, {});
   const apiKeyProviders = activeProviders.map((p: { provider: ApiProvider }) => p.provider);
   
   return { 

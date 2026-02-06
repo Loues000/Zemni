@@ -185,6 +185,20 @@
     "id": "anthropic/claude-opus-4.5",
     "display_name": "Claude Opus 4.5",
     "subscription_tier": "pro",
+    "available": false,
+    "tokenizer": {
+      "tiktoken_encoding": "cl100k_base"
+    },
+    "pricing": {
+      "currency": "USD",
+      "input_per_1m": 5,
+      "output_per_1m": 25
+    }
+  },
+  {
+    "id": "anthropic/claude-opus-4.6",
+    "display_name": "Claude Opus 4.6",
+    "subscription_tier": "pro",
     "available": true,
     "tokenizer": {
       "tiktoken_encoding": "cl100k_base"

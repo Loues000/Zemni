@@ -4,10 +4,6 @@ import { useState, useRef, useCallback } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { exportHistoryAsZip } from "@/lib/export-history-zip";
-
-/**
- * Export, import, and manage chat history entries.
- */
 export function HistorySyncTab() {
   const [selectedDocs, setSelectedDocs] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
@@ -90,7 +86,6 @@ export function HistorySyncTab() {
 
       for (const entry of entries) {
         try {
-          // Validate entry structure
           if (!entry || typeof entry !== "object") {
             errors++;
             continue;
@@ -107,13 +102,11 @@ export function HistorySyncTab() {
           const notionPageId =
             typeof entryObj.notionPageId === "string" ? entryObj.notionPageId : undefined;
 
-          // Skip entries without text content
           if (!extractedText.trim()) {
             skipped++;
             continue;
           }
 
-          // Import the document (upsert will handle duplicates)
           await upsertDoc({
             title,
             fileName,
@@ -131,7 +124,6 @@ export function HistorySyncTab() {
         }
       }
 
-      // Show results
       const message = `Imported ${imported} document(s)${skipped > 0 ? `, skipped ${skipped}` : ""}${errors > 0 ? `, ${errors} errors` : ""}`;
       alert(message);
     } catch (err) {
@@ -159,9 +151,6 @@ export function HistorySyncTab() {
     }
   }, [selectedDocs, deleteDoc]);
 
-  /**
-   * Toggle the selection state for a document.
-   */
   const toggleSelect = (docId: string) => {
     setSelectedDocs((prev) => {
       const next = new Set(prev);

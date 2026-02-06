@@ -1,25 +1,30 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import { encryptKey } from "@/lib/encryption";
 import { validateApiKeyFormat, getValidationErrorMessage, type ApiProvider } from "@/lib/api-key-validation";
-import { getConvexClient } from "@/lib/convex-server";
 
 /**
  * Return metadata for the current user's API keys.
  */
 export async function GET() {
   try {
-    const { userId } = await auth();
+    const { userId, getToken } = await auth();
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const convex = getConvexClient();
+    const convexToken = await getToken({ template: "convex" });
+    if (!convexToken) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-    // Get user keys from Convex using clerkUserId
-    const keys = await convex.query(api.apiKeys.getUserKeys, { clerkUserId: userId });
+    const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+    convex.setAuth(convexToken);
+
+    const keys = await convex.query(api.apiKeys.getUserKeys, {});
 
     // Return keys without the actual key values (for security)
     return NextResponse.json({
@@ -45,13 +50,19 @@ export async function GET() {
  */
 export async function POST(request: Request) {
   try {
-    const { userId } = await auth();
+    const { userId, getToken } = await auth();
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const convex = getConvexClient();
+    const convexToken = await getToken({ template: "convex" });
+    if (!convexToken) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+    convex.setAuth(convexToken);
 
     // Check rate limit (using Convex for persistence)
     try {
@@ -112,10 +123,9 @@ export async function POST(request: Request) {
       );
     }
 
-    // Save to Convex with clerkUserId for auth
+    // Save to Convex with authenticated context
     try {
       await convex.mutation(api.apiKeys.upsertKey, {
-        clerkUserId: userId,
         provider: provider as ApiProvider,
         keyHash: encryptedKey,
       });
@@ -147,13 +157,19 @@ export async function POST(request: Request) {
  */
 export async function DELETE(request: Request) {
   try {
-    const { userId } = await auth();
+    const { userId, getToken } = await auth();
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const convex = getConvexClient();
+    const convexToken = await getToken({ template: "convex" });
+    if (!convexToken) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+    convex.setAuth(convexToken);
 
     // Check rate limit (using Convex for persistence)
     try {
@@ -185,10 +201,9 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "keyId is required" }, { status: 400 });
     }
 
-    // Delete from Convex with clerkUserId for auth
+    // Delete from Convex with authenticated context
     try {
       await convex.mutation(api.apiKeys.deleteKey, {
-        clerkUserId: userId,
         keyId: keyId as any,
       });
     } catch (error) {

@@ -10,7 +10,7 @@ node_modules/
 *.tsbuildinfo
 
 # Env files (secrets)
-# Note: .env is deprecated, use .env.local instead
+# Note: This project uses `.env.local` for local secrets; do not commit env files.
 .env.local
 .env.development.local
 .env.test.local
@@ -36,7 +36,7 @@ out/
 .mypy_cache/
 .ruff_cache/
 
-# Local model config overrides (keep example committed)
+# Local model config overrides (commit `openrouter-models.example.json`)
 config/openrouter-models.json
 config/openrouter-models.prices.json
 
@@ -57,12 +57,8 @@ CLAUDE.md
 data/
 tasks/
 docs/
-!docs/
-docs/*
-!docs/legal-revert-guide.md
 old_guidelines.md
 benchmark/results/
-*.txt
 
 # User guide (setup instructions)
 user_guide.md

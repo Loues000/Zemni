@@ -4,9 +4,6 @@ import { polar, TIER_PRODUCT_IDS } from "@/lib/polar";
 import { api } from "@/convex/_generated/api";
 import { getConvexClient } from "@/lib/convex-server";
 
-/**
- * Create a Polar checkout session for the selected paid tier.
- */
 export async function POST(request: Request) {
   try {
     if (process.env.NEXT_PUBLIC_ENABLE_BILLING !== "true") {
@@ -24,7 +21,6 @@ export async function POST(request: Request) {
 
     const convex = getConvexClient();
 
-    // Get user from Clerk to get email
     const clerkUser = await currentUser();
     if (!clerkUser) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -35,7 +31,6 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { tier } = body;
 
-    // "basic" tier is automatically awarded to all logged-in users, not a paid tier
     if (!tier || !["plus", "pro"].includes(tier)) {
       return NextResponse.json({ error: "Invalid tier" }, { status: 400 });
     }
@@ -50,14 +45,11 @@ export async function POST(request: Request) {
       );
     }
 
-    // Ensure user exists in Convex
     await convex.mutation(api.users.getOrCreateUser, {
       clerkUserId: userId,
       email: userEmail,
     });
 
-    // Get user from Convex to check for existing Polar customer
-    // Use getUserByClerkUserId since getCurrentUser requires auth context
     const user = await convex.query(api.users.getUserByClerkUserId, {
       clerkUserId: userId,
     });
@@ -88,7 +80,6 @@ export async function POST(request: Request) {
     console.error("Polar checkout error:", error);
     const errorMessage = error instanceof Error ? error.message : "Internal server error";
 
-    // Provide more user-friendly error messages
     let userFriendlyError = "Unable to start checkout. Please try again.";
     if (errorMessage.includes("Product ID")) {
       userFriendlyError = "Subscription pricing is not configured. Please contact support.";

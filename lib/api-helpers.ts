@@ -1,9 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
 import { api } from "@/convex/_generated/api";
+import { ConvexHttpClient } from "convex/browser";
 import { decryptKey } from "./encryption";
 import { isModelAvailable } from "./models";
 import { isModelAvailableViaApiKey } from "./model-availability";
-import { getConvexClient } from "@/lib/convex-server";
 
 export type ApiProvider = "openrouter" | "openai" | "anthropic" | "google";
 
@@ -23,49 +23,43 @@ export interface UserContext {
   customGuidelines?: string;
 }
 
-/**
- * Get user context for API routes
- * Returns user authentication, tier, and API key preferences
- */
 export async function getUserContext(): Promise<UserContext | null> {
-  const { userId } = await auth();
+  const { userId, getToken } = await auth();
 
   if (!userId) {
     return null;
   }
 
-  const convex = getConvexClient();
+  const convexToken = await getToken({ template: "convex" });
+  if (!convexToken) {
+    return null;
+  }
 
-  // Get user from Convex using clerkUserId
-  const user = await convex.query(api.users.getUserByClerkUserId, {
-    clerkUserId: userId,
-  });
+  const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+  convex.setAuth(convexToken);
+
+  const user = await convex.query(api.users.getCurrentUser, {});
 
   if (!user) {
     return null;
   }
 
-  // Get all active API keys for the user
-  const activeProviders = await convex.query(api.apiKeys.getActiveProviders, { 
-    clerkUserId: userId 
-  });
+  const activeProviders = await convex.query(api.apiKeys.getActiveProviders, {});
   
   const apiKeys: ApiKeyInfo[] = [];
   let apiKey: string | undefined;
 
-  // Load all API keys with memory safety
   const decryptedKeys: string[] = [];
   try {
     for (const providerInfo of activeProviders) {
       const userKey = await convex.query(api.apiKeys.getKeyForProvider, {
         provider: providerInfo.provider,
-        clerkUserId: userId,
       });
 
       if (userKey && userKey.keyHash) {
         try {
           const decryptedKey = decryptKey(userKey.keyHash);
-          decryptedKeys.push(decryptedKey); // Track for cleanup
+          decryptedKeys.push(decryptedKey);
           
           apiKeys.push({
             provider: providerInfo.provider,
@@ -73,31 +67,23 @@ export async function getUserContext(): Promise<UserContext | null> {
             key: decryptedKey,
           });
 
-          // Keep backward compatibility - use openrouter as primary key if available
           if (providerInfo.provider === "openrouter" && providerInfo.useOwnKey) {
             apiKey = decryptedKey;
           }
         } catch (decryptError) {
-          // Handle invalid encrypted key format (e.g., from old data or migration issues)
           console.error(
             `[getUserContext] Failed to decrypt ${providerInfo.provider} key:`,
             decryptError instanceof Error ? decryptError.message : String(decryptError)
           );
-          // Skip this key and continue with others
-          // The user will need to re-enter this key
         }
       }
     }
   } finally {
-    // Attempt to clear decrypted keys from memory (JS doesn't guarantee this)
-    // This is best-effort memory safety
     for (let i = 0; i < decryptedKeys.length; i++) {
-      // Overwrite array elements (best effort)
       decryptedKeys[i] = "";
     }
   }
 
-  // Check if user wants to use own keys (any provider)
   const useOwnKeyPreference = apiKeys.some(k => k.useOwnKey);
 
   return {

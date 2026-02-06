@@ -99,19 +99,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Missing modelId or sections" }, { status: 400 });
   }
 
-  // Validate model ID
   const modelValidation = await validateModelId(modelId);
   if (!modelValidation.valid) {
     return NextResponse.json({ error: modelValidation.error }, { status: 400 });
   }
 
-  // Validate coverage level (density)
   const densityValidation = validateFlashcardsDensity(coverageLevel);
   if (!densityValidation.valid) {
     return NextResponse.json({ error: densityValidation.error }, { status: 400 });
   }
 
-  // Validate sections have valid structure
   for (let i = 0; i < sections.length; i++) {
     const section = sections[i];
     if (!section.id || !section.text || section.text.trim().length === 0) {
@@ -144,7 +141,6 @@ export async function POST(request: Request) {
     );
   }
 
-  // Check monthly usage limit
   if (userContext) {
     try {
       const convex = getConvexClient();
@@ -166,17 +162,14 @@ export async function POST(request: Request) {
     }
   }
 
-  // Determine which API key to use (system key for subscription models, user key for own-cost models)
   const modelApiKeyInfo = getApiKeyForModel(modelId, userContext, model);
   const finalApiKey = modelApiKeyInfo?.key || apiKey;
   const isOwnKey = !!modelApiKeyInfo?.isOwnKey;
 
-  // Debug logging (only when using own key)
   if (isOwnKey) {
     console.log(`[flashcards] Using own ${modelApiKeyInfo?.provider || "openrouter"} key for ${modelId}`);
   }
 
-  // Prepare API keys array for generateWithProvider if using own key
   const apiKeys = isOwnKey && userContext
     ? userContext.apiKeys.map(k => ({
       provider: k.provider,
@@ -185,7 +178,6 @@ export async function POST(request: Request) {
     }))
     : [];
 
-  // Get user preferences for language and custom guidelines
   const userLanguage = userContext?.preferredLanguage || "en";
   const customGuidelines = userContext?.customGuidelines;
 
@@ -260,7 +252,6 @@ export async function POST(request: Request) {
         const baseMaxTokens = Math.min(4096, Math.max(1500, currentCardsWanted * 250));
         let adjustedMaxTokens = Math.floor(baseMaxTokens * perfConfig.maxTokensMultiplier);
 
-        // Boost max tokens even more on retry if it looked truncated
         if (retryCount > 0) adjustedMaxTokens = Math.floor(adjustedMaxTokens * 1.5);
 
         let result: { text: string; usage: any };
@@ -395,7 +386,6 @@ export async function POST(request: Request) {
   const usageAgg = sumUsage(results.map((r) => r.usage));
   const usage: UsageStats | null = buildUsageStats(usageAgg, Date.now() - start, model, "flashcards");
 
-  // Save usage to Convex if user is authenticated
   if (clerkUserId) {
     try {
       const convex = getConvexClient();
@@ -409,7 +399,6 @@ export async function POST(request: Request) {
       });
     } catch (err) {
       console.error("Failed to record usage:", err);
-      // Don't fail the request if usage recording fails
     }
   }
 

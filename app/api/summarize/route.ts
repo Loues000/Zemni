@@ -20,14 +20,10 @@ export const maxDuration = 120;
 
 const MODEL_CALL_TIMEOUT_MS = 70_000;
 
-/**
- * Generate a full summary for the provided text.
- */
 export async function POST(request: Request) {
   const { userId: clerkUserId } = await auth();
   const userContext = await getUserContext();
 
-  // Check rate limit for authenticated users (using Convex for persistence)
   if (userContext) {
     try {
       const convex = getConvexClient();
@@ -47,9 +43,7 @@ export async function POST(request: Request) {
         );
       }
     } catch (error) {
-      // If Convex call fails, log but allow request (fail open for availability)
       console.error("Rate limit check failed:", error);
-      // Continue with request - rate limiting is a protection, not a blocker
     }
   }
 
@@ -69,19 +63,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Missing text or model" }, { status: 400 });
   }
 
-  // Validate text size (byte size)
   const textValidation = validateTextSize(text);
   if (!textValidation.valid) {
     return NextResponse.json({ error: textValidation.error }, { status: 413 });
   }
 
-  // Validate text length (character count)
   const textLengthValidation = validateTextLength(text);
   if (!textLengthValidation.valid) {
     return NextResponse.json({ error: textLengthValidation.error }, { status: 400 });
   }
 
-  // Validate structure hints
   if (structure) {
     const structureValidation = validateStructureHints(structure);
     if (!structureValidation.valid) {
@@ -89,7 +80,6 @@ export async function POST(request: Request) {
     }
   }
 
-  // Validate model ID
   const modelValidation = await validateModelId(modelId);
   if (!modelValidation.valid) {
     return NextResponse.json({ error: modelValidation.error }, { status: 400 });
@@ -104,7 +94,6 @@ export async function POST(request: Request) {
 
   const allowUnlimitedOutput = model.pricing.output_per_1m === 0;
 
-  // Check if user has access to this model (subscription OR API key)
   const hasModelAccess = checkModelAvailability(
     { id: model.openrouterId, subscriptionTier: model.subscriptionTier },
     userContext
@@ -117,7 +106,6 @@ export async function POST(request: Request) {
     );
   }
 
-  // Check monthly usage limit
   if (userContext) {
     try {
       const convex = getConvexClient();
@@ -135,21 +123,17 @@ export async function POST(request: Request) {
       }
     } catch (err) {
       console.error("Failed to check usage limit:", err);
-      // Continue with generation if limit check fails (fail open)
     }
   }
 
-  // Determine which API key to use (system key for subscription models, user key for own-cost models)
   const modelApiKeyInfo = getApiKeyForModel(modelId, userContext, model);
   const finalApiKey = modelApiKeyInfo?.key || apiKey;
   const isOwnKey = !!modelApiKeyInfo?.isOwnKey;
 
-  // Debug logging (only when using own key)
   if (isOwnKey) {
     console.log(`[summarize] Using own ${modelApiKeyInfo?.provider || "openrouter"} key for ${modelId}`);
   }
 
-  // Get user preferences for language and custom guidelines
   const userLanguage = userContext?.preferredLanguage || "en";
   const customGuidelines = userContext?.customGuidelines;
   const { systemPrompt, userPrompt } = await buildSummaryPrompts(text, structure, userLanguage, customGuidelines);
@@ -160,7 +144,6 @@ export async function POST(request: Request) {
 
   try {
     if (isOwnKey && modelApiKeyInfo) {
-      // Use direct provider API for user's own key
       const providerInfo: ProviderInfo = {
         provider: modelApiKeyInfo.provider,
         key: modelApiKeyInfo.key,
@@ -182,7 +165,6 @@ export async function POST(request: Request) {
         maxRetries: 1,
       });
     } else {
-      // Use OpenRouter (system key)
       const openrouterClient = createOpenRouterClient(finalApiKey);
       const genResult = await generateText({
         model: openrouterClient(modelId) as any,
@@ -210,13 +192,10 @@ export async function POST(request: Request) {
     timeout.cancel();
   }
 
-  // Post-process to enforce format (no metadata, starts with H1)
   const summary = enforceOutputFormat(result.text, titleHint || undefined);
 
-  // Build usage stats
   const usage = buildUsageStats(result.usage, Date.now() - start, model, "summarize");
 
-  // Save usage to Convex if user is authenticated
   if (clerkUserId) {
     try {
       const convex = getConvexClient();
@@ -230,11 +209,9 @@ export async function POST(request: Request) {
       });
     } catch (err) {
       console.error("Failed to record usage:", err);
-      // Don't fail the request if usage recording fails
     }
   }
 
-  // Add own key info to response
   const response: any = { summary, usage };
   if (isOwnKey) {
     response.ownKeyInfo = {

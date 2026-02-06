@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { useUser } from "@clerk/nextjs";
 import { useToastContext } from "./ToastProvider";
 
 const PROVIDERS = [
@@ -17,7 +16,6 @@ const PROVIDERS = [
  * Manage user-provided API keys and usage preference.
  */
 export function ApiKeysTab() {
-  const { user } = useUser();
   const [keyValues, setKeyValues] = useState<Record<string, string>>({});
   const [useOwnKey, setUseOwnKey] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -86,14 +84,9 @@ export function ApiKeysTab() {
       return;
     }
 
-    if (!user?.id) {
-      toast.error("Not authenticated");
-      return;
-    }
-
     setLoading(true);
     try {
-      await deleteKey({ clerkUserId: user.id, keyId: keyId as any });
+      await deleteKey({ keyId: keyId as any });
       toast.success("API key deleted");
     } catch (error) {
       console.error("Failed to delete key:", error);
