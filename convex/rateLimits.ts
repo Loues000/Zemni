@@ -24,7 +24,7 @@ function getMaxRequests(type: "key_management" | "generation"): number {
  */
 export const checkRateLimit = mutation({
   args: {
-    userId: v.string(), // Clerk user ID
+    clerkUserId: v.string(), // Clerk user ID
     type: v.union(v.literal("key_management"), v.literal("generation")),
   },
   handler: async (ctx, args) => {
@@ -32,17 +32,33 @@ export const checkRateLimit = mutation({
     const maxRequests = getMaxRequests(args.type);
 
     // Find existing rate limit entry
-    const existing = await ctx.db
+    let existing = await ctx.db
       .query("rateLimits")
-      .withIndex("by_user_type", (q) =>
-        q.eq("userId", args.userId).eq("type", args.type)
+      .withIndex("by_clerk_user_type", (q) =>
+        q.eq("clerkUserId", args.clerkUserId).eq("type", args.type)
       )
       .first();
+
+    if (!existing) {
+      const legacyEntries = await ctx.db.query("rateLimits").collect();
+      const legacyMatch = legacyEntries.find((entry) => {
+        const legacyUserId = (entry as { userId?: string }).userId;
+        return legacyUserId === args.clerkUserId && entry.type === args.type;
+      });
+
+      if (legacyMatch) {
+        await ctx.db.patch(legacyMatch._id, {
+          clerkUserId: args.clerkUserId,
+          userId: undefined,
+        });
+        existing = legacyMatch;
+      }
+    }
 
     // No entry or expired window - create new entry
     if (!existing || existing.resetTime < now) {
       await ctx.db.insert("rateLimits", {
-        userId: args.userId,
+        clerkUserId: args.clerkUserId,
         type: args.type,
         count: 1,
         resetTime: now + RATE_LIMIT_WINDOW_MS,
@@ -70,7 +86,7 @@ export const checkRateLimit = mutation({
  */
 export const resetRateLimit = mutation({
   args: {
-    userId: v.string(), // Clerk user ID
+    clerkUserId: v.string(), // Clerk user ID
     type: v.optional(v.union(v.literal("key_management"), v.literal("generation"))),
   },
   handler: async (ctx, args) => {
@@ -79,13 +95,22 @@ export const resetRateLimit = mutation({
       const type = args.type; // Type narrowing for TypeScript
       const entry = await ctx.db
         .query("rateLimits")
-        .withIndex("by_user_type", (q) =>
-          q.eq("userId", args.userId).eq("type", type)
+        .withIndex("by_clerk_user_type", (q) =>
+          q.eq("clerkUserId", args.clerkUserId).eq("type", type)
         )
         .first();
       
       if (entry) {
         await ctx.db.delete(entry._id);
+      }
+
+      const legacyEntries = await ctx.db.query("rateLimits").collect();
+      const legacyMatch = legacyEntries.find((item) => {
+        const legacyUserId = (item as { userId?: string }).userId;
+        return legacyUserId === args.clerkUserId && item.type === type;
+      });
+      if (legacyMatch) {
+        await ctx.db.delete(legacyMatch._id);
       }
     } else {
       // Reset all types for user - need to query all entries and filter
@@ -94,7 +119,10 @@ export const resetRateLimit = mutation({
         .query("rateLimits")
         .collect();
       
-      const userEntries = allEntries.filter(entry => entry.userId === args.userId);
+      const userEntries = allEntries.filter((entry) => {
+        const legacyUserId = (entry as { userId?: string }).userId;
+        return entry.clerkUserId === args.clerkUserId || legacyUserId === args.clerkUserId;
+      });
       
       for (const entry of userEntries) {
         await ctx.db.delete(entry._id);

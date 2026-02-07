@@ -24,11 +24,11 @@ export async function POST(request: Request) {
   const { userId: clerkUserId } = await auth();
   const userContext = await getUserContext();
 
-  if (userContext) {
+  if (userContext && clerkUserId) {
     try {
       const convex = getConvexClient();
       const rateLimit = await convex.mutation(api.rateLimits.checkRateLimit, {
-        userId: userContext.userId,
+        clerkUserId,
         type: "generation",
       });
       if (!rateLimit.allowed) {

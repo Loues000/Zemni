@@ -67,7 +67,7 @@ export async function POST(request: Request) {
     // Check rate limit (using Convex for persistence)
     try {
       const rateLimit = await convex.mutation(api.rateLimits.checkRateLimit, {
-        userId: userId,
+        clerkUserId: userId,
         type: "key_management",
       });
       if (!rateLimit.allowed) {
@@ -175,7 +175,7 @@ export async function DELETE(request: Request) {
     // Check rate limit (using Convex for persistence)
     try {
       const rateLimit = await convex.mutation(api.rateLimits.checkRateLimit, {
-        userId: userId,
+        clerkUserId: userId,
         type: "key_management",
       });
       if (!rateLimit.allowed) {

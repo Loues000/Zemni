@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { StreamData, streamText } from "ai";
 import { openrouter } from "@/lib/openrouter";
 import { buildRefineSystemPrompt } from "@/lib/prompts";
@@ -18,14 +19,15 @@ export const runtime = "nodejs";
  * Stream a refined summary from the provided summary and messages.
  */
 export async function POST(request: Request) {
+  const { userId: clerkUserId } = await auth();
   const userContext = await getUserContext();
   
   // Check rate limit for authenticated users (using Convex for persistence)
-  if (userContext) {
+  if (userContext && clerkUserId) {
     try {
       const convex = getConvexClient();
       const rateLimit = await convex.mutation(api.rateLimits.checkRateLimit, {
-        userId: userContext.userId,
+        clerkUserId,
         type: "generation",
       });
       if (!rateLimit.allowed) {

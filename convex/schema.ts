@@ -100,10 +100,11 @@ export default defineSchema({
     .index("by_created_at", ["createdAt"]),
 
   rateLimits: defineTable({
-    userId: v.string(), // Clerk user ID
+    clerkUserId: v.optional(v.string()), // Clerk user ID
+    userId: v.optional(v.string()), // Legacy Clerk user ID (to be removed after migration)
     type: v.union(v.literal("key_management"), v.literal("generation")),
     count: v.number(),
     resetTime: v.number(), // Timestamp when rate limit window resets
   })
-    .index("by_user_type", ["userId", "type"]),
+    .index("by_clerk_user_type", ["clerkUserId", "type"]),
 });
