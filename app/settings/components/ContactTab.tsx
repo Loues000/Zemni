@@ -108,13 +108,28 @@ export function ContactTab() {
         <div className="field">
           <label className="field-label">Resources</label>
           <div className="settings-resources">
-            <a href="/docs/keyboard-shortcuts.md" target="_blank" className="settings-resource-link">
+            <a
+              href="/docs/keyboard-shortcuts.md"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="settings-resource-link"
+            >
               Keyboard Shortcuts
             </a>
-            <a href="https://github.com/your-repo/issues" target="_blank" className="settings-resource-link">
+            <a
+              href="https://github.com/your-repo/issues"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="settings-resource-link"
+            >
               Report a Bug
             </a>
-            <a href="https://github.com/your-repo/discussions" target="_blank" className="settings-resource-link">
+            <a
+              href="https://github.com/your-repo/discussions"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="settings-resource-link"
+            >
               Feature Requests
             </a>
           </div>

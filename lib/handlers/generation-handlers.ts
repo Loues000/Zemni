@@ -5,6 +5,7 @@ import { estimateFlashcardsPerSection, estimateQuizQuestions } from "@/lib/study
 import { createDocHash, createCacheKey, getCachedResult, setCachedResult, type CacheKey } from "@/lib/cache";
 import { retryWithBackoff, isRetryableError } from "@/lib/utils/retry";
 import { formatErrorMessage, getErrorInfo, isRetryableErrorMessage } from "@/lib/utils/error-messages";
+import { getModelPerformanceConfig } from "@/lib/ai-performance";
 
 const QUIZ_INITIAL_BATCH_CAP = 12;
 
@@ -77,6 +78,7 @@ export const handleGenerate = async (context: GenerationHandlersContext): Promis
   const previousTabId = selectedTabId;
   const tabId = selectedModel + "-" + Date.now();
   const modelLabel = models.find((m) => m.id === selectedModel)?.displayName || selectedModel;
+  const { timeoutMs } = getModelPerformanceConfig(selectedModel, extractedText.length);
 
   // Create cache key
   const docHash = createDocHash(extractedText, fileName);
@@ -167,7 +169,7 @@ export const handleGenerate = async (context: GenerationHandlersContext): Promis
             structure: structureHints,
             titleHint: fileName
           },
-          240_000
+          timeoutMs
         ),
         { maxRetries: 2, initialDelayMs: 1000 }
       );
@@ -205,7 +207,7 @@ export const handleGenerate = async (context: GenerationHandlersContext): Promis
             modelId: selectedModel,
             coverageLevel: flashcardsDensity
           },
-          240_000
+          timeoutMs
         ),
         { maxRetries: 2, initialDelayMs: 1000 }
       );
@@ -246,7 +248,7 @@ export const handleGenerate = async (context: GenerationHandlersContext): Promis
             questionsCount: Math.min(QUIZ_INITIAL_BATCH_CAP, estimateQuizQuestions(extractedText.length)),
             avoidQuestions: []
           },
-          240_000
+          timeoutMs
         ),
         { maxRetries: 2, initialDelayMs: 1000 }
       );

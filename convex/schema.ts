@@ -82,6 +82,23 @@ export default defineSchema({
     .index("by_user_timestamp", ["userId", "timestamp"])
     .index("by_document_id", ["documentId"]),
 
+  contactSubmissions: defineTable({
+    clerkUserId: v.string(),
+    userId: v.optional(v.id("users")),
+    userEmail: v.string(),
+    userName: v.string(),
+    subject: v.string(),
+    message: v.string(),
+    subjectLength: v.number(),
+    messageLength: v.number(),
+    submissionId: v.string(),
+    userAgent: v.optional(v.string()),
+    createdAt: v.number(),
+    retentionUntil: v.number(),
+  })
+    .index("by_clerk_user_id", ["clerkUserId"])
+    .index("by_created_at", ["createdAt"]),
+
   rateLimits: defineTable({
     userId: v.string(), // Clerk user ID
     type: v.union(v.literal("key_management"), v.literal("generation")),

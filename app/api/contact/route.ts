@@ -2,17 +2,47 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { api } from "@/convex/_generated/api";
 import { getConvexClient } from "@/lib/convex-server";
+import { trackEvent } from "@/lib/error-tracking";
+import { randomUUID } from "crypto";
 
 export const runtime = "nodejs";
+
+type ContactSubmissionInput = {
+  convexToken: string;
+  subject: string;
+  message: string;
+  submissionId: string;
+  userAgent?: string;
+};
+
+const storeContactSubmission = async ({
+  convexToken,
+  subject,
+  message,
+  submissionId,
+  userAgent,
+}: ContactSubmissionInput): Promise<void> => {
+  const convex = getConvexClient();
+  convex.setAuth(convexToken);
+  await convex.mutation(api.users.storeContactSubmission, {
+    subject,
+    message,
+    submissionId,
+    userAgent,
+  });
+};
 
 /**
  * Accept contact form submissions and log them for follow-up.
  */
 export async function POST(request: Request) {
   try {
-    const { userId } = await auth();
+    const { userId, getToken } = await auth();
     const body = await request.json();
-    const { subject, message } = body;
+    const rawSubject = typeof body?.subject === "string" ? body.subject : "";
+    const rawMessage = typeof body?.message === "string" ? body.message : "";
+    const subject = rawSubject.trim();
+    const message = rawMessage.trim();
 
     if (!subject || !message) {
       return NextResponse.json(
@@ -21,26 +51,35 @@ export async function POST(request: Request) {
       );
     }
 
-    let userEmail = "anonymous@user";
-    let userName = "Anonymous User";
-    
-    if (userId) {
-      const convex = getConvexClient();
-      const user = await convex.query(api.users.getUserByClerkUserId, {
-        clerkUserId: userId,
-      });
-      if (user) {
-        userEmail = user.email;
-        userName = user.preferredName || userEmail.split("@")[0];
-      }
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    console.log("Contact form submission:", {
-      userEmail,
-      userName,
+    const convexToken = await getToken({ template: "convex" });
+    if (!convexToken) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const submissionId = randomUUID();
+    const timestamp = new Date().toISOString();
+    const userAgent = request.headers.get("user-agent") || undefined;
+
+    await storeContactSubmission({
+      convexToken,
       subject,
-      message: message.substring(0, 200) + (message.length > 200 ? "..." : ""),
-      timestamp: new Date().toISOString(),
+      message,
+      submissionId,
+      userAgent,
+    });
+
+    trackEvent("contact_submission_received", {
+      metadata: {
+        submissionId,
+        subject,
+        messageLength: message.length,
+        timestamp,
+        redacted: true,
+      },
     });
 
     return NextResponse.json({

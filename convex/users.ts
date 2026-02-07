@@ -1,6 +1,9 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
+const CONTACT_RETENTION_DAYS = 90;
+const CONTACT_RETENTION_MS = CONTACT_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+
 export const getOrCreateUser = mutation({
   args: {
     clerkUserId: v.string(),
@@ -100,6 +103,49 @@ export const getUserByClerkUserId = query({
       .query("users")
       .withIndex("by_clerk_user_id", (q: any) => q.eq("clerkUserId", args.clerkUserId))
       .first();
+  },
+});
+
+export const storeContactSubmission = mutation({
+  args: {
+    subject: v.string(),
+    message: v.string(),
+    submissionId: v.string(),
+    userAgent: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_user_id", (q: any) => q.eq("clerkUserId", identity.subject))
+      .first();
+
+    const userEmail = user?.email || "anonymous@user";
+    const userName = user?.preferredName || userEmail.split("@")[0] || "Anonymous User";
+    const subject = args.subject.trim();
+    const message = args.message.trim();
+    const now = Date.now();
+
+    await ctx.db.insert("contactSubmissions", {
+      clerkUserId: identity.subject,
+      userId: user?._id,
+      userEmail,
+      userName,
+      subject,
+      message,
+      subjectLength: subject.length,
+      messageLength: message.length,
+      submissionId: args.submissionId,
+      userAgent: args.userAgent || undefined,
+      createdAt: now,
+      retentionUntil: now + CONTACT_RETENTION_MS,
+    });
+
+    return { submissionId: args.submissionId };
   },
 });
 
