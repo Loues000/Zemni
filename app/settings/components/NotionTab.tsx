@@ -61,8 +61,21 @@ export function NotionTab() {
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || "Failed to save configuration");
+        const status = response.status;
+        const bodyText = await response.text();
+        let errorMessage = `Failed to save configuration (HTTP ${status})`;
+
+        if (bodyText) {
+          try {
+            const parsed = JSON.parse(bodyText) as { error?: string };
+            const detail = typeof parsed?.error === "string" ? parsed.error : bodyText;
+            errorMessage = `Failed to save configuration (HTTP ${status}): ${detail}`;
+          } catch {
+            errorMessage = `Failed to save configuration (HTTP ${status}): ${bodyText}`;
+          }
+        }
+
+        throw new Error(errorMessage);
       }
 
       // If a new token was entered, test the connection
@@ -147,14 +160,14 @@ export function NotionTab() {
             id="notion-token"
             type="password"
             className="field-input"
-            placeholder={hasStoredToken ? "Token gespeichert (leer lassen zum Beibehalten oder neu eingeben zum Ändern)" : "secret_..."}
+            placeholder={hasStoredToken ? "Token saved (leave empty to keep or enter a new one to change)" : "secret_..."}
             value={notionToken}
             onChange={(e) => setNotionToken(e.target.value)}
             disabled={loading}
           />
           {hasStoredToken && !notionToken && (
             <p className="field-hint" style={{ color: "var(--success-text)" }}>
-              ✓ Token ist gespeichert. Leer lassen zum Beibehalten oder neu eingeben zum Ändern.
+              Token is saved. Leave empty to keep it or enter a new one to change.
             </p>
           )}
           {(!hasStoredToken || notionToken) && (

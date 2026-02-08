@@ -27,20 +27,26 @@ export async function POST(request: Request) {
   if (userContext && clerkUserId) {
     try {
       const convex = getConvexClient();
-      const rateLimit = await convex.mutation(api.rateLimits.checkRateLimit, {
-        clerkUserId,
-        type: "generation",
-      });
-      if (!rateLimit.allowed) {
-        return NextResponse.json(
-          { error: "Too many requests. Please try again later.", retryAfter: rateLimit.retryAfter },
-          {
-            status: 429,
-            headers: {
-              "Retry-After": String(rateLimit.retryAfter || 3600),
-            },
-          }
-        );
+      const convexToken = await getToken({ template: "convex" });
+      if (!convexToken) {
+        console.warn("[summarize] Missing Convex auth token; skipping rate limit check.");
+      } else {
+        convex.setAuth(convexToken);
+        const rateLimit = await convex.mutation(api.rateLimits.checkRateLimit, {
+          clerkUserId,
+          type: "generation",
+        });
+        if (!rateLimit.allowed) {
+          return NextResponse.json(
+            { error: "Too many requests. Please try again later.", retryAfter: rateLimit.retryAfter },
+            {
+              status: 429,
+              headers: {
+                "Retry-After": String(rateLimit.retryAfter || 3600),
+              },
+            }
+          );
+        }
       }
     } catch (error) {
       console.error("Rate limit check failed:", error);

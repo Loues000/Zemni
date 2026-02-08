@@ -106,5 +106,6 @@ export default defineSchema({
     count: v.number(),
     resetTime: v.number(), // Timestamp when rate limit window resets
   })
-    .index("by_clerk_user_type", ["clerkUserId", "type"]),
+    .index("by_clerk_user_type", ["clerkUserId", "type"])
+    .index("by_legacy_user_type", ["userId", "type"]),
 });

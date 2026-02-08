@@ -40,11 +40,12 @@ export const checkRateLimit = mutation({
       .first();
 
     if (!existing) {
-      const legacyEntries = await ctx.db.query("rateLimits").collect();
-      const legacyMatch = legacyEntries.find((entry) => {
-        const legacyUserId = (entry as { userId?: string }).userId;
-        return legacyUserId === args.clerkUserId && entry.type === args.type;
-      });
+      const legacyMatch = await ctx.db
+        .query("rateLimits")
+        .withIndex("by_legacy_user_type", (q) =>
+          q.eq("userId", args.clerkUserId).eq("type", args.type)
+        )
+        .first();
 
       if (legacyMatch) {
         await ctx.db.patch(legacyMatch._id, {
