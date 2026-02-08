@@ -55,11 +55,20 @@ export const checkRateLimit = mutation({
       }
     }
 
-    // No entry or expired window - create new entry
-    if (!existing || existing.resetTime < now) {
+    // No entry - create new entry
+    if (!existing) {
       await ctx.db.insert("rateLimits", {
         clerkUserId: args.clerkUserId,
         type: args.type,
+        count: 1,
+        resetTime: now + RATE_LIMIT_WINDOW_MS,
+      });
+      return { allowed: true };
+    }
+
+    // Expired window - reset existing entry instead of inserting a duplicate
+    if (existing.resetTime < now) {
+      await ctx.db.patch(existing._id, {
         count: 1,
         resetTime: now + RATE_LIMIT_WINDOW_MS,
       });

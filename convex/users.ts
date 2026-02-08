@@ -303,7 +303,7 @@ export const updateDefaultStructureHints = mutation({
 
 export const updateNotionConfig = mutation({
   args: {
-    token: v.string(),
+    token: v.optional(v.string()),
     databaseId: v.optional(v.string()),
     exportMethod: v.optional(v.union(v.literal("database"), v.literal("page"))),
   },
@@ -322,12 +322,18 @@ export const updateNotionConfig = mutation({
       throw new Error("User not found");
     }
 
-    await ctx.db.patch(user._id, {
-      notionToken: args.token,
-      notionDatabaseId: args.databaseId || undefined,
-      notionExportMethod: args.exportMethod || undefined,
+    const updateData: any = {
+      notionDatabaseId: args.databaseId !== undefined ? (args.databaseId || undefined) : user.notionDatabaseId,
+      notionExportMethod: args.exportMethod !== undefined ? args.exportMethod : user.notionExportMethod,
       updatedAt: Date.now(),
-    });
+    };
+
+    // Only update token if a new one is provided
+    if (args.token !== undefined) {
+      updateData.notionToken = args.token;
+    }
+
+    await ctx.db.patch(user._id, updateData);
   },
 });
 

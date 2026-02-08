@@ -26,19 +26,24 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { token, databaseId, exportMethod } = body;
 
-    if (!token) {
-      return NextResponse.json({ error: "Token is required" }, { status: 400 });
-    }
-
-    // Encrypt the token server-side before storing
-    const encryptedToken = encryptKey(token);
-
-    // Save to Convex with authenticated context
-    await convex.mutation(api.users.updateNotionConfig, {
-      token: encryptedToken,
+    // Prepare update data
+    const updateData: {
+      token?: string;
+      databaseId?: string;
+      exportMethod?: "database" | "page";
+    } = {
       databaseId: databaseId || undefined,
       exportMethod: exportMethod || undefined,
-    });
+    };
+
+    // Only encrypt and include token if a new one is provided
+    if (token) {
+      const encryptedToken = encryptKey(token);
+      updateData.token = encryptedToken;
+    }
+
+    // Save to Convex with authenticated context
+    await convex.mutation(api.users.updateNotionConfig, updateData);
 
     return NextResponse.json({ success: true });
   } catch (error) {

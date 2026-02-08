@@ -16,6 +16,7 @@ export function NotionTab() {
   const [exportMethod, setExportMethod] = useState<"database" | "page">("database");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [hasStoredToken, setHasStoredToken] = useState(false);
 
   // Load existing values from Convex
   useEffect(() => {
@@ -23,6 +24,7 @@ export function NotionTab() {
       // Don't decrypt token on client side (security best practice)
       // User can re-enter if they want to change it
       setNotionToken("");
+      setHasStoredToken(!!currentUser.notionToken);
       setDatabaseId(currentUser.notionDatabaseId || "");
       setExportMethod(currentUser.notionExportMethod || "database");
     }
@@ -36,24 +38,35 @@ export function NotionTab() {
     setMessage(null);
 
     try {
-      // Save to API endpoint (encrypts server-side)
-      if (notionToken) {
-        const response = await fetch("/api/user/notion", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            token: notionToken,
-            databaseId: exportMethod === "database" ? databaseId : undefined,
-            exportMethod: exportMethod,
-          }),
+      // If no token entered and no stored token exists, show error
+      if (!notionToken && !hasStoredToken) {
+        setMessage({
+          type: "error",
+          text: "Please enter a Notion API token.",
         });
+        setLoading(false);
+        return;
+      }
 
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.error || "Failed to save configuration");
-        }
+      // Save to API endpoint (encrypts server-side)
+      // Token is optional - if not provided, existing token is kept
+      const response = await fetch("/api/user/notion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token: notionToken || undefined, // Only send if provided
+          databaseId: exportMethod === "database" ? databaseId : undefined,
+          exportMethod: exportMethod,
+        }),
+      });
 
-        // Test the connection
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to save configuration");
+      }
+
+      // If a new token was entered, test the connection
+      if (notionToken) {
         if (exportMethod === "database" && databaseId) {
           const url = new URL("/api/notion/subjects", window.location.origin);
           url.searchParams.set("databaseId", databaseId);
@@ -77,18 +90,12 @@ export function NotionTab() {
         } else {
           setMessage({ type: "success", text: "Configuration saved. Token only - you can export to new pages." });
         }
+        // Clear the token input after successful save
+        setNotionToken("");
+        setHasStoredToken(true);
       } else {
-        // Clear configuration via API endpoint
-        const response = await fetch("/api/user/notion", {
-          method: "DELETE",
-        });
-
-        if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.error || "Failed to clear configuration");
-        }
-
-        setMessage({ type: "success", text: "Configuration cleared." });
+        // Just updated other fields, token remains unchanged
+        setMessage({ type: "success", text: "Configuration updated successfully." });
       }
     } catch (error) {
       setMessage({
@@ -110,6 +117,7 @@ export function NotionTab() {
       try {
         await clearNotionConfig({});
         setNotionToken("");
+        setHasStoredToken(false);
         setDatabaseId("");
         setExportMethod("database");
         setMessage({ type: "success", text: "Configuration cleared." });
@@ -133,29 +141,36 @@ export function NotionTab() {
       <div className="settings-card">
         <div className="field">
           <label className="field-label" htmlFor="notion-token" style={{ fontSize: "14px" }}>
-            Notion API Token <span style={{ color: "var(--error-text)" }}>*</span>
+            Notion API Token {!hasStoredToken && <span style={{ color: "var(--error-text)" }}>*</span>}
           </label>
           <input
             id="notion-token"
             type="password"
             className="field-input"
-            placeholder="secret_..."
+            placeholder={hasStoredToken ? "Token gespeichert (leer lassen zum Beibehalten oder neu eingeben zum Ändern)" : "secret_..."}
             value={notionToken}
             onChange={(e) => setNotionToken(e.target.value)}
             disabled={loading}
           />
-          <p className="field-hint">
-            Create an integration at{" "}
-            <a
-              href="https://www.notion.so/my-integrations"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="settings-link"
-            >
-              notion.so/my-integrations
-            </a>
-            {" "}and copy the token.
-          </p>
+          {hasStoredToken && !notionToken && (
+            <p className="field-hint" style={{ color: "var(--success-text)" }}>
+              ✓ Token ist gespeichert. Leer lassen zum Beibehalten oder neu eingeben zum Ändern.
+            </p>
+          )}
+          {(!hasStoredToken || notionToken) && (
+            <p className="field-hint">
+              Create an integration at{" "}
+              <a
+                href="https://www.notion.so/my-integrations"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="settings-link"
+              >
+                notion.so/my-integrations
+              </a>
+              {" "}and copy the token.
+            </p>
+          )}
         </div>
 
         <div className="settings-divider" />

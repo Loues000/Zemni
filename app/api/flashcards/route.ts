@@ -71,7 +71,7 @@ const clampInt = (value: number, min: number, max: number): number => {
  * Generate flashcards for provided sections using the requested model.
  */
 export async function POST(request: Request) {
-  const { userId: clerkUserId } = await auth();
+  const { userId: clerkUserId, getToken } = await auth();
   const userContext = await getUserContext();
   const apiKey = getApiKeyToUse(userContext);
 
@@ -144,17 +144,23 @@ export async function POST(request: Request) {
   if (userContext) {
     try {
       const convex = getConvexClient();
-      const monthlyUsage = await convex.query(api.usage.getMonthlyGenerationCount, {});
-      if (monthlyUsage.count >= monthlyUsage.limit) {
-        return NextResponse.json(
-          {
-            error: `Monthly limit reached (${monthlyUsage.count}/${monthlyUsage.limit} generations). Upgrade your plan for more generations.`,
-            limitReached: true,
-            currentCount: monthlyUsage.count,
-            limit: monthlyUsage.limit,
-          },
-          { status: 429 }
-        );
+      const convexToken = await getToken({ template: "convex" });
+      if (!convexToken) {
+        console.warn("[flashcards] Missing Convex auth token; skipping usage check.");
+      } else {
+        convex.setAuth(convexToken);
+        const monthlyUsage = await convex.query(api.usage.getMonthlyGenerationCount, {});
+        if (monthlyUsage.count >= monthlyUsage.limit) {
+          return NextResponse.json(
+            {
+              error: `Monthly limit reached (${monthlyUsage.count}/${monthlyUsage.limit} generations). Upgrade your plan for more generations.`,
+              limitReached: true,
+              currentCount: monthlyUsage.count,
+              limit: monthlyUsage.limit,
+            },
+            { status: 429 }
+          );
+        }
       }
     } catch (err) {
       console.error("Failed to check usage limit:", err);

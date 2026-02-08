@@ -109,12 +109,27 @@ export async function POST(request: Request) {
 
   // Determine which API key to use (system key for subscription models, user key for own-cost models)
   const modelApiKeyInfo = getApiKeyForModel(modelId, userContext, model);
-  const finalApiKey = modelApiKeyInfo?.key || apiKey;
   const isOwnKey = !!modelApiKeyInfo?.isOwnKey;
+  const isOpenRouterProvider = modelApiKeyInfo?.provider === "openrouter";
+  const systemOpenRouterKey = process.env.OPENROUTER_API_KEY;
+  const openrouterKey = isOpenRouterProvider ? modelApiKeyInfo?.key : (systemOpenRouterKey ?? apiKey);
   
   // Debug logging (only when using own key)
   if (isOwnKey) {
-    console.log(`[refine] Using own ${modelApiKeyInfo?.provider || "openrouter"} key for ${modelId}`);
+    if (isOpenRouterProvider) {
+      console.log(`[refine] Using own ${modelApiKeyInfo?.provider || "openrouter"} key for ${modelId}`);
+    } else {
+      console.log(`[refine] Own ${modelApiKeyInfo?.provider} key available for ${modelId}; streaming uses OpenRouter fallback`);
+    }
+  }
+
+  if (modelApiKeyInfo && !isOpenRouterProvider) {
+    console.warn(
+      `[refine] Non-OpenRouter key for ${modelId} (${modelApiKeyInfo.provider}); using system OpenRouter key for streaming.`
+    );
+    if (!systemOpenRouterKey) {
+      console.warn("[refine] System OpenRouter key missing; falling back to OpenRouter key from request context.");
+    }
   }
 
   // Get user preferences for language and custom guidelines
@@ -123,7 +138,7 @@ export async function POST(request: Request) {
 
   // For streaming, we use OpenRouter client (works for both system and user OpenRouter keys)
   // If user has own key with OpenRouter provider, use that; otherwise use system key
-  const openrouterClient = createOpenRouterClient(finalApiKey);
+  const openrouterClient = createOpenRouterClient(openrouterKey);
   const systemPrompt = await buildRefineSystemPrompt(summary, userLanguage, customGuidelines);
   const data = new StreamData();
   const start = Date.now();
