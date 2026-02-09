@@ -91,9 +91,9 @@ export function NotionTab() {
 
       // If a new token was entered, test the connection
       if (notionToken) {
-        if (exportMethod === "database" && databaseId) {
+        if (exportMethod === "database" && cleanedDatabaseId) {
           const url = new URL("/api/notion/subjects", window.location.origin);
-          url.searchParams.set("databaseId", databaseId);
+          url.searchParams.set("databaseId", cleanedDatabaseId);
           const testRes = await fetch(url.toString(), {
             headers: {
               "x-notion-token": notionToken,
