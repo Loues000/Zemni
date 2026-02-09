@@ -32,6 +32,9 @@ interface UseHistoryManagementProps {
   setInput: (input: string) => void;
   setData: (data: any[]) => void;
   updateHistoryState: (updater: (prev: HistoryEntry[]) => HistoryEntry[]) => void;
+  saveEntryToConvex?: (entry: HistoryEntry) => Promise<string>;
+  setSaveError?: (error: string | null) => void;
+  currentUser?: any;
 }
 
 /**
@@ -59,59 +62,70 @@ export function useHistoryManagement({
   setMessages,
   setInput,
   setData,
-  updateHistoryState
+  updateHistoryState,
+  saveEntryToConvex,
+  setSaveError,
+  currentUser,
 }: UseHistoryManagementProps) {
+  /**
+   * Save current state to history
+   * Note: This now supports both sync (localStorage) and async (Convex) saves
+   */
   const saveToHistory = useCallback((outputsToSave?: Record<string, OutputEntry>, exportedSubjectTitle?: string, notionPageId?: string): void => {
-    const outputsData = outputsToSave || outputs;
-    if (!fileHandling.extractedText || Object.keys(outputsData).length === 0) return;
+    const { saveToHistoryInternal } = require("@/lib/history-utils");
+    saveToHistoryInternal({
+      outputs: outputsToSave || outputs,
+      extractedText: fileHandling.extractedText,
+      fileName: fileHandling.fileName,
+      structureHints,
+      currentHistoryId,
+      updateHistoryState,
+      exportedSubjectTitle,
+      notionPageId,
+      setCurrentHistoryId
+    });
 
-    const { getDocumentTitle } = require("@/lib/document-title");
-    const { createPdfId, getSummaryTitle } = require("@/lib/output-previews");
+    // If we have async save capability, also save to Convex
+    if (saveEntryToConvex && fileHandling.extractedText && Object.keys(outputsToSave || outputs).length > 0) {
+      const { getDocumentTitle } = require("@/lib/document-title");
+      const { getSummaryTitle, createPdfId } = require("@/lib/output-previews");
 
-    const derivedTitle = getDocumentTitle(fileHandling.extractedText, fileHandling.fileName);
-    const summaryTab = Object.values(outputsData).find((o) => (o.kind ?? "summary") === "summary" && (o.summary ?? "").trim().length > 0);
-    const title = summaryTab ? getSummaryTitle(summaryTab.summary ?? "", derivedTitle) : derivedTitle;
-    const pdfId = createPdfId(fileHandling.fileName || "untitled", fileHandling.extractedText);
-    const historyId = currentHistoryId || pdfId;
-    const now = Date.now();
-
-    updateHistoryState((prev) => {
-      const existingEntry = prev.find((h) => {
-        const hPdfId = createPdfId(h.fileName, h.extractedText);
-        return hPdfId === pdfId;
-      });
-
-      let finalExportedSubject: string | undefined;
-      if (exportedSubjectTitle !== undefined) {
-        finalExportedSubject = exportedSubjectTitle || undefined;
-      } else {
-        finalExportedSubject = existingEntry?.exportedSubject;
-      }
+      // Build the entry that was just saved
+      const currentOutputs = outputsToSave || outputs;
+      const derivedTitle = getDocumentTitle(fileHandling.extractedText, fileHandling.fileName);
+      const summaryTab = Object.values(currentOutputs).find(
+        (o) => (o.kind ?? "summary") === "summary" && (o.summary ?? "").trim().length > 0
+      );
+      const title = summaryTab ? getSummaryTitle(summaryTab.summary ?? "", derivedTitle) : derivedTitle;
+      const pdfId = createPdfId(fileHandling.fileName || "untitled", fileHandling.extractedText);
+      const now = Date.now();
 
       const entry: HistoryEntry = {
-        id: historyId,
+        id: currentHistoryId || pdfId,
         title,
         fileName: fileHandling.fileName,
         extractedText: fileHandling.extractedText,
-        outputs: outputsData,
+        outputs: currentOutputs,
         structureHints,
-        createdAt: existingEntry?.createdAt || now,
+        createdAt: now,
         updatedAt: now,
-        exportedSubject: finalExportedSubject,
-        notionPageId: notionPageId || existingEntry?.notionPageId
+        exportedSubject: exportedSubjectTitle,
+        notionPageId,
       };
 
-      const filtered = prev.filter((item) => {
-        if (item.id === entry.id) return false;
-        if (existingEntry && item.id === existingEntry.id) return false;
-        return true;
-      });
-
-      return [entry, ...filtered];
-    });
-
-    if (!currentHistoryId) setCurrentHistoryId(historyId);
-  }, [outputs, fileHandling.extractedText, fileHandling.fileName, structureHints, currentHistoryId, updateHistoryState, setCurrentHistoryId]);
+      // If user is available, save immediately
+      if (currentUser) {
+        saveEntryToConvex(entry).catch((error: Error) => {
+          console.error("[useHistoryManagement] Async save failed:", error);
+          if (setSaveError) {
+            setSaveError(error.message);
+          }
+        });
+      }
+      // Note: If user not available yet, the save will be lost. 
+      // This is acceptable since the entry is already in local state and will be saved on next update.
+    }
+  }, [outputs, fileHandling.extractedText, fileHandling.fileName, structureHints, currentHistoryId, updateHistoryState, setCurrentHistoryId, saveEntryToConvex, setSaveError, currentUser]);
 
   const loadFromHistory = useCallback((entry: HistoryEntry): void => {
     fileHandling.setFileName(entry.fileName);

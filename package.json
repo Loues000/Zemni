@@ -5,17 +5,30 @@
     "dev": "next dev -p 3420",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "vitest",
+    "test:watch": "vitest --watch",
+    "test:ui": "vitest --ui",
+    "validate-env": "tsx scripts/validate-env.ts",
+    "rotate-key": "tsx scripts/rotate-encryption-key.ts"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.35",
+    "@ai-sdk/google": "^3.0.20",
     "@ai-sdk/openai": "^1.0.10",
+    "@clerk/clerk-sdk-node": "^4.13.23",
+    "@clerk/nextjs": "^6.37.0",
     "@dqbd/tiktoken": "^1.0.20",
     "@notionhq/client": "^2.2.15",
+    "@sentry/nextjs": "^10.38.0",
+    "@polar-sh/sdk": "^0.34.16",
     "@types/jszip": "^3.4.0",
     "ai": "^3.4.0",
+    "convex": "^1.31.6",
     "jszip": "^3.10.1",
     "katex": "^0.16.27",
     "next": "^14.2.5",
+    "openai": "^4.104.0",
     "pdf-parse": "^1.1.1",
     "pdfjs-dist": "^5.4.530",
     "pg": "^8.17.1",
@@ -24,14 +37,20 @@
     "react-markdown": "^9.0.1",
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.0",
-    "remark-math": "^6.0.0"
+    "remark-math": "^6.0.0",
+    "sonner": "^2.0.7"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.1.5",
+    "@testing-library/react": "^14.1.2",
     "@types/node": "^20.12.7",
     "@types/pdf-parse": "^1.1.4",
     "@types/pg": "^8.16.0",
     "@types/react": "^18.2.61",
     "@types/react-dom": "^18.2.19",
-    "typescript": "^5.4.5"
+    "jsdom": "^23.0.1",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.5",
+    "vitest": "^1.2.2"
   }
 }

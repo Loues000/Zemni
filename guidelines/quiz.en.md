@@ -2,10 +2,6 @@
 
 These rules apply **in addition** to the base rules in `guidelines/general.en.md`.
 
-## Output language
-- All generated text in `question`, `options`, `explanation`, and `sectionTitle` must be **German**.
-- Keep English technical terms **only if** they appear in the source material.
-
 ## Format / Schema (strict)
 - Output **only valid JSON** (no Markdown, no code fences).
 - Do not put raw newlines inside JSON strings. If you must represent a line break, use `\\n`.

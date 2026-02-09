@@ -7,6 +7,9 @@ import { flashcardsToMarkdown } from "@/lib/output-previews";
 import { flashcardsToTsv } from "@/lib/exporters";
 import { ExportMenu } from "@/components/ui";
 
+/**
+ * Determine if a keyboard event target is an editable input.
+ */
 const isEditableTarget = (target: EventTarget | null): boolean => {
   const el = target as HTMLElement | null;
   if (!el) return false;
@@ -28,12 +31,18 @@ type FlashcardsModeProps = {
   onRetry?: () => void | Promise<void>;
 };
 
+/**
+ * Derive a filename base without extension for exports.
+ */
 const baseNameFor = (fileName: string): string => {
   const trimmed = (fileName || "").trim();
   if (!trimmed) return "document";
   return trimmed.replace(/\.[^.]+$/, "");
 };
 
+/**
+ * Display generated flashcards and a study player.
+ */
 export function FlashcardsMode({ extractedText, fileName, output, showKeyboardHints = true, onRetry }: FlashcardsModeProps) {
   const cards = output?.flashcards ?? [];
 
@@ -52,6 +61,9 @@ export function FlashcardsMode({ extractedText, fileName, output, showKeyboardHi
   useEffect(() => {
     if (!playerOpen) return;
 
+    /**
+     * Handle keyboard controls in the flashcard player.
+     */
     const onKeyDown = (e: KeyboardEvent) => {
       if (isEditableTarget(e.target)) return;
 
@@ -93,6 +105,9 @@ export function FlashcardsMode({ extractedText, fileName, output, showKeyboardHi
 
   const current: Flashcard | undefined = useMemo(() => cards[cursor], [cards, cursor]);
 
+  /**
+   * Open the flashcard player at a specific index.
+   */
   const openAt = (index: number) => {
     setCursor(index);
     setFlipped(false);
@@ -141,12 +156,18 @@ export function FlashcardsMode({ extractedText, fileName, output, showKeyboardHi
     return <div className="mode-empty">No flashcards generated.</div>;
   }
 
+  /**
+   * Export flashcards as a markdown file.
+   */
   const handleExportMarkdown = () => {
     const base = baseNameFor(fileName);
     const content = flashcardsToMarkdown(cards, fileName);
     downloadTextFile(`${base}-flashcards.md`, content, "text/markdown;charset=utf-8");
   };
 
+  /**
+   * Export flashcards as a TSV file for Anki/spreadsheets.
+   */
   const handleExportTsv = () => {
     const { fileName: exportName, content } = flashcardsToTsv(cards, fileName);
     downloadTextFile(exportName, content, "text/tab-separated-values;charset=utf-8");
@@ -185,11 +206,6 @@ export function FlashcardsMode({ extractedText, fileName, output, showKeyboardHi
             aria-label={`Open flashcard ${idx + 1}`}
             title="Click: open fullscreen flashcard"
           >
-            {card.page ? (
-              <div className="flashcard-top">
-                <span className="flashcard-page">Page {card.page}</span>
-              </div>
-            ) : null}
             <div className="flashcard-front">{card.front}</div>
             <div className="flashcard-hint" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
@@ -211,7 +227,6 @@ export function FlashcardsMode({ extractedText, fileName, output, showKeyboardHi
             <div className="flashcard-player-top">
               <div className="flashcard-player-meta">
                 <span className="flashcard-player-progress">{cursor + 1} / {cards.length}</span>
-                {current.page ? <span className="flashcard-player-page">Page {current.page}</span> : null}
               </div>
               <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPlayerOpen(false)}>
                 {showKeyboardHints ? "Close (Esc)" : "Close"}

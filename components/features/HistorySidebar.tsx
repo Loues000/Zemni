@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, ReactNode } from "react";
 import { IconX } from "../ui/Icons";
 import type { HistoryEntry } from "@/types";
 
@@ -9,15 +9,20 @@ interface HistorySidebarProps {
   onClose: () => void;
   onSelectEntry: (entry: HistoryEntry) => void;
   onDeleteEntry: (id: string, event: React.MouseEvent) => void;
+  footer?: ReactNode;
 }
 
+/**
+ * Sidebar listing history entries with search and grouping.
+ */
 export function HistorySidebar({
   isOpen,
   history,
   currentHistoryId,
   onClose,
   onSelectEntry,
-  onDeleteEntry
+  onDeleteEntry,
+  footer
 }: HistorySidebarProps) {
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -31,6 +36,9 @@ export function HistorySidebar({
         (entry.exportedSubject && entry.exportedSubject.toLowerCase().includes(query))
     );
   }, [history, searchQuery]);
+  /**
+   * Group history entries into time buckets for display.
+   */
   const groupHistoryByTime = (entries: HistoryEntry[]): Array<[string, HistoryEntry[]]> => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -61,7 +69,10 @@ export function HistorySidebar({
       <div className={`sidebar-backdrop${isOpen ? " visible" : ""}`} onClick={onClose} />
       <aside className={`sidebar${isOpen ? " open" : ""}`}>
         <div className="sidebar-header">
-          <h2>History</h2>
+          <div className="sidebar-header-left">
+            <h1 className="sidebar-title">Zemni</h1>
+            <span className="sidebar-subtitle">History</span>
+          </div>
           <button
             type="button"
             className="sidebar-close"
@@ -98,39 +109,40 @@ export function HistorySidebar({
               ) : (
                 <div className="history-groups">
                   {groupHistoryByTime(filteredHistory).map(([groupLabel, entries]) => (
-                <div key={groupLabel}>
-                  <h3 className="history-group-title">{groupLabel}</h3>
-                  <ul className="history-list">
-                    {entries.map((entry) => (
-                      <li
-                        key={entry.id}
-                        className={`history-item${entry.id === currentHistoryId ? " active" : ""}`}
-                        onClick={() => onSelectEntry(entry)}
-                      >
-                        <div className="history-item-content">
-                          <strong>{entry.title}</strong>
-                          {entry.exportedSubject && (
-                            <span className="meta">{entry.exportedSubject}</span>
-                          )}
-                        </div>
-                        <button
-                          type="button"
-                          className="history-delete"
-                          onClick={(e) => onDeleteEntry(entry.id, e)}
-                          aria-label="Delete entry"
-                        >
-                          <IconX />
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
+                    <div key={groupLabel}>
+                      <h3 className="history-group-title">{groupLabel}</h3>
+                      <ul className="history-list">
+                        {entries.map((entry) => (
+                          <li
+                            key={entry.id}
+                            className={`history-item${entry.id === currentHistoryId ? " active" : ""}`}
+                            onClick={() => onSelectEntry(entry)}
+                          >
+                            <div className="history-item-content">
+                              <strong>{entry.title}</strong>
+                              {entry.exportedSubject && (
+                                <span className="meta">{entry.exportedSubject}</span>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              className="history-delete"
+                              onClick={(e) => onDeleteEntry(entry.id, e)}
+                              aria-label="Delete entry"
+                            >
+                              <IconX />
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
                 </div>
               )}
             </>
           )}
         </div>
+        {footer && <div className="sidebar-footer">{footer}</div>}
       </aside>
     </>
   );

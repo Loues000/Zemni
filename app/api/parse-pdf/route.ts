@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import pdfParse from "pdf-parse";
 import { normalizePdfText } from "@/lib/normalize-pdf-text";
+import { validateTextSize, validatePdfSize, validatePagesSize } from "@/lib/request-validation";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
+/**
+ * Extract text (and optional pages) from a PDF or text upload.
+ */
 export async function POST(request: Request) {
   const contentType = request.headers.get("content-type") || "";
 
@@ -23,6 +27,13 @@ export async function POST(request: Request) {
       if (rawPages.length === 0) {
         return NextResponse.json({ error: "Missing pages" }, { status: 400 });
       }
+      
+      // Validate total size of pages
+      const pagesValidation = validatePagesSize(rawPages);
+      if (!pagesValidation.valid) {
+        return NextResponse.json({ error: pagesValidation.error }, { status: 413 });
+      }
+      
       pages = rawPages.map((p: string) => normalizePdfText(p));
       text = normalizePdfText(rawPages.join("\n\n"));
     } else {
@@ -30,6 +41,13 @@ export async function POST(request: Request) {
       if (!text) {
         return NextResponse.json({ error: "Missing text" }, { status: 400 });
       }
+      
+      // Validate text size
+      const textValidation = validateTextSize(text);
+      if (!textValidation.valid) {
+        return NextResponse.json({ error: textValidation.error }, { status: 413 });
+      }
+      
       text = normalizePdfText(text);
     }
   } else {
@@ -42,6 +60,20 @@ export async function POST(request: Request) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
+    
+    // Validate file size before parsing
+    if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
+      const pdfValidation = validatePdfSize(buffer);
+      if (!pdfValidation.valid) {
+        return NextResponse.json({ error: pdfValidation.error }, { status: 413 });
+      }
+    } else {
+      // For non-PDF files, validate as text (1MB limit)
+      const textValidation = validateTextSize(buffer.toString("utf8"));
+      if (!textValidation.valid) {
+        return NextResponse.json({ error: textValidation.error }, { status: 413 });
+      }
+    }
 
     if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
       const parsed = await pdfParse(buffer);

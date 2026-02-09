@@ -1,4 +1,5 @@
 import type { Flashcard, OutputEntry, QuizQuestion } from "@/types";
+import { getQuizAnswerState } from "@/lib/utils/quiz-state";
 
 export const getSummaryTitle = (summary: string, fallback: string): string => {
   const match = summary.match(/^#\s+(.+)$/m);
@@ -93,5 +94,7 @@ export const renderQuizPreview = (output: OutputEntry, fileName: string): string
   if (!currentQuestion) return "# Quiz\n\nGenerating questions...\n";
 
   const positionLabel = `Question ${state.questionCursor + 1} / ${Math.max(1, questions.length)}`;
-  return quizQuestionToMarkdown(currentQuestion, Boolean(state.revealAnswer), positionLabel, fileName);
+  const answerState = getQuizAnswerState(state, currentQuestion, state.questionCursor);
+  const revealAnswer = answerState?.revealAnswer ?? state.revealAnswer ?? false;
+  return quizQuestionToMarkdown(currentQuestion, Boolean(revealAnswer), positionLabel, fileName);
 };

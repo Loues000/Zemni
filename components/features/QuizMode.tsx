@@ -4,8 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import type { OutputEntry, QuizQuestion, Status } from "@/types";
 import { downloadTextFile } from "@/lib/download";
 import { quizToMarkdown } from "@/lib/exporters";
+import { getQuizAnswerState } from "@/lib/utils/quiz-state";
 import { ExportMenu } from "@/components/ui";
 
+/**
+ * Determine if a keyboard event target is an editable input.
+ */
 const isEditableTarget = (target: EventTarget | null): boolean => {
   const el = target as HTMLElement | null;
   if (!el) return false;
@@ -32,12 +36,18 @@ type QuizModeProps = {
   onRetry?: () => void | Promise<void>;
 };
 
+/**
+ * Derive a filename base without extension for exports.
+ */
 const baseNameFor = (fileName: string): string => {
   const trimmed = (fileName || "").trim();
   if (!trimmed) return "document";
   return trimmed.replace(/\.[^.]+$/, "");
 };
 
+/**
+ * Display quiz questions with keyboard navigation and exports.
+ */
 export function QuizMode({
   extractedText,
   fileName,
@@ -55,8 +65,9 @@ export function QuizMode({
 
   const cursor = state?.questionCursor ?? 0;
   const currentQuestion: QuizQuestion | undefined = quiz[cursor];
-  const reveal = Boolean(state?.revealAnswer);
-  const selectedIndex = state?.selectedOptionIndex;
+  const answerState = getQuizAnswerState(state, currentQuestion, cursor);
+  const reveal = Boolean(answerState?.revealAnswer ?? state?.revealAnswer);
+  const selectedIndex = answerState?.selectedOptionIndex ?? state?.selectedOptionIndex;
 
   const [focusIndex, setFocusIndex] = useState(0);
   const optionCount = currentQuestion?.options.length ?? 0;
@@ -70,17 +81,26 @@ export function QuizMode({
   useEffect(() => {
     if (!currentQuestion) return;
 
+    /**
+     * Clamp the focus index within the available options.
+     */
     const clampFocusIndex = (value: number): number => {
       if (!optionCount) return 0;
       const normalized = value % optionCount;
       return normalized < 0 ? normalized + optionCount : normalized;
     };
 
+    /**
+     * Move the focused option by a delta.
+     */
     const moveFocus = (delta: number) => {
       if (!optionCount) return;
       setFocusIndex((prev) => clampFocusIndex(prev + delta));
     };
 
+    /**
+     * Select an option and update focus.
+     */
     const selectIndex = (index: number) => {
       if (!optionCount) return;
       const safeIndex = clampFocusIndex(index);
@@ -88,6 +108,9 @@ export function QuizMode({
       onSelectOption(safeIndex);
     };
 
+    /**
+     * Handle quiz keyboard shortcuts and navigation.
+     */
     const handleKeyDown = (e: KeyboardEvent) => {
       if (isEditableTarget(e.target)) return;
       if (!optionCount) return;
@@ -209,11 +232,17 @@ export function QuizMode({
     return <div className="mode-empty">No questions available.</div>;
   }
 
+  /**
+   * Export quiz questions as a markdown file.
+   */
   const handleExportMarkdown = () => {
     const { fileName: exportName, content } = quizToMarkdown(quiz, fileName);
     downloadTextFile(exportName, content, "text/markdown;charset=utf-8");
   };
 
+  /**
+   * Export quiz questions as JSON.
+   */
   const handleExportJson = () => {
     const base = baseNameFor(fileName);
     downloadTextFile(`${base}-quiz.json`, JSON.stringify({ questions: quiz }, null, 2) + "\n", "application/json;charset=utf-8");

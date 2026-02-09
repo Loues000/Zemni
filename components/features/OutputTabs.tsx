@@ -11,6 +11,9 @@ interface OutputTabsProps {
   onCloseTab: (tabId: string, event: React.MouseEvent) => void;
 }
 
+/**
+ * Render selectable output tabs with optional split view hints.
+ */
 export function OutputTabs({
   outputs,
   selectedTabId,
@@ -25,7 +28,7 @@ export function OutputTabs({
   return (
     <div className="output-tabs">
       {outputTabs.length === 0 ? (
-        <span className="hint">No output yet</span>
+        <span className="output-tabs-empty">No output yet</span>
       ) : (
         outputTabs.map((tab) => {
           const isActive = tab.id === selectedTabId;

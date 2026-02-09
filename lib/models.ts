@@ -1,5 +1,9 @@
 import fs from "fs/promises";
 import path from "path";
+import { isModelAvailable, isSubscriptionTiersEnabled } from "./model-availability";
+
+// Re-export client-safe functions for backward compatibility
+export { isModelAvailable, isSubscriptionTiersEnabled };
 
 export type Pricing = {
   currency: string;
@@ -14,6 +18,9 @@ export type ModelSpec = {
   tokenizer: string;
   pricing: Pricing;
   openrouterId: string;
+  subscriptionTier?: string;
+  available?: boolean;
+  description?: string;
 };
 
 const DEFAULT_MODELS: ModelSpec[] = [
@@ -23,7 +30,8 @@ const DEFAULT_MODELS: ModelSpec[] = [
     displayName: "GPT-4o",
     tokenizer: "o200k_base",
     pricing: { currency: "USD", input_per_1m: null, output_per_1m: null },
-    openrouterId: "openai/gpt-4o"
+    openrouterId: "openai/gpt-4o",
+    subscriptionTier: "plus"
   }
 ];
 
@@ -45,6 +53,34 @@ const toNumber = (value: unknown): number | null => {
   return Number.isNaN(num) ? null : num;
 };
 
+/**
+ * Sorts models by subscription tier, then alphabetically by display name
+ */
+const sortModelsByTier = (models: ModelSpec[]): ModelSpec[] => {
+  const tierOrder = ["free", "basic", "plus", "pro"];
+
+  const getTierOrder = (tier?: string): number => {
+    if (!tier) return 999; // Unknown tiers go to the end
+    const index = tierOrder.indexOf(tier.toLowerCase());
+    return index === -1 ? 999 : index;
+  };
+
+  return [...models].sort((a, b) => {
+    const tierA = a.subscriptionTier || "";
+    const tierB = b.subscriptionTier || "";
+    const tierDiff = getTierOrder(tierA) - getTierOrder(tierB);
+
+    if (tierDiff !== 0) {
+      return tierDiff;
+    }
+
+    // Within same tier, sort alphabetically by display name
+    const nameA = a.displayName || a.name;
+    const nameB = b.displayName || b.name;
+    return nameA.localeCompare(nameB);
+  });
+};
+
 const parseModelsJson = (data: unknown): ModelSpec[] => {
   if (!Array.isArray(data)) {
     throw new Error("models JSON must be a list");
@@ -55,12 +91,12 @@ const parseModelsJson = (data: unknown): ModelSpec[] => {
       throw new Error(`models[${index}] must be an object`);
     }
     const record = raw as Record<string, unknown>;
-    
+
     // Support combined id field (provider/name) or separate fields
     let name: string;
     let provider: string;
     let openrouterId: string;
-    
+
     const combinedId = String(record.id ?? record.openrouter_id ?? "").trim();
     if (combinedId) {
       // Extract provider and name from combined id (e.g., "openai/gpt-4o")
@@ -89,18 +125,37 @@ const parseModelsJson = (data: unknown): ModelSpec[] => {
     const pricingRaw = record.pricing as Record<string, unknown> | undefined;
     const currency = String(pricingRaw?.currency ?? "USD").trim() || "USD";
 
-    return {
+    const pricing: Pricing = {
+      currency,
+      input_per_1m: toNumber(pricingRaw?.input_per_1m),
+      output_per_1m: toNumber(pricingRaw?.output_per_1m)
+    };
+
+    // Read subscription_tier directly from JSON (required field)
+    const subscriptionTier = record.subscription_tier ? String(record.subscription_tier).trim() : undefined;
+
+    if (!subscriptionTier) {
+      throw new Error(`models[${index}] must have "subscription_tier" field (free, basic, plus, or pro)`);
+    }
+
+    // Read available field (defaults to true if not present)
+    const available = record.available !== undefined ? Boolean(record.available) : true;
+
+    const description = record.description ? String(record.description).trim() : undefined;
+
+    const modelSpec: ModelSpec = {
       name,
       provider,
       displayName: displayName || `${provider}/${name}`,
       tokenizer: tokenizerEncoding,
-      pricing: {
-        currency,
-        input_per_1m: toNumber(pricingRaw?.input_per_1m),
-        output_per_1m: toNumber(pricingRaw?.output_per_1m)
-      },
-      openrouterId
+      pricing,
+      openrouterId,
+      subscriptionTier,
+      available,
+      description
     };
+
+    return modelSpec;
   });
 };
 
@@ -119,9 +174,24 @@ const resolveModelsFile = async (): Promise<string | null> => {
 
 export const loadModels = async (): Promise<ModelSpec[]> => {
   const modelsFile = await resolveModelsFile();
+  let models: ModelSpec[];
+
   if (!modelsFile) {
-    return DEFAULT_MODELS;
+    models = DEFAULT_MODELS;
+  } else {
+    const raw = await fs.readFile(modelsFile, "utf8");
+    models = parseModelsJson(JSON.parse(raw));
   }
-  const raw = await fs.readFile(modelsFile, "utf8");
-  return parseModelsJson(JSON.parse(raw));
+
+  // Filter out models with available: false
+  models = models.filter((model) => model.available !== false);
+
+  // Sort by tier if feature is enabled
+  const tiersEnabled = isSubscriptionTiersEnabled();
+
+  if (tiersEnabled) {
+    models = sortModelsByTier(models);
+  }
+
+  return models;
 };

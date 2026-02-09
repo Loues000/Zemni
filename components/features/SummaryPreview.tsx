@@ -6,6 +6,9 @@ import { IconEdit, IconCopy, IconCheck, IconClose } from "../ui/Icons";
 import type { OutputEntry } from "@/types";
 import { isStandaloneLatexMathLine } from "@/lib/latex-math";
 
+/**
+ * Normalize inline math blocks to render cleanly in the preview.
+ */
 const normalizeMathForPreview = (markdown: string): string => {
   if (!markdown) return markdown;
   const lines = markdown.split("\n");
@@ -82,6 +85,9 @@ interface SummaryPreviewProps {
   extractedText: string;
 }
 
+/**
+ * Render the summary preview, edit modes, and split view.
+ */
 export function SummaryPreview({
   isSplitView,
   selectedTabId,
@@ -112,6 +118,9 @@ export function SummaryPreview({
   onRetry,
   extractedText
 }: SummaryPreviewProps) {
+  /**
+   * Sync scroll position between split preview panes.
+   */
   const handleSyncScroll = (source: 1 | 2) => {
     if (isScrolling.current) return;
     

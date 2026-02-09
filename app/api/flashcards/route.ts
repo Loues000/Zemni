@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import { generateText } from "ai";
 import { openrouter } from "@/lib/openrouter";
 import { loadModels } from "@/lib/models";
@@ -6,18 +7,27 @@ import { buildUsageStats } from "@/lib/usage";
 import { buildFlashcardsPrompts } from "@/lib/study-prompts";
 import { estimateFlashcardsPerSection } from "@/lib/study-heuristics";
 import { parseJsonFromModelText } from "@/lib/parse-model-json";
-import { createTimeoutController, isAbortError, mapWithConcurrency, splitTextIntoChunks, sumUsage } from "@/lib/ai-performance";
+import { createTimeoutController, isAbortError, mapWithConcurrency, splitTextIntoChunks, sumUsage, getModelPerformanceConfig } from "@/lib/ai-performance";
+import { getUserContext, checkModelAvailability, getApiKeyToUse, getApiKeyForModel } from "@/lib/api-helpers";
+import { isModelAvailable } from "@/lib/models";
+import { createOpenRouterClient } from "@/lib/openrouter";
+import { generateWithProvider, type ProviderInfo } from "@/lib/providers";
+import { api } from "@/convex/_generated/api";
+import { validateModelId, validateFlashcardsDensity } from "@/lib/utils/validation";
 import type { DocumentSection, Flashcard, UsageStats } from "@/types";
+import { getConvexClient } from "@/lib/convex-server";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 const CHUNK_CHARS = 7_500;
 const CHUNK_OVERLAP_CHARS = 350;
 const MAX_CHUNKS = 4;
 const FLASHCARDS_PER_SECTION_HARD_CAP = 20;
-const MODEL_CALL_TIMEOUT_MS = 45_000;
 
+/**
+ * Parse unknown input into normalized document sections.
+ */
 const toSections = (value: unknown): DocumentSection[] => {
   if (!Array.isArray(value)) return [];
   const sections: DocumentSection[] = [];
@@ -49,14 +59,46 @@ type FlashcardsResult = {
   flashcards: ModelFlashcard[];
 };
 
+/**
+ * Clamp and floor a number into the provided integer range.
+ */
 const clampInt = (value: number, min: number, max: number): number => {
   if (!Number.isFinite(value)) return min;
   return Math.max(min, Math.min(max, Math.floor(value)));
 };
 
+/**
+ * Generate flashcards for provided sections using the requested model.
+ */
 export async function POST(request: Request) {
-  if (!process.env.OPENROUTER_API_KEY) {
+  const { userId: clerkUserId, getToken } = await auth();
+  const userContext = await getUserContext();
+  const apiKey = getApiKeyToUse(userContext);
+
+  if (!apiKey) {
     return NextResponse.json({ error: "Missing OpenRouter key" }, { status: 400 });
+  }
+
+  if (userContext && clerkUserId) {
+    try {
+      const convex = getConvexClient();
+      const convexToken = await getToken({ template: "convex" });
+      if (!convexToken) {
+        console.warn("[flashcards] Missing Convex auth token; skipping rate limit check.");
+      } else {
+        convex.setAuth(convexToken);
+        const rateLimit = await convex.mutation(api.rateLimits.checkRateLimit, {
+          clerkUserId,
+          type: "generation",
+        });
+        if (!rateLimit.allowed) {
+          return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
+        }
+      }
+    } catch (error) {
+      // If Convex call fails, log but allow request (fail open for availability)
+      console.error("Rate limit check failed:", error);
+    }
   }
 
   const body = await request.json();
@@ -79,8 +121,95 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Missing modelId or sections" }, { status: 400 });
   }
 
+  const modelValidation = await validateModelId(modelId);
+  if (!modelValidation.valid) {
+    return NextResponse.json({ error: modelValidation.error }, { status: 400 });
+  }
+
+  const densityValidation = validateFlashcardsDensity(coverageLevel);
+  if (!densityValidation.valid) {
+    return NextResponse.json({ error: densityValidation.error }, { status: 400 });
+  }
+
+  for (let i = 0; i < sections.length; i++) {
+    const section = sections[i];
+    if (!section.id || !section.text || section.text.trim().length === 0) {
+      return NextResponse.json(
+        { error: `Section at index ${i} is invalid: must have id and non-empty text` },
+        { status: 400 }
+      );
+    }
+  }
+
   const models = await loadModels();
   const model = models.find((item) => item.openrouterId === modelId) ?? null;
+
+  if (!model) {
+    return NextResponse.json({ error: "Model not found" }, { status: 400 });
+  }
+
+  const allowUnlimitedOutput = model.pricing.output_per_1m === 0;
+
+  // Check if user has access to this model (subscription OR API key)
+  const hasModelAccess = checkModelAvailability(
+    { id: model.openrouterId, subscriptionTier: model.subscriptionTier },
+    userContext
+  );
+
+  if (!hasModelAccess) {
+    return NextResponse.json(
+      { error: "This model is not available for your subscription tier. Add an API key in settings to use higher tier models." },
+      { status: 403 }
+    );
+  }
+
+  if (userContext) {
+    try {
+      const convex = getConvexClient();
+      const convexToken = await getToken({ template: "convex" });
+      if (!convexToken) {
+        console.warn("[flashcards] Missing Convex auth token; skipping usage check.");
+      } else {
+        convex.setAuth(convexToken);
+        const monthlyUsage = await convex.query(api.usage.getMonthlyGenerationCount, {});
+        if (monthlyUsage.count >= monthlyUsage.limit) {
+          return NextResponse.json(
+            {
+              error: `Monthly limit reached (${monthlyUsage.count}/${monthlyUsage.limit} generations). Upgrade your plan for more generations.`,
+              limitReached: true,
+              currentCount: monthlyUsage.count,
+              limit: monthlyUsage.limit,
+            },
+            { status: 429 }
+          );
+        }
+      }
+    } catch (err) {
+      console.error("Failed to check usage limit:", err);
+      // Continue with generation if limit check fails (fail open)
+    }
+  }
+
+  const modelApiKeyInfo = getApiKeyForModel(modelId, userContext, model);
+  const finalApiKey = modelApiKeyInfo?.key || apiKey;
+  const isOwnKey = !!modelApiKeyInfo?.isOwnKey;
+
+  if (isOwnKey) {
+    console.log(`[flashcards] Using own ${modelApiKeyInfo?.provider || "openrouter"} key for ${modelId}`);
+  }
+
+  const apiKeys = isOwnKey && userContext
+    ? userContext.apiKeys.map(k => ({
+      provider: k.provider,
+      key: k.key || "",
+      isOwnKey: k.useOwnKey,
+    }))
+    : [];
+
+  const userLanguage = userContext?.preferredLanguage || "en";
+  const customGuidelines = userContext?.customGuidelines;
+
+  const openrouterClient = !isOwnKey ? createOpenRouterClient(finalApiKey) : null;
   const start = Date.now();
 
   const tasks: Array<{
@@ -107,41 +236,146 @@ export async function POST(request: Request) {
     }
   }
 
+  /**
+   * Validates flashcard structure
+   */
+  const validateFlashcard = (card: any): card is ModelFlashcard => {
+    if (!card || typeof card !== "object") return false;
+    const sectionId = String(card.sectionId ?? "").trim();
+    const front = String(card.front ?? "").trim();
+    const back = String(card.back ?? "").trim();
+    const sourceSnippet = String(card.sourceSnippet ?? "").trim();
+
+    return sectionId.length > 0 && front.length > 0 && back.length > 0 && sourceSnippet.length > 0;
+  };
+
+  const perfConfig = getModelPerformanceConfig(modelId);
   const results = await mapWithConcurrency(tasks, 2, async (task) => {
-    const { systemPrompt, userPrompt } = await buildFlashcardsPrompts(
-      [{ id: task.sectionMeta.id, title: task.sectionMeta.title, text: task.chunkText, page: task.sectionMeta.page }],
-      task.cardsWanted
-    );
+    /**
+     * Generate flashcards for a single chunk with progressive retries.
+     */
+    const generateFlashcards = async (retryCount: number = 0): Promise<{ flashcards: ModelFlashcard[]; usage: any }> => {
+      const { systemPrompt, userPrompt } = await buildFlashcardsPrompts(
+        [{ id: task.sectionMeta.id, title: task.sectionMeta.title, text: task.chunkText, page: task.sectionMeta.page }],
+        task.cardsWanted,
+        userLanguage,
+        customGuidelines
+      );
 
-    const timeout = createTimeoutController(MODEL_CALL_TIMEOUT_MS);
-    try {
-      const maxTokens = Math.min(4096, Math.max(900, task.cardsWanted * 190));
-      const result = await generateText({
-        model: openrouter(modelId) as any,
-        maxTokens,
-        temperature: 0.2,
-        maxRetries: 1,
-        abortSignal: timeout.signal,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
-        ]
-      });
+      // Progressive retries:
+      // Retry 1: Add JSON format instructions
+      // Retry 2: Increase maxTokens (already handled by multiplier, but can be forced)
+      // Retry 3: Reduce cards wanted
+      const currentCardsWanted = retryCount < 2 ? task.cardsWanted : Math.max(1, Math.floor(task.cardsWanted * 0.7));
 
+      const enhancedSystemPrompt = retryCount > 0
+        ? `${systemPrompt}\n\nCRITICAL: Output ONLY valid JSON. No markdown, no code fences, no explanations. The JSON must be parseable. Ensure all strings are properly escaped and closed.`
+        : systemPrompt;
+
+      const timeout = createTimeoutController(perfConfig.timeoutMs * (retryCount + 1));
       try {
-        const parsed = parseJsonFromModelText<FlashcardsResult>(result.text);
-        return { flashcards: parsed.flashcards ?? [], usage: result.usage };
-      } catch {
-        return { flashcards: [], usage: result.usage };
+        const baseMaxTokens = Math.min(4096, Math.max(1500, currentCardsWanted * 250));
+        let adjustedMaxTokens = Math.floor(baseMaxTokens * perfConfig.maxTokensMultiplier);
+
+        if (retryCount > 0) adjustedMaxTokens = Math.floor(adjustedMaxTokens * 1.5);
+
+        let result: { text: string; usage: any };
+        const maxTokens = allowUnlimitedOutput ? undefined : adjustedMaxTokens;
+
+        if (isOwnKey && modelApiKeyInfo) {
+          const providerResult = await generateWithProvider(modelId, [
+            { role: "system", content: enhancedSystemPrompt },
+            { role: "user", content: userPrompt }
+          ], apiKeys, {
+            maxTokens,
+            temperature: 0.2, // Lower temperature for more stable JSON
+            maxRetries: 1,
+            signal: timeout.signal,
+          });
+          result = {
+            text: providerResult.text,
+            usage: providerResult.usage,
+          };
+        } else {
+          const genResult = await generateText({
+            model: openrouterClient!(modelId) as any,
+            maxTokens,
+            temperature: 0.2,
+            maxRetries: 1,
+            abortSignal: timeout.signal,
+            messages: [
+              { role: "system", content: enhancedSystemPrompt },
+              { role: "user", content: userPrompt }
+            ]
+          });
+          result = {
+            text: genResult.text,
+            usage: genResult.usage,
+          };
+        }
+
+        if (!result.text || result.text.trim().length < 10) {
+          if (retryCount < 2) {
+            console.warn(`[Flashcards] Empty response from ${modelId}, retrying (${retryCount + 1})...`);
+            timeout.cancel();
+            return generateFlashcards(retryCount + 1);
+          }
+        }
+
+        try {
+          const parsed = parseJsonFromModelText<FlashcardsResult>(result.text);
+
+          if (!parsed || typeof parsed !== "object") {
+            throw new Error("Parsed result is not an object");
+          }
+
+          const flashcardsRaw = parsed.flashcards;
+          if (!Array.isArray(flashcardsRaw)) {
+            console.warn(`[Flashcards] Invalid flashcards field: expected array, got ${typeof flashcardsRaw}`);
+            if (retryCount < 2) {
+              timeout.cancel();
+              return generateFlashcards(retryCount + 1);
+            }
+            return { flashcards: [], usage: result.usage };
+          }
+
+          const flashcards = flashcardsRaw.filter(validateFlashcard);
+
+          if (flashcards.length === 0 && retryCount < 1) {
+            console.warn(`[Flashcards] No valid flashcards from model ${modelId}, retrying...`);
+            timeout.cancel();
+            return generateFlashcards(retryCount + 1);
+          }
+
+          return { flashcards, usage: result.usage };
+        } catch (parseErr) {
+          const errMsg = parseErr instanceof Error ? parseErr.message : String(parseErr);
+          const isTruncated = errMsg.includes("truncated") || errMsg.includes("Expected ',' or ']'") || errMsg.includes("Unexpected end");
+
+          if (retryCount < 2) {
+            console.warn(`[Flashcards] JSON parse error (${isTruncated ? "truncated" : "malformed"}) for model ${modelId}, retrying (${retryCount + 1})...`);
+            timeout.cancel();
+            return generateFlashcards(retryCount + 1);
+          }
+
+          console.error(`[Flashcards] JSON parse error for model ${modelId} after multiple retries:`, errMsg);
+          return { flashcards: [], usage: result.usage };
+        }
+      } catch (err) {
+        if (isAbortError(err)) {
+          if (retryCount < 1) {
+            console.warn(`[Flashcards] Timeout for model ${modelId}, retrying with longer timeout...`);
+            return generateFlashcards(retryCount + 1);
+          }
+          return { flashcards: [], usage: undefined };
+        }
+        throw err;
+      } finally {
+        timeout.cancel();
       }
-    } catch (err) {
-      if (isAbortError(err)) {
-        return { flashcards: [], usage: undefined };
-      }
-      throw err;
-    } finally {
-      timeout.cancel();
-    }
+    };
+
+    return generateFlashcards();
   });
 
   const flashcards: Flashcard[] = [];
@@ -177,5 +411,22 @@ export async function POST(request: Request) {
 
   const usageAgg = sumUsage(results.map((r) => r.usage));
   const usage: UsageStats | null = buildUsageStats(usageAgg, Date.now() - start, model, "flashcards");
+
+  if (clerkUserId) {
+    try {
+      const convex = getConvexClient();
+      await convex.mutation(api.usage.recordUsage, {
+        source: "flashcards",
+        tokensIn: usageAgg?.promptTokens || 0,
+        tokensOut: usageAgg?.completionTokens || 0,
+        cost: usage?.costTotal || 0,
+        modelId: modelId,
+        clerkUserId: clerkUserId,
+      });
+    } catch (err) {
+      console.error("Failed to record usage:", err);
+    }
+  }
+
   return NextResponse.json({ flashcards, usage, meta: { requestedCardsPerSection: cardsPerSection, usedCardsPerSection: targetCardsPerSection } });
 }

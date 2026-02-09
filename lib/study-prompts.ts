@@ -1,13 +1,87 @@
 import fs from "fs/promises";
 import path from "path";
 import type { DocumentSection } from "@/types";
+import { countTokens } from "@/lib/token-cost";
 
-const BASE_IDENTITY = [
-  "Du bist ein spezialisierter KI-Assistent fuer akademische Aufbereitung.",
-  "Deine Aufgabe ist es, aus gegebenem Lernstoff hochwertige, pruefungsorientierte Lernartefakte zu erstellen (Zusammenfassung, Flashcards, Quiz).",
-  "Du arbeitest strikt mit dem gelieferten Text und erfindest nichts hinzu.",
-  "Ausgabe ist auf Deutsch (englische Fachbegriffe aus dem Skript beibehalten)."
-].join("\n");
+// Base identity prompt - always in English for best AI consistency
+const getBaseIdentity = (outputLanguage: string = "en"): string => {
+  const languageInstruction = outputLanguage === "en"
+    ? ""
+    : `\n\nCRITICAL: You must output all content in ${getLanguageName(outputLanguage)} language. All headings, flashcards, quiz questions, and explanations must be in ${getLanguageName(outputLanguage)}.`;
+
+  return [
+    "You are a specialized AI assistant for academic content preparation.",
+    "Your task is to create high-quality, exam-oriented learning artifacts (Summary, Flashcards, Quiz) from given study material.",
+    "You work strictly with the provided text and do not invent anything.",
+    languageInstruction
+  ].filter(Boolean).join("\n");
+};
+
+function getLanguageName(code: string): string {
+  const names: Record<string, string> = {
+    en: "English",
+    de: "German",
+    es: "Spanish",
+    fr: "French",
+    it: "Italian"
+  };
+  return names[code] || "English";
+}
+
+// Format instructions - always in English
+const getFormatInstructions = (mode: "summary" | "flashcards" | "quiz" | "notes"): string => {
+  if (mode === "summary") {
+    return [
+      "Format:",
+      "- Output is pure Markdown.",
+      "- Starts directly with an H1 heading (# Title) - this is the document title only, NOT part of the content structure.",
+      "- After the title, begin the actual summary content using H1 (#) for main topics/chapters.",
+      "- Use H1 (#) for each major topic in the content (not just the title).",
+      "- Use H2 (##) for subtopics within each H1 section.",
+      "- Use H3 (###) for sub-subtopics.",
+      "- Build a clear hierarchical structure: multiple H1 sections for major topics, each with H2/H3 subsections.",
+      "- Never number headings (no '## 1.' / '## I.' etc). Use markdown heading levels instead.",
+      "- If math/formulas appear: use LaTeX (inline $...$, Display $$ ... $$) and explain variables directly after."
+    ].join("\n");
+  }
+
+  if (mode === "notes") {
+    return [
+      "Format:",
+      "- Output is pure Markdown.",
+      "- NO H1/H2/H3 headings, NO numbering.",
+      "- Only dense bullet points ('- ...'), no introduction, no closing sentences."
+    ].join("\n");
+  }
+
+  // For flashcards and quiz (JSON modes)
+  return [
+    "Format:",
+    "- Output is ONLY raw JSON - no Markdown, no code fences (no ```json or ```), no explanations, no text before or after.",
+    "- Start directly with `{` and end with `}`.",
+    mode === "flashcards"
+      ? '- Top-Level: {"flashcards": Flashcard[]} - flashcards MUST be an array [], NOT a number.'
+      : '- Top-Level: {"questions": QuizQuestion[]} - questions MUST be an array [].',
+    "",
+    "CRITICAL JSON rules:",
+    mode === "flashcards"
+      ? [
+        "- type must be exactly \"qa\" or \"cloze\" (lowercase, no variations like \"Q&A\" or \"question\")",
+        "- flashcards must be an array: \"flashcards\": [...] NOT \"flashcards\": 6",
+        "- No code fences around JSON - output raw JSON only"
+      ].join("\n")
+      : "- questions must be an array: \"questions\": [...]",
+    "",
+    "Keep concise (important for speed):",
+    mode === "flashcards"
+      ? [
+        "- front: max 140 characters, no nested sentences.",
+        "- back: max 280 characters, only the minimal correct answer (optional 1 short additional sentence).",
+        "- No newlines in strings (use spaces)."
+      ].join("\n")
+      : "",
+  ].filter(Boolean).join("\n");
+};
 
 const GUIDELINES_GENERAL = "guidelines/general.en.md";
 const GUIDELINES_SUMMARY = "guidelines/summary.en.md";
@@ -15,6 +89,7 @@ const GUIDELINES_FLASHCARDS = "guidelines/flashcards.en.md";
 const GUIDELINES_QUIZ = "guidelines/quiz.en.md";
 
 const loadGuidelines = async (files: string[]): Promise<string> => {
+  // Guidelines are always in English for consistency
   const parts = await Promise.all(
     files.map(async (file) => {
       const filePath = path.join(process.cwd(), file);
@@ -29,25 +104,133 @@ const loadGuidelines = async (files: string[]): Promise<string> => {
   return parts.filter((p) => p.trim().length > 0).join("\n\n---\n\n");
 };
 
+// User prompt with explicit output language instruction
+const getSectionSummaryUserPrompt = (outputLanguage: string, serializedSections: string, structure?: string): string => {
+  const langName = getLanguageName(outputLanguage);
+
+  return [
+    "Source (Sections):",
+    serializedSections,
+    "",
+    "Optional structure hints (headings):",
+    structure?.trim() ? structure.trim() : "None",
+    "",
+    `Generate the summary in ${langName} language.`,
+    "Task:",
+    "- Create a comprehensive, exam-oriented summary that covers ALL topics from the source material.",
+    "- Include ALL important concepts, mechanisms, definitions, and details - do not skip anything.",
+    "- Per subsection: Include all relevant points (typically 8-20 bullet points, more if the content requires it).",
+    "- The summary must be complete - continue generating until all content is covered, even if it requires more space.",
+    "- Use tables extensively for structured data (comparisons, features, specifications, attributes).",
+    "- No metadata, no introduction, no frontmatter.",
+    "",
+    `Output ONLY the finished summary in Markdown starting with # Title in ${langName}.`
+  ].join("\n");
+};
+
+const getFlashcardsUserPrompt = (
+  outputLanguage: string,
+  cardsPerSection: number,
+  serializedSections: string,
+  totalTokens?: number,
+  sectionCount?: number
+): string => {
+  const langName = getLanguageName(outputLanguage);
+
+  const tokenInfo = totalTokens && sectionCount
+    ? `\nDocument size: ${totalTokens.toLocaleString()} tokens across ${sectionCount} section${sectionCount !== 1 ? 's' : ''}.`
+    : "";
+
+  return [
+    `CRITICAL: Generate EXACTLY ${cardsPerSection} flashcards per section. This is a requirement, not a suggestion. Continue generating until you reach this number.`,
+    "Mix Q/A and Cloze appropriately (at least 1 Cloze per section, if possible).",
+    "If the section has enough content, generate the full target amount. Do not stop early.",
+    tokenInfo,
+    "",
+    "Source (Sections):",
+    serializedSections,
+    "",
+    "IMPORTANT:",
+    "- No duplicate cards per section.",
+    `- All flashcard content (front, back, sourceSnippet) must be in ${langName} language.`,
+    "",
+    "CRITICAL JSON FORMAT:",
+    "- Output ONLY raw JSON - no code fences (```json), no explanations, no text before or after.",
+    "- Start with { and end with }.",
+    "- The \"flashcards\" field MUST be an array [] with objects inside, NOT a number like \"flashcards\": 6.",
+    "- Each card's \"type\" must be exactly \"qa\" or \"cloze\" (lowercase, no variations).",
+    "",
+    "Output only the JSON."
+  ].filter(Boolean).join("\n");
+};
+
+const getChunkNotesUserPrompt = (outputLanguage: string, maxBullets: number, meta: string, text: string): string => {
+  const langName = getLanguageName(outputLanguage);
+
+  return [
+    "Source:",
+    "-----",
+    meta,
+    "Text:",
+    text,
+    "",
+    `Generate notes in ${langName} language.`,
+    "Task:",
+    `- Extract the most important learning points as a maximum of ${Math.max(10, Math.floor(maxBullets))} bullet points.`,
+    "- Focus: definitions, distinctions, mechanisms, conditions, trade-offs, formulas + variables.",
+    "- Only content from the text, do not invent anything.",
+    "- All output must be in " + langName + "."
+  ].join("\n");
+};
+
+const getQuizUserPrompt = (outputLanguage: string, questionsCount: number, avoidQuestions: string[], meta: string, text: string): string => {
+  const langName = getLanguageName(outputLanguage);
+
+  return [
+    `Generate exactly ${questionsCount} multiple-choice questions (4 options) for this section in ${langName} language.`,
+    "Distractors must come from terms/ideas in the same section (no external facts).",
+    "",
+    "Avoid repetitions:",
+    avoidQuestions.length > 0 ? avoidQuestions.map((q) => `- ${q}`).join("\n") : "- (none)",
+    "",
+    "Section:",
+    "-----",
+    meta,
+    "Text:",
+    text,
+    "",
+    "IMPORTANT:",
+    "- correctIndex must match the correct option.",
+    `- All content (question, options, explanation) must be in ${langName} language.`,
+    "",
+    "Output only the JSON."
+  ].join("\n");
+};
+
 export const buildSectionSummaryPrompts = async (
   sections: DocumentSection[],
-  structure?: string
+  structure?: string,
+  language: string = "en",
+  customGuidelines?: string
 ): Promise<{ systemPrompt: string; userPrompt: string }> => {
   const guidelines = await loadGuidelines([GUIDELINES_GENERAL, GUIDELINES_SUMMARY]);
+  let finalGuidelines = guidelines;
+
+  // Append custom guidelines if provided
+  if (customGuidelines && customGuidelines.trim().length > 0) {
+    finalGuidelines = `${guidelines}\n\n---\n\nAdditional User Guidelines:\n${customGuidelines.trim()}`;
+  }
+
+  const baseIdentity = getBaseIdentity(language);
+  const formatInstructions = getFormatInstructions("summary");
+
   const systemPrompt = [
-    BASE_IDENTITY,
+    baseIdentity,
     "",
-    "Regelwerk (KI-Vorgaben):",
-    guidelines,
+    "Guidelines (AI Rules):",
+    finalGuidelines,
     "",
-    "Format:",
-    "- Ausgabe ist reines Markdown.",
-    "- Beginnt direkt mit einer H1 (# Titel).",
-    "- Baue eine klare Gliederung mit mehreren H2 (##) und passenden H3 (###), statt einen langen unstrukturierten Block.",
-    "- Pro Unterkapitel: 5-10 dichte Bulletpoints + Key Definitions (wenn sinnvoll).",
-    "- Ueberschriften niemals nummerieren (kein '## 1.' / '## I.' etc).",
-    "- Wenn Mathe/Formeln vorkommen: nutze LaTeX (inline $...$, Display $$ ... $$) und erklaere Variablen direkt danach.",
-    "- VERBOTEN: Abschluss-Saetze wie 'Damit kann man sich gut vorbereiten' oder 'Alles kommt aus den Vorlesungsfolien'."
+    formatInstructions
   ].join("\n");
 
   const serializedSections = sections
@@ -63,54 +246,44 @@ export const buildSectionSummaryPrompts = async (
     })
     .join("\n");
 
-  const userPrompt = [
-    "Quelle (Sections):",
-    serializedSections,
-    "",
-    "Optionale Strukturvorgaben (Ueberschriften):",
-    structure?.trim() ? structure.trim() : "Keine",
-    "",
-    "Aufgabe:",
-    "- Erstelle eine kompakte, pruefungsorientierte Zusammenfassung mit klarer Gliederung (H2/H3).",
-    "- Pro Unterkapitel: 5-10 Bulletpoints (kurz, dicht) + 'Key Definitions' (wenn sinnvoll).",
-    "- Keine Metadaten, keine Einleitung, kein Frontmatter.",
-    "- Ueberschriften nicht nummerieren.",
-    "- VERBOTEN: Abschluss-/Meta-Saetze (z.B. 'Damit kann man sich gut vorbereiten', 'Alles kommt aus den Vorlesungsfolien').",
-    "",
-    "Beginne direkt mit # Titel."
-  ].join("\n");
+  const userPrompt = getSectionSummaryUserPrompt(language, serializedSections, structure);
 
   return { systemPrompt, userPrompt };
 };
 
 export const buildFlashcardsPrompts = async (
   sections: DocumentSection[],
-  cardsPerSection: number
+  cardsPerSection: number,
+  language: string = "en",
+  customGuidelines?: string
 ): Promise<{ systemPrompt: string; userPrompt: string }> => {
   const guidelines = await loadGuidelines([GUIDELINES_GENERAL, GUIDELINES_FLASHCARDS]);
+  let finalGuidelines = guidelines;
+
+  // Append custom guidelines if provided
+  if (customGuidelines && customGuidelines.trim().length > 0) {
+    finalGuidelines = `${guidelines}\n\n---\n\nAdditional User Guidelines:\n${customGuidelines.trim()}`;
+  }
+
+  const baseIdentity = getBaseIdentity(language);
+  const formatInstructions = getFormatInstructions("flashcards");
+
   const systemPrompt = [
-    BASE_IDENTITY,
+    baseIdentity,
     "",
-    "Regelwerk (KI-Vorgaben):",
-    guidelines,
+    "Guidelines (AI Rules):",
+    finalGuidelines,
     "",
-    "Format:",
-    "- Ausgabe ist NUR gueltiges JSON (kein Markdown, keine Codefences).",
-    "- Top-Level: {\"flashcards\": Flashcard[]}.",
-    "",
-    "Kuerze (wichtig fuer Geschwindigkeit):",
-    "- front: max 140 Zeichen, keine Schachtelsaetze.",
-    "- back: max 280 Zeichen, nur die minimale korrekte Antwort (optional 1 kurzer Zusatzsatz).",
-    "- Keine Newlines in Strings (nutze Leerzeichen).",
+    formatInstructions,
     "",
     "Flashcard Schema:",
     "- sectionId: string",
     "- sectionTitle: string",
-    "- type: \"qa\" | \"cloze\"",
+    "- type: \"qa\" | \"cloze\" (exactly these strings, lowercase - NOT \"Q&A\", \"question\", \"fill-in\", etc.)",
     "- front: string",
     "- back: string",
-    "- sourceSnippet: string (kurzes, woertliches Zitat aus dem Section-Text, 1-3 Saetze, max 240 Zeichen)",
-    "- page?: number (wenn bekannt)"
+    "- sourceSnippet: string (short, literal quote from the section text, 1-3 sentences, max 240 characters)",
+    "- page?: number (if known)"
   ].join("\n");
 
   const serializedSections = sections
@@ -126,20 +299,23 @@ export const buildFlashcardsPrompts = async (
     })
     .join("\n");
 
-  const userPrompt = [
-    `Erzeuge bis zu ${cardsPerSection} Flashcards pro Section (Ziel: ${cardsPerSection}).`,
-    "Mische Q/A und Cloze sinnvoll (mindestens 1 Cloze pro Section, wenn moeglich).",
-    "Wenn du die Zielanzahl nicht sauber/ohne Erfindungen erreichst: lieber weniger, aber hochwertig.",
-    "",
-    "Quelle (Sections):",
+  // Calculate total token count for all sections
+  let totalTokens: number | undefined;
+  try {
+    const allText = sections.map(s => s.text).join("\n");
+    totalTokens = await countTokens(allText, "cl100k_base");
+  } catch (err) {
+    // If token counting fails, continue without it
+    console.warn("[Flashcards] Failed to count tokens:", err);
+  }
+
+  const userPrompt = getFlashcardsUserPrompt(
+    language,
+    cardsPerSection,
     serializedSections,
-    "",
-    "WICHTIG:",
-    "- sourceSnippet muss ein woertliches Zitat aus dem jeweiligen Section-Text sein.",
-    "- Keine doppelten Karten pro Section.",
-    "",
-    "Gib nur das JSON aus."
-  ].join("\n");
+    totalTokens,
+    sections.length
+  );
 
   return { systemPrompt, userPrompt };
 };
@@ -147,37 +323,36 @@ export const buildFlashcardsPrompts = async (
 export const buildChunkNotesPrompts = async (
   section: DocumentSection,
   {
-    maxBullets = 40
-  }: { maxBullets?: number } = {}
+    maxBullets = 40,
+    language = "en",
+    customGuidelines
+  }: { maxBullets?: number; language?: string; customGuidelines?: string } = {}
 ): Promise<{ systemPrompt: string; userPrompt: string }> => {
   const guidelines = await loadGuidelines([GUIDELINES_GENERAL, GUIDELINES_SUMMARY]);
+  let finalGuidelines = guidelines;
+
+  // Append custom guidelines if provided
+  if (customGuidelines && customGuidelines.trim().length > 0) {
+    finalGuidelines = `${guidelines}\n\n---\n\nAdditional User Guidelines:\n${customGuidelines.trim()}`;
+  }
+
+  const baseIdentity = getBaseIdentity(language);
+  const formatInstructions = getFormatInstructions("notes");
+
   const systemPrompt = [
-    BASE_IDENTITY,
+    baseIdentity,
     "",
-    "Regelwerk (KI-Vorgaben):",
-    guidelines,
+    "Guidelines (AI Rules):",
+    finalGuidelines,
     "",
-    "Format:",
-    "- Ausgabe ist reines Markdown.",
-    "- KEINE H1/H2/H3 Ueberschriften, KEINE Nummerierung.",
-    "- Nur dichte Bulletpoints ('- ...'), keine Einleitung, keine Abschlusssaetze."
+    formatInstructions
   ].join("\n");
 
   const meta = [`ID: ${section.id}`, `Title: ${section.title}`];
   if (typeof section.page === "number") meta.push(`Page: ${section.page}`);
+  const metaStr = meta.join(" | ");
 
-  const userPrompt = [
-    "Quelle:",
-    "-----",
-    meta.join(" | "),
-    "Text:",
-    section.text,
-    "",
-    "Aufgabe:",
-    `- Extrahiere die wichtigsten Lernpunkte als maximal ${Math.max(10, Math.floor(maxBullets))} Bulletpoints.`,
-    "- Fokus: Definitionen, Abgrenzungen, Mechanismen, Bedingungen, Trade-offs, Formeln + Variablen.",
-    "- Nur Inhalte aus dem Text, nichts erfinden."
-  ].join("\n");
+  const userPrompt = getChunkNotesUserPrompt(language, maxBullets, metaStr, section.text);
 
   return { systemPrompt, userPrompt };
 };
@@ -185,18 +360,28 @@ export const buildChunkNotesPrompts = async (
 export const buildQuizPrompts = async (
   section: DocumentSection,
   questionsCount: number,
-  avoidQuestions: string[]
+  avoidQuestions: string[],
+  language: string = "en",
+  customGuidelines?: string
 ): Promise<{ systemPrompt: string; userPrompt: string }> => {
   const guidelines = await loadGuidelines([GUIDELINES_GENERAL, GUIDELINES_QUIZ]);
+  let finalGuidelines = guidelines;
+
+  // Append custom guidelines if provided
+  if (customGuidelines && customGuidelines.trim().length > 0) {
+    finalGuidelines = `${guidelines}\n\n---\n\nAdditional User Guidelines:\n${customGuidelines.trim()}`;
+  }
+
+  const baseIdentity = getBaseIdentity(language);
+  const formatInstructions = getFormatInstructions("quiz");
+
   const systemPrompt = [
-    BASE_IDENTITY,
+    baseIdentity,
     "",
-    "Regelwerk (KI-Vorgaben):",
-    guidelines,
+    "Guidelines (AI Rules):",
+    finalGuidelines,
     "",
-    "Format:",
-    "- Ausgabe ist NUR gueltiges JSON (kein Markdown, keine Codefences).",
-    "- Top-Level: {\"questions\": QuizQuestion[]}.",
+    formatInstructions,
     "",
     "QuizQuestion Schema:",
     "- sectionId: string",
@@ -204,33 +389,16 @@ export const buildQuizPrompts = async (
     "- question: string",
     "- options: string[4]",
     "- correctIndex: number (0..3)",
-    "- explanation: string (kurz, 1-2 Saetze)",
-    "- sourceSnippet: string (kurzes, woertliches Zitat aus dem Section-Text, max 240 Zeichen)",
-    "- page?: number (wenn bekannt)"
+    "- explanation: string (short, 1-2 sentences)",
+    "- sourceSnippet: string (short, literal quote from the section text, max 240 characters)",
+    "- page?: number (if known)"
   ].join("\n");
 
   const meta = [`ID: ${section.id}`, `Title: ${section.title}`];
   if (typeof section.page === "number") meta.push(`Page: ${section.page}`);
+  const metaStr = meta.join(" | ");
 
-  const userPrompt = [
-    `Erzeuge exakt ${questionsCount} Multiple-Choice Fragen (4 Optionen) fuer diese Section.`,
-    "Distractors muessen aus Begriffen/Ideen derselben Section kommen (keine externen Facts).",
-    "",
-    "Vermeide Wiederholungen:",
-    avoidQuestions.length > 0 ? avoidQuestions.map((q) => `- ${q}`).join("\n") : "- (keine)",
-    "",
-    "Section:",
-    "-----",
-    meta.join(" | "),
-    "Text:",
-    section.text,
-    "",
-    "WICHTIG:",
-    "- sourceSnippet muss ein woertliches Zitat aus dem Section-Text sein.",
-    "- correctIndex muss zur richtigen Option passen.",
-    "",
-    "Gib nur das JSON aus."
-  ].join("\n");
+  const userPrompt = getQuizUserPrompt(language, questionsCount, avoidQuestions, metaStr, section.text);
 
   return { systemPrompt, userPrompt };
 };

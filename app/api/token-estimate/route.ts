@@ -6,12 +6,18 @@ import type { DocumentSection, OutputKind } from "@/types";
 
 export const runtime = "nodejs";
 
+/**
+ * Clamp a value into an integer range with a fallback.
+ */
 const clampInt = (value: unknown, min: number, max: number, fallback: number): number => {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
   return Math.max(min, Math.min(max, Math.floor(n)));
 };
 
+/**
+ * Estimate output tokens based on mode, input size, and per-section counts.
+ */
 const estimateOutputTokens = (
   avgInputTokens: number,
   mode: OutputKind,
@@ -67,6 +73,9 @@ const estimateOutputTokens = (
   return { outputRatio, outputCap, estimatedOutputTokens, note: `Output estimate: min(${outputCap}, inputTokens x ${outputRatio})` };
 };
 
+/**
+ * Estimate token usage and cost for a summarization request.
+ */
 export async function POST(request: Request) {
   const body = await request.json();
   const extractedText = String(body.extractedText ?? "");
@@ -85,12 +94,15 @@ export async function POST(request: Request) {
   let systemPrompt = "";
   let userPrompt = "";
 
+  // Default to English for token estimation (no user context available)
+  const defaultLanguage = "en";
+  
   if (mode === "summary") {
-    ({ systemPrompt, userPrompt } = await buildSectionSummaryPrompts([section], structureHints));
+    ({ systemPrompt, userPrompt } = await buildSectionSummaryPrompts([section], structureHints, defaultLanguage));
   } else if (mode === "flashcards") {
-    ({ systemPrompt, userPrompt } = await buildFlashcardsPrompts([section], n ?? 6));
+    ({ systemPrompt, userPrompt } = await buildFlashcardsPrompts([section], n ?? 6, defaultLanguage));
   } else {
-    ({ systemPrompt, userPrompt } = await buildQuizPrompts(section, n ?? 6, []));
+    ({ systemPrompt, userPrompt } = await buildQuizPrompts(section, n ?? 6, [], defaultLanguage));
   }
 
   const fullPrompt = systemPrompt + "\n" + userPrompt;
