@@ -99,13 +99,24 @@ export default defineSchema({
     .index("by_clerk_user_id", ["clerkUserId"])
     .index("by_created_at", ["createdAt"]),
 
-  rateLimits: defineTable({
-    clerkUserId: v.optional(v.string()), // Clerk user ID
-    userId: v.optional(v.string()), // Legacy Clerk user ID (to be removed after migration)
-    type: v.union(v.literal("key_management"), v.literal("generation")),
-    count: v.number(),
-    resetTime: v.number(), // Timestamp when rate limit window resets
-  })
+  rateLimits: defineTable(
+    v.union(
+      v.object({
+        clerkUserId: v.string(), // Clerk user ID
+        userId: v.optional(v.string()), // Legacy Clerk user ID (to be removed after migration)
+        type: v.union(v.literal("key_management"), v.literal("generation")),
+        count: v.number(),
+        resetTime: v.number(), // Timestamp when rate limit window resets
+      }),
+      v.object({
+        clerkUserId: v.optional(v.string()), // Clerk user ID
+        userId: v.string(), // Legacy Clerk user ID (to be removed after migration)
+        type: v.union(v.literal("key_management"), v.literal("generation")),
+        count: v.number(),
+        resetTime: v.number(), // Timestamp when rate limit window resets
+      })
+    )
+  )
     .index("by_clerk_user_type", ["clerkUserId", "type"])
     .index("by_legacy_user_type", ["userId", "type"]),
 });

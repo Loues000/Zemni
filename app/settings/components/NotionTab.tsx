@@ -38,11 +38,22 @@ export function NotionTab() {
     setMessage(null);
 
     try {
+      const cleanedDatabaseId = databaseId.trim();
+
       // If no token entered and no stored token exists, show error
       if (!notionToken && !hasStoredToken) {
         setMessage({
           type: "error",
           text: "Please enter a Notion API token.",
+        });
+        setLoading(false);
+        return;
+      }
+
+      if (exportMethod === "database" && !cleanedDatabaseId) {
+        setMessage({
+          type: "error",
+          text: "Please enter a Notion database ID.",
         });
         setLoading(false);
         return;
@@ -55,7 +66,7 @@ export function NotionTab() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           token: notionToken || undefined, // Only send if provided
-          databaseId: exportMethod === "database" ? databaseId : undefined,
+          databaseId: exportMethod === "database" && cleanedDatabaseId ? cleanedDatabaseId : undefined,
           exportMethod: exportMethod,
         }),
       });
