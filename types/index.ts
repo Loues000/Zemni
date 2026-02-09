@@ -11,6 +11,12 @@ export type Model = {
   displayName: string;
   tokenizer: string;
   pricing: Pricing;
+  subscriptionTier?: string;
+  isAvailable?: boolean;
+  requiredTier?: string;
+  isCoveredBySubscription?: boolean;
+  requiresOwnKey?: boolean;
+  description?: string;
 };
 
 export type CostRow = {
@@ -68,6 +74,18 @@ export type QuizQuestion = {
   page?: number;
 };
 
+export type QuizAnswerState = {
+  selectedOptionIndex?: number;
+  revealAnswer?: boolean;
+};
+
+export type QuizState = {
+  questionCursor: number;
+  revealAnswer?: boolean;
+  selectedOptionIndex?: number;
+  answersById?: Record<string, QuizAnswerState>;
+};
+
 export type UsageStats = {
   promptTokens: number | null;
   completionTokens: number | null;
@@ -97,11 +115,7 @@ export type OutputEntry = {
   sectionIds?: string[];
   flashcards?: Flashcard[];
   quiz?: QuizQuestion[];
-  quizState?: {
-    questionCursor: number;
-    revealAnswer?: boolean;
-    selectedOptionIndex?: number;
-  };
+  quizState?: QuizState;
 };
 
 export type HistoryEntry = {

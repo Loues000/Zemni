@@ -91,6 +91,11 @@ export function useKeyboardShortcuts({
 
       // Ctrl/Cmd + C: Copy summary (when preview is visible)
       if (modKey && e.key === "c" && !e.shiftKey) {
+        const selection = window.getSelection?.();
+        const hasSelection = selection && !selection.isCollapsed && selection.toString().length > 0;
+        if (hasSelection) {
+          return;
+        }
         if (currentSummary && !isEditing && !isEditingSecond) {
           e.preventDefault();
           // Copy to clipboard

@@ -2,27 +2,38 @@
 
 These rules apply **in addition** to the base rules in `guidelines/general.en.md`.
 
-## Output language
-- All generated text in `front`, `back`, and `sectionTitle` must be **German**.
-- Keep English technical terms **only if** they appear in the source material (do not translate established terminology inconsistently).
-
 ## Format / Schema (strict)
-- Output **only valid JSON** (no Markdown, no code fences).
+- Output **ONLY raw JSON** - no Markdown, no code fences (no ```json or ```), no explanations, no text before or after.
+- Start directly with `{` and end with `}`.
 - Do not put raw newlines inside JSON strings. If you must represent a line break, use `\\n`.
 - Top-level shape: `{"flashcards": Flashcard[]}` (no other keys).
+- **CRITICAL**: `flashcards` must be an **array** `[]`, NOT a number or string.
 - Every flashcard must follow the schema exactly:
   - `sectionId: string`
   - `sectionTitle: string`
-  - `type: "qa" | "cloze"`
+  - `type: "qa" | "cloze"` (exactly these strings, NOT "Q&A", "question", "fill-in", etc.)
   - `front: string`
   - `back: string`
   - `sourceSnippet: string` (verbatim quote from the section text; 1–3 sentences; max 240 chars)
   - `page?: number` (only if known)
+- **Common errors to avoid**:
+  - ❌ Wrapping JSON in code fences: ```json ... ```
+  - ❌ Using `"flashcards": 6` instead of `"flashcards": [...]`
+  - ❌ Using `"type": "Q&A"` instead of `"type": "qa"`
+  - ❌ Adding explanations or text outside the JSON
+
+## Card count requirements (critical)
+- You MUST generate the EXACT number of cards requested per section (target count is specified in the prompt).
+- If the section has enough content, generate the full target amount.
+- Do not stop early - continue generating until you reach the target.
+- If content is limited, prioritize quality but still aim for the target.
+- Only generate fewer cards if the section genuinely lacks sufficient material to support the target count.
 
 ## Card quality
 - One card = **one atomic learning point** (definition, distinction, mechanism, constraint, trade-off, step, etc.).
+- Generate cards until you reach the target count - do not stop early.
 - Avoid multi-part questions, long lists, and vague prompts ("Erklaere alles ueber ...").
-- Prefer **exam-style** prompts: definitions, “why”, “how it differs from”, “when to use”, “limit/trade-off”.
+- Prefer **exam-style** prompts: definitions, "why", "how it differs from", "when to use", "limit/trade-off".
 - Avoid yes/no questions unless the source clearly states a binary condition.
 - Do not add page numbers, citations, or "Source:" text to `front`/`back` (provenance lives only in `sourceSnippet` and `page`).
 

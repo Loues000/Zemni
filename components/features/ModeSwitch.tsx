@@ -6,6 +6,9 @@ interface ModeSwitchProps {
   className?: string;
 }
 
+/**
+ * Tab-style switch for selecting output mode.
+ */
 export function ModeSwitch({ outputKind, onModeChange, className = "" }: ModeSwitchProps) {
   return (
     <div className={`mode-switch ${className}`} role="tablist" aria-label="Output mode">

@@ -9,9 +9,15 @@ type DeleteOutputModalProps = {
   onConfirm: () => void;
 };
 
+/**
+ * Modal prompt to confirm deleting an output.
+ */
 export function DeleteOutputModal({ isOpen, outputLabel, onCancel, onConfirm }: DeleteOutputModalProps) {
   useEffect(() => {
     if (!isOpen) return;
+    /**
+     * Close the modal when Escape is pressed.
+     */
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") onCancel();
     };
@@ -41,4 +47,3 @@ export function DeleteOutputModal({ isOpen, outputLabel, onCancel, onConfirm }: 
     </div>
   );
 }
-

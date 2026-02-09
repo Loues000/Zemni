@@ -1,3 +1,6 @@
+/**
+ * App footer with branding and external links.
+ */
 export function Footer() {
   return (
     <footer className="footer">

@@ -1,4 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import type { Model, Subject, Status } from "@/types";
 
 export interface UseAppStateReturn {
@@ -32,7 +34,20 @@ export interface UseAppStateReturn {
  * Manages core application state: theme, models, subjects, status, error, and UI state
  */
 export function useAppState(): UseAppStateReturn {
-  const [theme, setTheme] = useState<"light" | "dark">("light");
+  const currentUser = useQuery(api.users.getCurrentUser);
+  // Initialize theme synchronously from localStorage or system preference
+  const [theme, setTheme] = useState<"light" | "dark">(() => {
+    if (typeof window !== "undefined") {
+      const saved = window.localStorage.getItem("theme");
+      if (saved === "dark" || saved === "light") {
+        return saved;
+      }
+      if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+        return "dark";
+      }
+    }
+    return "light";
+  });
   const [models, setModels] = useState<Model[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("");
@@ -67,22 +82,19 @@ export function useAppState(): UseAppStateReturn {
   }, []);
 
   useEffect(() => {
-    const saved = window.localStorage.getItem("theme");
-    if (saved === "dark" || saved === "light") {
-      setTheme(saved);
-    } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-      setTheme("dark");
-    }
+    // Theme is already initialized in useState, just ensure it's applied to DOM
+    document.documentElement.dataset.theme = theme;
 
     if (window.innerWidth >= 769) {
       setStatsOpen(true);
     }
 
     // Load user settings
+    // defaultModel stays in localStorage (device-specific)
     const savedDefaultModel = window.localStorage.getItem("defaultModel");
-    const savedDefaultStructureHints = window.localStorage.getItem("defaultStructureHints");
     if (savedDefaultModel) setDefaultModel(savedDefaultModel);
-    if (savedDefaultStructureHints) setDefaultStructureHints(savedDefaultStructureHints);
+    
+    // defaultStructureHints will be loaded from Convex in useEffect below
 
     const fetchModels = async () => {
       try {
@@ -90,11 +102,28 @@ export function useAppState(): UseAppStateReturn {
         if (!res.ok) throw new Error("Could not load models.");
         const data = await res.json() as { models: Model[] };
         setModels(data.models);
-        // Use saved default model or first model
+        // Use saved default model, or prefer gpt-oss-120b:free, or fallback to other free tier model
         if (data.models.length > 0) {
-          const modelToUse = savedDefaultModel && data.models.find(m => m.id === savedDefaultModel)
-            ? savedDefaultModel
-            : data.models[0].id;
+          let modelToUse: string;
+          
+          if (savedDefaultModel && data.models.find(m => m.id === savedDefaultModel)) {
+            // Use saved preference if available and valid
+            modelToUse = savedDefaultModel;
+          } else {
+            // Priority: gpt-oss-120b:free > other free tier > basic > plus > first available
+            const gptOss120bFree = data.models.find(m => m.id === "openai/gpt-oss-120b:free");
+            const freeModel = data.models.find(m => m.subscriptionTier === "free");
+            const basicModel = data.models.find(m => m.subscriptionTier === "basic");
+            const plusModel = data.models.find(m => m.subscriptionTier === "plus");
+            
+            modelToUse = gptOss120bFree?.id || freeModel?.id || basicModel?.id || plusModel?.id || data.models[0].id;
+            
+            // Set defaultModel if not already set
+            if (!savedDefaultModel) {
+              setDefaultModel(modelToUse);
+            }
+          }
+          
           setSelectedModel(modelToUse);
         }
       } catch (err) {
@@ -105,7 +134,17 @@ export function useAppState(): UseAppStateReturn {
 
     const fetchSubjects = async () => {
       try {
-        const res = await fetch("/api/notion/subjects");
+        // Get user's Notion credentials from Convex if available
+        // This will be called after currentUser is loaded
+        if (!currentUser) return;
+        
+        if (!currentUser.notionDatabaseId) return;
+        
+        // API endpoint will decrypt token server-side
+        const url = new URL("/api/notion/subjects", window.location.origin);
+        url.searchParams.set("databaseId", currentUser.notionDatabaseId);
+        
+        const res = await fetch(url.toString());
         if (!res.ok) return;
         const data = await res.json() as { subjects: Subject[] };
         setSubjects(data.subjects);
@@ -115,12 +154,55 @@ export function useAppState(): UseAppStateReturn {
     };
 
     fetchModels();
-    fetchSubjects();
   }, []);
 
+  // Track failed database IDs to prevent repeated calls
+  const subjectsFetchFailedRef = useRef<string | null>(null);
+
+  // Fetch subjects when user data is available
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    window.localStorage.setItem("theme", theme);
+    if (currentUser) {
+      const fetchSubjects = async () => {
+        try {
+          if (!currentUser.notionDatabaseId) return;
+          
+          // Skip if we've already failed for this database ID
+          if (subjectsFetchFailedRef.current === currentUser.notionDatabaseId) {
+            return;
+          }
+          
+          // API endpoint will decrypt token server-side
+          const url = new URL("/api/notion/subjects", window.location.origin);
+          url.searchParams.set("databaseId", currentUser.notionDatabaseId);
+          
+          const res = await fetch(url.toString());
+          if (!res.ok) return;
+          const data = await res.json() as { subjects: Subject[]; error?: string };
+          
+          if (data.error) {
+            // Mark this database ID as failed
+            subjectsFetchFailedRef.current = currentUser.notionDatabaseId;
+            return;
+          }
+          
+          setSubjects(data.subjects);
+          // Reset failure tracking on success
+          subjectsFetchFailedRef.current = null;
+        } catch (err) {
+          // Ignore
+        }
+      };
+      
+      fetchSubjects();
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    // Apply theme to DOM and save to localStorage
+    if (typeof window !== "undefined") {
+      document.documentElement.setAttribute("data-theme", theme);
+      window.localStorage.setItem("theme", theme);
+    }
   }, [theme]);
 
   useEffect(() => {
@@ -128,6 +210,13 @@ export function useAppState(): UseAppStateReturn {
       window.localStorage.setItem("defaultModel", defaultModel);
     }
   }, [defaultModel]);
+
+  // Load defaultStructureHints from Convex when user data is available
+  useEffect(() => {
+    if (currentUser?.defaultStructureHints !== undefined) {
+      setDefaultStructureHints(currentUser.defaultStructureHints || "");
+    }
+  }, [currentUser]);
 
   useEffect(() => {
     window.localStorage.setItem("defaultStructureHints", defaultStructureHints);

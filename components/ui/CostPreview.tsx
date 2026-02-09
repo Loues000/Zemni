@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import type { CostRow, CostHeuristic } from "@/types";
 import { IconChevron } from "./Icons";
 
+/**
+ * Collapsible preview of estimated generation costs.
+ */
 export function CostPreview({
   currentCost,
   isEstimating,
@@ -25,11 +28,17 @@ export function CostPreview({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /**
+   * Format cost values with fixed decimals and currency.
+   */
   const formatMoney = (value: number | null, currency: string): string => {
     if (value === null || Number.isNaN(value)) return "-";
     return value.toFixed(4) + " " + currency;
   };
 
+  /**
+   * Format token counts for display.
+   */
   const formatNumber = (value: number | null, digits: number = 0): string => {
     if (value === null || Number.isNaN(value)) return "-";
     return value.toLocaleString(undefined, { maximumFractionDigits: digits });

@@ -1,7 +1,8 @@
-import type { OutputEntry, Status, QuizQuestion, DocumentSection } from "@/types";
+import type { OutputEntry, Status, QuizQuestion, DocumentSection, QuizAnswerState } from "@/types";
 import { renderQuizPreview } from "@/lib/output-previews";
 import { estimateQuizQuestions } from "@/lib/study-heuristics";
 import { postJson } from "@/lib/utils/api-helpers";
+import { getQuizAnswerState, getQuizQuestionKey } from "@/lib/utils/quiz-state";
 const QUIZ_MORE_BATCH_SIZE = 8;
 
 export interface QuizHandlersContext {
@@ -26,11 +27,27 @@ export const handleQuizReveal = (context: QuizHandlersContext): void => {
   setOutputs((prev) => {
     const existing = prev[selectedTabId];
     if (!existing || existing.kind !== "quiz" || !existing.quizState) return prev;
+    const cursor = existing.quizState.questionCursor;
+    const question = existing.quiz?.[cursor];
+    const key = getQuizQuestionKey(question, cursor);
+    const answersById = { ...(existing.quizState.answersById ?? {}) };
+    const currentAnswer: QuizAnswerState = answersById[key] ?? {
+      revealAnswer: existing.quizState.revealAnswer ?? false,
+      selectedOptionIndex: existing.quizState.selectedOptionIndex
+    };
+    const nextAnswer: QuizAnswerState = {
+      ...currentAnswer,
+      revealAnswer: !Boolean(currentAnswer.revealAnswer)
+    };
+    answersById[key] = nextAnswer;
+
     const next: OutputEntry = {
       ...existing,
       quizState: {
         ...existing.quizState,
-        revealAnswer: !existing.quizState.revealAnswer
+        revealAnswer: nextAnswer.revealAnswer,
+        selectedOptionIndex: nextAnswer.selectedOptionIndex,
+        answersById
       },
       updatedAt: Date.now()
     };
@@ -52,12 +69,23 @@ export const handleQuizSelectOption = (
   setOutputs((prev) => {
     const existing = prev[selectedTabId];
     if (!existing || existing.kind !== "quiz" || !existing.quizState) return prev;
+    const cursor = existing.quizState.questionCursor;
+    const question = existing.quiz?.[cursor];
+    const key = getQuizQuestionKey(question, cursor);
+    const answersById = { ...(existing.quizState.answersById ?? {}) };
+    const nextAnswer: QuizAnswerState = {
+      selectedOptionIndex,
+      revealAnswer: true
+    };
+    answersById[key] = nextAnswer;
+
     const next: OutputEntry = {
       ...existing,
       quizState: {
         ...existing.quizState,
         selectedOptionIndex,
-        revealAnswer: true
+        revealAnswer: true,
+        answersById
       },
       updatedAt: Date.now()
     };
@@ -94,14 +122,16 @@ export const handleQuizNext = async (context: QuizHandlersContext): Promise<void
     setOutputs((prev) => {
       const existing = prev[selectedTabId];
       if (!existing || existing.kind !== "quiz" || !existing.quizState) return prev;
+      const nextQuestion = questions[nextCursor];
+      const answerState = getQuizAnswerState(existing.quizState, nextQuestion, nextCursor);
       const next: OutputEntry = {
         ...existing,
         error: undefined,
         quizState: {
           ...existing.quizState,
           questionCursor: nextCursor,
-          revealAnswer: false,
-          selectedOptionIndex: undefined
+          revealAnswer: answerState?.revealAnswer ?? false,
+          selectedOptionIndex: answerState?.selectedOptionIndex
         },
         updatedAt: Date.now()
       };
@@ -123,7 +153,6 @@ export const handleQuizNext = async (context: QuizHandlersContext): Promise<void
         ...existing,
         isGenerating: true,
         error: undefined,
-        summary: "# Quiz\n\nGenerating questions...\n",
         updatedAt: Date.now()
       }
     };
@@ -147,6 +176,8 @@ export const handleQuizNext = async (context: QuizHandlersContext): Promise<void
       if (!existing || existing.kind !== "quiz" || !existing.quizState) return prev;
       const appended = data.questions ?? [];
       const cursor = (existing.quiz ?? []).length;
+      const nextQuestion = [...(existing.quiz ?? []), ...appended][cursor];
+      const answerState = getQuizAnswerState(existing.quizState, nextQuestion, cursor);
       const next: OutputEntry = {
         ...existing,
         isGenerating: false,
@@ -156,8 +187,8 @@ export const handleQuizNext = async (context: QuizHandlersContext): Promise<void
         quizState: {
           ...existing.quizState,
           questionCursor: cursor,
-          revealAnswer: false,
-          selectedOptionIndex: undefined
+          revealAnswer: answerState?.revealAnswer ?? false,
+          selectedOptionIndex: answerState?.selectedOptionIndex
         },
         updatedAt: Date.now()
       };
@@ -178,7 +209,7 @@ export const handleQuizNext = async (context: QuizHandlersContext): Promise<void
       const next: OutputEntry = {
         ...existing,
         isGenerating: false,
-        error: message,
+        error: undefined,
         updatedAt: Date.now()
       };
       next.summary = renderQuizPreview(next, fileName);
@@ -202,13 +233,15 @@ export const handleQuizPrev = (context: QuizHandlersContext): void => {
     const existing = prev[selectedTabId];
     if (!existing || existing.kind !== "quiz" || !existing.quizState) return prev;
     const nextCursor = Math.max(0, existing.quizState.questionCursor - 1);
+    const nextQuestion = (existing.quiz ?? [])[nextCursor];
+    const answerState = getQuizAnswerState(existing.quizState, nextQuestion, nextCursor);
     const next: OutputEntry = {
       ...existing,
       quizState: {
         ...existing.quizState,
         questionCursor: nextCursor,
-        revealAnswer: false,
-        selectedOptionIndex: undefined
+        revealAnswer: answerState?.revealAnswer ?? false,
+        selectedOptionIndex: answerState?.selectedOptionIndex
       },
       updatedAt: Date.now()
     };

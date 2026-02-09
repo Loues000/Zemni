@@ -14,6 +14,9 @@ type ExportMenuProps = {
   label?: string;
 };
 
+/**
+ * Dropdown menu for export format actions.
+ */
 export function ExportMenu({ options, disabled, label = "Export" }: ExportMenuProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -22,6 +25,9 @@ export function ExportMenu({ options, disabled, label = "Export" }: ExportMenuPr
   useEffect(() => {
     if (!open) return;
 
+    /**
+     * Close the menu when clicking outside the root element.
+     */
     const onPointerDown = (e: PointerEvent) => {
       const root = rootRef.current;
       if (!root) return;
@@ -30,6 +36,9 @@ export function ExportMenu({ options, disabled, label = "Export" }: ExportMenuPr
       }
     };
 
+    /**
+     * Close the menu on Escape.
+     */
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };
@@ -79,4 +88,3 @@ export function ExportMenu({ options, disabled, label = "Export" }: ExportMenuPr
     </div>
   );
 }
-

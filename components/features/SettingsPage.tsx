@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } f
 import { exportHistoryAsZip } from "@/lib/export-history-zip";
 import { isHistoryEntry, sortHistory } from "@/lib/history-storage";
 import { useAppState, useHistory } from "@/hooks";
+import { ModelSelector } from "@/components/ui";
 
 type SettingsNotice = { kind: "success" | "error"; message: string } | null;
 
@@ -14,6 +15,9 @@ const SETTINGS_TABS = [
   { id: "history", label: "History & Export" }
 ] as const;
 
+/**
+ * Legacy settings page for local device preferences.
+ */
 export function SettingsPage(): JSX.Element {
   const {
     theme,
@@ -240,20 +244,12 @@ export function SettingsPage(): JSX.Element {
                 <label className="field-label" htmlFor="settings-default-model">
                   Default model
                 </label>
-                <select
+                <ModelSelector
                   id="settings-default-model"
-                  className="field-input"
-                  value={resolvedDefaultModel}
-                  onChange={(e) => setLocalDefaultModel(e.target.value)}
-                  disabled={modelOptions.length === 0}
-                >
-                  {modelOptions.length === 0 && <option value="">Loading models...</option>}
-                  {modelOptions.map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {model.label}
-                    </option>
-                  ))}
-                </select>
+                  models={models}
+                  selectedModel={resolvedDefaultModel}
+                  onModelChange={setLocalDefaultModel}
+                />
                 <p className="field-hint">This becomes the default selection on the main screen.</p>
               </div>
             </div>
