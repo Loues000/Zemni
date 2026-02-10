@@ -8,6 +8,17 @@
 // Pattern to match YAML frontmatter at the start
 const FRONTMATTER_PATTERN = /^---[\s\S]*?---\s*/;
 
+const BR_TAG_PATTERN = /<br\s*\/?>/gi;
+const ESCAPED_BR_TAG_PATTERN = /&lt;br\s*\/?&gt;/gi;
+
+const normalizeLineBreakTags = (markdown: string): string => {
+  if (!markdown) return markdown;
+  return markdown
+    .replace(/\r\n/g, "\n")
+    .replace(ESCAPED_BR_TAG_PATTERN, "\n")
+    .replace(BR_TAG_PATTERN, "\n");
+};
+
 // Pattern to match common metadata lines at the start
 const METADATA_PATTERNS = [
   /^(Zusammenfassung|Summary|Titel|Title|Datum|Date|Autor|Author|Fach|Subject):\s*[^\n]*\n*/gi,
@@ -86,7 +97,7 @@ const normalizeOutput = (markdown: string): string => stripBannedOutro(stripNumb
  * Removes leading metadata and ensures the summary starts with an H1 heading.
  */
 export const enforceOutputFormat = (text: string, fallbackTitle?: string): string => {
-  let result = text.trim();
+  let result = normalizeLineBreakTags(text).trim();
 
   // Remove YAML frontmatter if present
   result = result.replace(FRONTMATTER_PATTERN, "").trim();

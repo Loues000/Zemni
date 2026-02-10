@@ -33,15 +33,9 @@ const getFormatInstructions = (mode: "summary" | "flashcards" | "quiz" | "notes"
   if (mode === "summary") {
     return [
       "Format:",
-      "- Output is pure Markdown.",
-      "- Starts directly with an H1 heading (# Title) - this is the document title only, NOT part of the content structure.",
-      "- After the title, begin the actual summary content using H1 (#) for main topics/chapters.",
-      "- Use H1 (#) for each major topic in the content (not just the title).",
-      "- Use H2 (##) for subtopics within each H1 section.",
-      "- Use H3 (###) for sub-subtopics.",
-      "- Build a clear hierarchical structure: multiple H1 sections for major topics, each with H2/H3 subsections.",
-      "- Never number headings (no '## 1.' / '## I.' etc). Use markdown heading levels instead.",
-      "- If math/formulas appear: use LaTeX (inline $...$, Display $$ ... $$) and explain variables directly after."
+      "- Output is pure Markdown (no HTML).",
+      "- Start immediately with `# Title` as the first line.",
+      "- Follow the provided Guidelines (AI Rules) for structure, tables, and Notion-safe formatting."
     ].join("\n");
   }
 

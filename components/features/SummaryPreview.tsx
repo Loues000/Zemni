@@ -5,6 +5,7 @@ import rehypeKatex from "rehype-katex";
 import { IconEdit, IconCopy, IconCheck, IconClose } from "../ui/Icons";
 import type { OutputEntry } from "@/types";
 import { isStandaloneLatexMathLine } from "@/lib/latex-math";
+import { remarkBrToBreak } from "@/lib/remark-br-to-break";
 
 /**
  * Normalize inline math blocks to render cleanly in the preview.
@@ -214,7 +215,7 @@ export function SummaryPreview({
                   </div>
                 )}
                 <ReactMarkdown
-                  remarkPlugins={[remarkGfm, remarkMath]}
+                  remarkPlugins={[remarkGfm, remarkBrToBreak, remarkMath]}
                   rehypePlugins={[rehypeKatex]}
                 >
                   {normalizeMathForPreview(currentSummary)}
@@ -280,7 +281,7 @@ export function SummaryPreview({
                   </div>
                 )}
                 <ReactMarkdown
-                  remarkPlugins={[remarkGfm, remarkMath]}
+                  remarkPlugins={[remarkGfm, remarkBrToBreak, remarkMath]}
                   rehypePlugins={[rehypeKatex]}
                 >
                   {normalizeMathForPreview(currentSummary)}
@@ -352,7 +353,7 @@ export function SummaryPreview({
                     </div>
                   )}
                   <ReactMarkdown
-                    remarkPlugins={[remarkGfm, remarkMath]}
+                    remarkPlugins={[remarkGfm, remarkBrToBreak, remarkMath]}
                     rehypePlugins={[rehypeKatex]}
                   >
                     {normalizeMathForPreview(secondSummary)}

@@ -12,7 +12,6 @@ These rules apply **in addition** to `guidelines/general.en.md` and only for the
 - Use `###` (H3) for sub-subtopics (equivalent to "1.2.3" in a numbered structure)
 
 **Critical rules**:
-- Do NOT use numbered headings like `## 1. Introduction` or `## 1.2 Details`. Use Markdown heading levels (`#`, `##`, `###`) instead.
 - The first H1 is the document title only. The actual content structure starts AFTER the title and should use H1 for main topics.
 - Use H1 (`#`) for each major topic/chapter in the summary content (not just the title).
 - Use multiple H1 headings to separate major lecture topics/chapters.
@@ -43,17 +42,9 @@ These rules apply **in addition** to `guidelines/general.en.md` and only for the
 
 ## Format contract (strict)
 - Output must be **pure Markdown**.
-- Start **immediately** with the first H1 heading (`# Title`) - this is the document title only.
-- **After the title**, begin the actual summary content using H1 headings for main topics.
-- The title H1 is separate from the content structure - use H1 again in the content for main topics.
+- Do **not** use raw HTML tags (including `<br>`). Use proper Markdown structure (separate bullets/paragraphs) instead.
+- Start **immediately** with the first H1 heading (`# Title`).
 - No metadata, no frontmatter, no introductory chatter.
-- Use tables for comparisons, multi-column data, or structured information with multiple attributes.
-- **Do not use tables with "#" or numbering columns** - use bullet points or prose instead.
-- Prefer bullet points for simple lists and sequential information.
-- Short prose is allowed when needed for understanding.
-- Use `**bold**` sparingly for central technical terms.
-- **Use callouts (`> `) for important definitions**: When a term or concept is first introduced and is central to understanding the topic, format it as a callout using `> ` at the beginning of the line. This makes key definitions visually distinct and easy to reference. Example: `> **Term**: Definition text here.`
-- **Period usage**: Use periods (`.`) sparingly in bullet points - only add a period if the bullet point is a complete sentence, not for simple bullet points, fragments, or mathematical formulas.
 
 ## Lists (important for Notion export)
 - Bullets must use `- ` (dash + space).
@@ -84,6 +75,8 @@ Incorrect (breaks Notion rendering):
 ### Tables
 - Use tables for comparisons, multi-column data, or structured information with multiple attributes.
 - **Avoid tables with "#" or numbering columns** - use bullet points or prose instead.
+- **Table cells must be single-line**: no `<br>`, no multi-paragraph content, no bullet lists inside cells.
+- **Never place fenced code blocks inside tables**. If a code example is needed, put it in a dedicated subsection *after* the table.
 - Example:
   ```markdown
   | Feature | Option A | Option B |
@@ -104,18 +97,13 @@ Incorrect (breaks Notion rendering):
 ### Code blocks
 - Include a language tag for syntax highlighting (e.g. ```python, ```javascript).
 - Use for algorithms, formulas, technical snippets, or any code-like content.
+- Code blocks must stand alone (not inside tables).
 
 ### Callouts and emphasis
-- **Callouts (`> `) are important formatting tools**: Use blockquotes for truly important definitions (when a term is first introduced and central to the topic), critical warnings, or key takeaways. Do not overuse - only for concepts that genuinely need special emphasis. Example format: `> **Key Term**: This is the definition that explains the concept clearly.`
+- Use blockquotes (`> `) for truly important definitions, warnings, or key takeaways. Do not overuse.
 - Use `**bold**` for key concepts and technical terms.
 - Use `*italic*` for emphasis or subtle distinctions.
 - Use inline code (backticks) for technical terms, variables, function names, or code references.
-
-### Lists
-- **Completeness over brevity**: Include ALL important concepts from the source material.
-- Per subsection: Include all relevant points (typically 5-15 bullet points, more if content requires it).
-- Use nested lists for hierarchical information (4 spaces indentation, no blank line between parent and child).
-- Numbered lists (`1.`, `2.` ...) only for true procedures or sequences where order matters.
 
 ### Other formatting
 - Math / LaTeX:
