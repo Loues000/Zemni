@@ -5,7 +5,7 @@ import type { OutputEntry, QuizQuestion, Status } from "@/types";
 import { downloadTextFile } from "@/lib/download";
 import { quizToMarkdown } from "@/lib/exporters";
 import { getQuizAnswerState } from "@/lib/utils/quiz-state";
-import { ExportMenu } from "@/components/ui";
+import { ConfirmModal, ExportMenu } from "@/components/ui";
 
 /**
  * Determine if a keyboard event target is an editable input.
@@ -71,6 +71,9 @@ export function QuizMode({
 
   const [focusIndex, setFocusIndex] = useState(0);
   const optionCount = currentQuestion?.options.length ?? 0;
+
+  const [showLoadMoreConfirm, setShowLoadMoreConfirm] = useState(false);
+  const isAtLastQuestion = cursor >= quiz.length - 1 && quiz.length > 0;
 
   useEffect(() => {
     setFocusIndex(0);
@@ -142,13 +145,12 @@ export function QuizMode({
         if (!isBusy) {
           const questions = output?.quiz ?? [];
           const currentCursor = state?.questionCursor ?? 0;
-          // Only allow next if not at last question, or allow if we can generate more
-          // (when at last question, onNext will trigger generation of more questions)
+          const atLast = currentCursor === questions.length - 1 && questions.length > 0;
           if (currentCursor < questions.length - 1) {
             void onNext();
-          } else if (currentCursor === questions.length - 1 && questions.length > 0) {
-            // At last question - allow triggering generation of more questions
-            void onNext();
+          } else if (atLast) {
+            // At last question - show confirmation before generating more
+            setShowLoadMoreConfirm(true);
           }
         }
         return;
@@ -264,12 +266,18 @@ export function QuizMode({
           <button
             type="button"
             className="btn btn-secondary btn-sm"
-            onClick={() => void onNext()}
+            onClick={() => {
+              if (isAtLastQuestion) {
+                setShowLoadMoreConfirm(true);
+              } else {
+                void onNext();
+              }
+            }}
             disabled={isBusy}
-            title={cursor >= quiz.length - 1 && quiz.length > 0 ? "Generate more questions" : undefined}
+            title={isAtLastQuestion ? "Generate more questions" : undefined}
           >
             {showKeyboardHints ? "Next (→)" : "Next"}
-            {cursor >= quiz.length - 1 && quiz.length > 0 && !isBusy && " (more...)"}
+            {isAtLastQuestion && !isBusy && " (more...)"}
           </button>
           <ExportMenu
             disabled={!quiz.length}
@@ -324,6 +332,19 @@ export function QuizMode({
           ) : null}
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={showLoadMoreConfirm}
+        title="Generate More Questions?"
+        message="This will use AI tokens to generate additional quiz questions based on the document. Are you sure you want to continue?"
+        confirmLabel="Generate More"
+        cancelLabel="Cancel"
+        onCancel={() => setShowLoadMoreConfirm(false)}
+        onConfirm={() => {
+          setShowLoadMoreConfirm(false);
+          void onNext();
+        }}
+      />
     </div>
   );
 }
