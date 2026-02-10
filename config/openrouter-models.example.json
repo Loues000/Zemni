@@ -73,7 +73,7 @@
     "id": "openai/gpt-oss-120b:free",
     "display_name": "GPT OSS 120B",
     "subscription_tier": "free",
-    "available": true,
+    "available": false,
     "tokenizer": {
       "tiktoken_encoding": "o200k_base"
     },
@@ -87,7 +87,7 @@
     "id": "openai/gpt-oss-120b",
     "display_name": "GPT OSS 120B",
     "subscription_tier": "free",
-    "available": false,
+    "available": true,
     "tokenizer": {
       "tiktoken_encoding": "o200k_base"
     },
