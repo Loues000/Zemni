@@ -127,6 +127,7 @@ export type HistoryEntry = {
   structureHints: string;
   createdAt: number;
   updatedAt: number;
+  folder?: string | null;
   exportedSubject?: string;
   notionPageId?: string;
 };

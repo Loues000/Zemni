@@ -11,6 +11,7 @@ export interface SaveToHistoryParams {
     updateHistoryState: (updater: (prev: HistoryEntry[]) => HistoryEntry[]) => void;
     exportedSubjectTitle?: string;
     notionPageId?: string;
+    folder?: string;
     setCurrentHistoryId?: (id: string | null) => void;
 }
 
@@ -27,6 +28,7 @@ export const saveToHistoryInternal = ({
     updateHistoryState,
     exportedSubjectTitle,
     notionPageId,
+    folder,
     setCurrentHistoryId
 }: SaveToHistoryParams): void => {
     if (!extractedText || Object.keys(outputs).length === 0) return;
@@ -88,7 +90,7 @@ export const saveToHistoryInternal = ({
             structureHints,
             createdAt: existingEntry?.createdAt || now,
             updatedAt: now,
-            folder: existingEntry?.folder,
+            folder: folder ?? existingEntry?.folder ?? null,
             exportedSubject: finalExportedSubject,
             notionPageId: notionPageId || existingEntry?.notionPageId
         };

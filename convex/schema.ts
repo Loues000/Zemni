@@ -19,9 +19,11 @@ export default defineSchema({
     preferredName: v.optional(v.string()),
     customGuidelines: v.optional(v.string()),
     defaultStructureHints: v.optional(v.string()),
+    historyFolders: v.optional(v.array(v.string())),
     notionToken: v.optional(v.string()),
     notionDatabaseId: v.optional(v.string()),
     notionExportMethod: v.optional(v.union(v.literal("database"), v.literal("page"))),
+    autoCreateFoldersFromNotionSubjects: v.optional(v.boolean()),
     isAnonymized: v.optional(v.boolean()),
     anonymizedAt: v.optional(v.number()),
     createdAt: v.number(),
@@ -38,12 +40,14 @@ export default defineSchema({
     structureHints: v.string(),
     createdAt: v.number(),
     updatedAt: v.number(),
+    folder: v.optional(v.union(v.string(), v.null())),
     exportedSubject: v.optional(v.string()),
     notionPageId: v.optional(v.string()),
   })
     .index("by_user_id", ["userId"])
     .index("by_user_id_updated", ["userId", "updatedAt"])
-    .index("by_user_file_content", ["userId", "fileName"]),
+    .index("by_user_file_content", ["userId", "fileName"])
+    .index("by_user_folder_updated", ["userId", "folder", "updatedAt"]),
 
   apiKeys: defineTable({
     userId: v.id("users"),

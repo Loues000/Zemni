@@ -82,6 +82,9 @@ export function useHistory(): UseHistoryReturn {
         outputs: docData.outputs,
         structureHints: docData.structureHints,
       };
+      if (docData.folder !== undefined) {
+        upsertArgs.folder = docData.folder;
+      }
       if (docData.exportedSubject !== undefined) {
         upsertArgs.exportedSubject = docData.exportedSubject;
       }

@@ -10,11 +10,14 @@ import { api } from "@/convex/_generated/api";
 export function NotionTab() {
   const currentUser = useQuery(api.users.getCurrentUser);
   const clearNotionConfig = useMutation(api.users.clearNotionConfig);
+  const updateAutoCreateFolders = useMutation(api.users.updateAutoCreateFoldersFromNotionSubjects);
   
   const [notionToken, setNotionToken] = useState("");
   const [databaseId, setDatabaseId] = useState("");
   const [exportMethod, setExportMethod] = useState<"database" | "page">("database");
+  const [autoCreateFolders, setAutoCreateFolders] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [folderSettingLoading, setFolderSettingLoading] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [hasStoredToken, setHasStoredToken] = useState(false);
 
@@ -27,8 +30,35 @@ export function NotionTab() {
       setHasStoredToken(!!currentUser.notionToken);
       setDatabaseId(currentUser.notionDatabaseId || "");
       setExportMethod(currentUser.notionExportMethod || "database");
+      setAutoCreateFolders(currentUser.autoCreateFoldersFromNotionSubjects ?? false);
     }
   }, [currentUser]);
+
+  /**
+   * Handle toggling the auto-create folders setting.
+   */
+  const handleAutoCreateFoldersToggle = async (enabled: boolean) => {
+    if (!currentUser) return;
+    
+    setFolderSettingLoading(true);
+    try {
+      await updateAutoCreateFolders({ enabled });
+      setAutoCreateFolders(enabled);
+      setMessage({ 
+        type: "success", 
+        text: enabled 
+          ? "Auto-create folders enabled. New folders will be created from Notion subjects when exporting."
+          : "Auto-create folders disabled."
+      });
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Failed to update setting",
+      });
+    } finally {
+      setFolderSettingLoading(false);
+    }
+  };
 
   /**
    * Save or clear Notion settings via API endpoints.
@@ -246,6 +276,34 @@ export function NotionTab() {
             </p>
           </div>
         )}
+
+        <div className="settings-divider" />
+
+        <div className="field">
+          <label className="field-label" style={{ fontSize: "14px" }}>
+            Folder Management
+          </label>
+          <div className="settings-checkbox-row">
+            <label className="settings-checkbox-label">
+              <input
+                type="checkbox"
+                checked={autoCreateFolders}
+                onChange={(e) => handleAutoCreateFoldersToggle(e.target.checked)}
+                disabled={folderSettingLoading || !currentUser?.notionDatabaseId}
+              />
+              <span>Automatically create folders from Notion subjects</span>
+            </label>
+          </div>
+          <p className="field-hint">
+            When enabled, exporting to a Notion subject will automatically create a folder with the subject name 
+            (if it doesn&apos;t exist) and organize your document there.
+          </p>
+          {!currentUser?.notionDatabaseId && (
+            <p className="field-hint" style={{ color: "var(--warning)" }}>
+              Configure a Notion database above to enable this feature.
+            </p>
+          )}
+        </div>
 
         {message && (
           <div className={`settings-notice ${message.type}`}>

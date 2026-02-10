@@ -4,6 +4,8 @@ export * from "./ActivityBar";
 export * from "./CostPreview";
 export * from "./StatsSection";
 export * from "./ExportMenu";
+export * from "./FolderMenu";
+export * from "./QuickSettingsMenu";
 export * from "./Footer";
 export * from "./ModelSelector";
 export * from "./ProviderIcon";

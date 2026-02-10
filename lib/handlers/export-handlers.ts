@@ -7,6 +7,7 @@ export interface NotionConfig {
   token: string | null;
   databaseId: string | null;
   exportMethod: "database" | "page";
+  autoCreateFoldersFromNotionSubjects?: boolean;
 }
 
 export interface ExportHandlersContext {
@@ -29,6 +30,7 @@ export interface ExportHandlersContext {
   setLastExportedPageId: (id: string | null) => void;
   setLoadedFromHistory: (loaded: boolean) => void;
   updateHistoryState: (updater: (prev: any[]) => any[]) => void;
+  addHistoryFolder?: (name: string) => Promise<void>;
 }
 
 /**
@@ -184,6 +186,21 @@ export const handleExport = async (
     const effectiveSubjectId = subjectId || selectedSubject;
     const subjectTitle = subjects.find((s) => s.id === effectiveSubjectId)?.title;
     setLoadedFromHistory(false);
+    
+    // Auto-create folder from Notion subject if enabled
+    let folderName: string | undefined;
+    if (subjectTitle && config?.autoCreateFoldersFromNotionSubjects && useDatabase) {
+      folderName = subjectTitle;
+      // Add folder to user's folders (if it doesn't exist)
+      if (context.addHistoryFolder) {
+        try {
+          await context.addHistoryFolder(folderName);
+        } catch (err) {
+          console.error("[export-handlers] Failed to add folder:", err);
+        }
+      }
+    }
+    
     if (outputs && extractedText && subjectTitle) {
       saveToHistory(
         outputs,
@@ -193,7 +210,8 @@ export const handleExport = async (
         currentHistoryId,
         updateHistoryState,
         subjectTitle,
-        exportedPageId || undefined
+        exportedPageId || undefined,
+        folderName
       );
     }
   } catch (err) {
@@ -214,7 +232,8 @@ const saveToHistory = (
   currentHistoryId: string | null,
   updateHistoryState: (updater: (prev: any[]) => any[]) => void,
   exportedSubjectTitle?: string,
-  notionPageId?: string
+  notionPageId?: string,
+  folder?: string
 ): void => {
   const { saveToHistoryInternal } = require("@/lib/history-utils");
   saveToHistoryInternal({
@@ -225,6 +244,7 @@ const saveToHistory = (
     currentHistoryId,
     updateHistoryState,
     exportedSubjectTitle,
-    notionPageId
+    notionPageId,
+    folder
   });
 };

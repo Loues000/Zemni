@@ -39,6 +39,57 @@ export const list = query({
 });
 
 /**
+ * List documents by folder for current user.
+ */
+export const listByFolder = query({
+  args: {
+    folder: v.union(v.string(), v.null()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return [];
+    }
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_user_id", (q: any) => q.eq("clerkUserId", identity.subject))
+      .first();
+
+    if (!user) {
+      return [];
+    }
+
+    const limit = args.limit ?? 200;
+
+    if (args.folder === null) {
+      const documents = await ctx.db
+        .query("documents")
+        .withIndex("by_user_id_updated", (q: any) => q.eq("userId", user._id))
+        .filter((q) =>
+          q.or(
+            q.eq(q.field("folder"), null),
+            q.eq(q.field("folder"), undefined as unknown as null)
+          )
+        )
+        .order("desc")
+        .take(limit);
+
+      return documents;
+    }
+
+    return await ctx.db
+      .query("documents")
+      .withIndex("by_user_folder_updated", (q: any) =>
+        q.eq("userId", user._id).eq("folder", args.folder)
+      )
+      .order("desc")
+      .take(limit);
+  },
+});
+
+/**
  * Get document by ID
  */
 export const get = query({
@@ -78,6 +129,7 @@ export const upsert = mutation({
     extractedText: v.string(),
     outputs: v.any(),
     structureHints: v.string(),
+    folder: v.optional(v.union(v.string(), v.null())),
     exportedSubject: v.optional(v.string()),
     notionPageId: v.optional(v.string()),
   },
@@ -130,6 +182,7 @@ export const upsert = mutation({
           structureHints: args.structureHints,
           createdAt: now,
           updatedAt: now,
+          ...(args.folder !== undefined ? { folder: args.folder } : {}),
           ...(args.exportedSubject !== undefined ? { exportedSubject: args.exportedSubject } : {}),
           ...(args.notionPageId !== undefined ? { notionPageId: args.notionPageId } : {}),
         });
@@ -143,6 +196,9 @@ export const upsert = mutation({
         structureHints: args.structureHints,
         updatedAt: now,
       };
+      if (args.folder !== undefined) {
+        patch.folder = args.folder;
+      }
       if (args.exportedSubject !== undefined) {
         patch.exportedSubject = args.exportedSubject;
       }
@@ -164,6 +220,7 @@ export const upsert = mutation({
         structureHints: args.structureHints,
         createdAt: now,
         updatedAt: now,
+        ...(args.folder !== undefined ? { folder: args.folder } : {}),
         ...(args.exportedSubject !== undefined ? { exportedSubject: args.exportedSubject } : {}),
         ...(args.notionPageId !== undefined ? { notionPageId: args.notionPageId } : {}),
       });

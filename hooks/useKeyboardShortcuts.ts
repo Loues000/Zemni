@@ -3,10 +3,8 @@ import type { OutputKind } from "@/types";
 
 interface UseKeyboardShortcutsProps {
   sidebarOpen: boolean;
-  settingsOpen: boolean;
   subjectPickerOpen: boolean;
   setSidebarOpen: (open: boolean) => void;
-  setSettingsOpen: (open: boolean) => void;
   setSubjectPickerOpen: (open: boolean) => void;
   fileHandling: { extractedText: string };
   selectedModel: string;
@@ -22,10 +20,8 @@ interface UseKeyboardShortcutsProps {
  */
 export function useKeyboardShortcuts({
   sidebarOpen,
-  settingsOpen,
   subjectPickerOpen,
   setSidebarOpen,
-  setSettingsOpen,
   setSubjectPickerOpen,
   fileHandling,
   selectedModel,
@@ -50,9 +46,6 @@ export function useKeyboardShortcuts({
       if (e.key === "Escape") {
         if (sidebarOpen) {
           setSidebarOpen(false);
-          e.preventDefault();
-        } else if (settingsOpen) {
-          setSettingsOpen(false);
           e.preventDefault();
         } else if (subjectPickerOpen) {
           setSubjectPickerOpen(false);
@@ -108,5 +101,5 @@ export function useKeyboardShortcuts({
     };
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [sidebarOpen, settingsOpen, subjectPickerOpen, fileHandling.extractedText, selectedModel, generatingTabId, currentSummary, isEditing, isEditingSecond, handleGenerate, setSidebarOpen, setSettingsOpen, setSubjectPickerOpen]);
+  }, [sidebarOpen, subjectPickerOpen, fileHandling.extractedText, selectedModel, generatingTabId, currentSummary, isEditing, isEditingSecond, handleGenerate, setSidebarOpen, setSubjectPickerOpen]);
 }

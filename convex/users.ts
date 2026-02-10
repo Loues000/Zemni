@@ -94,6 +94,66 @@ export const getCurrentUser = query({
   },
 });
 
+export const getHistoryFolders = query({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return [];
+    }
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_user_id", (q: any) => q.eq("clerkUserId", identity.subject))
+      .first();
+
+    if (!user) {
+      return [];
+    }
+
+    return user.historyFolders ?? [];
+  },
+});
+
+export const addHistoryFolder = mutation({
+  args: {
+    name: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_user_id", (q: any) => q.eq("clerkUserId", identity.subject))
+      .first();
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    const normalized = args.name.trim();
+    if (!normalized) {
+      return { folders: user.historyFolders ?? [] };
+    }
+
+    const nextFolders = Array.from(new Set([...(user.historyFolders ?? []), normalized]));
+
+    if (nextFolders.length === (user.historyFolders ?? []).length) {
+      return { folders: nextFolders };
+    }
+
+    await ctx.db.patch(user._id, {
+      historyFolders: nextFolders,
+      updatedAt: Date.now(),
+    });
+
+    return { folders: nextFolders };
+  },
+});
+
 export const getUserByClerkUserId = query({
   args: {
     clerkUserId: v.string(),
@@ -358,8 +418,37 @@ export const clearNotionConfig = mutation({
       notionToken: undefined,
       notionDatabaseId: undefined,
       notionExportMethod: undefined,
+      autoCreateFoldersFromNotionSubjects: undefined,
       updatedAt: Date.now(),
     });
+  },
+});
+
+export const updateAutoCreateFoldersFromNotionSubjects = mutation({
+  args: {
+    enabled: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_user_id", (q: any) => q.eq("clerkUserId", identity.subject))
+      .first();
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    await ctx.db.patch(user._id, {
+      autoCreateFoldersFromNotionSubjects: args.enabled,
+      updatedAt: Date.now(),
+    });
+
+    return { enabled: args.enabled };
   },
 });
 

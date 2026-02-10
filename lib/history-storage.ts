@@ -14,7 +14,8 @@ export const isHistoryEntry = (value: unknown): value is HistoryEntry => {
     typeof entry.createdAt === "number" &&
     typeof entry.updatedAt === "number" &&
     typeof entry.outputs === "object" &&
-    entry.outputs !== null
+    entry.outputs !== null &&
+    (entry.folder === undefined || entry.folder === null || typeof entry.folder === "string")
   );
 };
 
@@ -62,6 +63,7 @@ export function documentToHistoryEntry(doc: {
   structureHints: string;
   createdAt: number;
   updatedAt: number;
+  folder?: string | null;
   exportedSubject?: string;
   notionPageId?: string;
 }): HistoryEntry {
@@ -74,6 +76,7 @@ export function documentToHistoryEntry(doc: {
     structureHints: doc.structureHints,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
+    folder: doc.folder,
     exportedSubject: doc.exportedSubject,
     notionPageId: doc.notionPageId,
   };
@@ -88,6 +91,7 @@ export function historyEntryToDocument(entry: HistoryEntry, userId: string): {
   structureHints: string;
   createdAt: number;
   updatedAt: number;
+  folder?: string | null;
   exportedSubject?: string;
   notionPageId?: string;
 } {
@@ -99,6 +103,7 @@ export function historyEntryToDocument(entry: HistoryEntry, userId: string): {
     structureHints: entry.structureHints,
     createdAt: entry.createdAt,
     updatedAt: entry.updatedAt,
+    folder: entry.folder,
     exportedSubject: entry.exportedSubject,
     notionPageId: entry.notionPageId,
   };

@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState, lazy, Suspense, useCallback } from "react";
 import { useChat } from "ai/react";
-import { useRouter } from "next/navigation";
-import { useQuery } from "convex/react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import {
   HistorySidebar,
@@ -21,7 +21,7 @@ import {
 const SummaryPreview = lazy(() => import("@/components/features/SummaryPreview.tsx").then(m => ({ default: m.SummaryPreview })));
 const FlashcardsMode = lazy(() => import("@/components/features/FlashcardsMode.tsx").then(m => ({ default: m.FlashcardsMode })));
 const QuizMode = lazy(() => import("@/components/features/QuizMode.tsx").then(m => ({ default: m.QuizMode })));
-import { ActivityBar, CostPreview, StatsSection, IconMenu, IconSun, IconMoon, IconSettings, LoginPromptBanner } from "@/components/ui";
+import { ActivityBar, CostPreview, StatsSection, FolderMenu, IconMenu, LoginPromptBanner, IconSettings } from "@/components/ui";
 
 import { ClerkSignedIn, ClerkSignedOut, ClerkSignInButton } from "@/components/auth/ClerkWrapper";
 import { UserButton, useUser } from "@clerk/nextjs";
@@ -53,12 +53,24 @@ import { handleRefineSubmit, handleCopySummary, handleCopySummarySecond, handleE
 import { createSummaryContext } from "@/lib/handlers/summary-context";
 import { useSummaryWrappers } from "@/lib/handlers/summary-wrappers";
 import { handleRetryGeneration } from "@/lib/handlers/retry-handlers";
+import { exportHistoryAsZip } from "@/lib/export-history-zip";
+import { ALL_FOLDERS, getFolderNames, normalizeFolder, UNSORTED_FOLDER } from "@/lib/history-folders";
+import { encodeFolderSlug, UNSORTED_FOLDER_SLUG } from "@/lib/folder-slug";
 
 /**
  * Root client component wiring global app state and layout.
  */
 export default function AppClient() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  
+  // Handle ?document= query param to load a document
+  const documentIdFromUrl = searchParams.get("document");
+  const documentFromUrl = useQuery(
+    api.documents.get,
+    documentIdFromUrl ? { documentId: documentIdFromUrl as any } : "skip"
+  );
+  
   // Core app state
   const appState = useAppState();
   const {
@@ -100,17 +112,18 @@ export default function AppClient() {
 
   // UI state
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [currentHistoryId, setCurrentHistoryId] = useState<string | null>(null);
   const [loadedFromHistory, setLoadedFromHistory] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
   const [copySuccessSecond, setCopySuccessSecond] = useState(false);
   const [tabToDelete, setTabToDelete] = useState<string | null>(null);
   const [mobileView, setMobileView] = useState<"input" | "output">("input");
+  const [historyFolderFilter, setHistoryFolderFilter] = useState(ALL_FOLDERS);
 
   // User and subscription state
   const { user: clerkUser } = useUser();
   const currentUser = useQuery(api.users.getCurrentUser);
+  const addHistoryFolder = useMutation(api.users.addHistoryFolder);
   const subscriptionTier = currentUser?.subscriptionTier || "free";
   const preferredName = currentUser?.preferredName || clerkUser?.fullName || null;
   const useOwnKeyPreference = useQuery(api.apiKeys.getUseOwnKeyPreference);
@@ -146,8 +159,6 @@ export default function AppClient() {
   const previewRef2 = useRef<HTMLDivElement | null>(null);
   const isScrolling = useRef<boolean>(false);
   const refineTargetRef = useRef<string>("");
-  const settingsMenuRef = useRef<HTMLDivElement | null>(null);
-  const settingsButtonRef = useRef<HTMLButtonElement | null>(null);
 
   // History and token estimation
   const { 
@@ -325,7 +336,7 @@ export default function AppClient() {
   }, [tempExportProgress, exportHook]);
 
   // History management
-  const { saveToHistory, loadFromHistory, deleteHistoryEntry } = useHistoryManagement({
+  const { saveToHistory, loadFromHistory, deleteHistoryEntry, moveHistoryEntry } = useHistoryManagement({
     fileHandling,
     outputs,
     structureHints,
@@ -352,8 +363,56 @@ export default function AppClient() {
     setSaveError: (err) => {
       if (err) console.error("[App] Save error:", err);
     },
-    currentUser // Pass currentUser so saves can be queued until user is ready
-  });
+      currentUser // Pass currentUser so saves can be queued until user is ready
+    });
+
+    const handleExportHistoryEntry = useCallback((entry: HistoryEntry) => {
+      exportHistoryAsZip([entry]).catch((error) => {
+        console.error("[App] Failed to export history entry:", error);
+      });
+    }, []);
+
+  const folderNames = useMemo(
+    () => getFolderNames(history, currentUser?.historyFolders),
+    [history, currentUser?.historyFolders]
+  );
+
+  const handleFolderFilterChange = useCallback((folder: string) => {
+    setHistoryFolderFilter(folder);
+  }, []);
+
+  const handleCreateFolder = useCallback((name: string) => {
+    const normalized = normalizeFolder(name);
+    if (!normalized) return;
+    if (!folderNames.includes(normalized) && currentUser) {
+      addHistoryFolder({ name: normalized }).catch((error) => {
+        console.error("[App] Failed to add history folder:", error);
+      });
+    }
+  }, [addHistoryFolder, currentUser, folderNames]);
+
+  const handleMoveHistoryEntry = useCallback((id: string, folder: string | null) => {
+    moveHistoryEntry(id, folder);
+
+    const normalized = normalizeFolder(folder);
+    if (!normalized || !currentUser) return;
+    if (!folderNames.includes(normalized)) {
+      addHistoryFolder({ name: normalized }).catch((error) => {
+        console.error("[App] Failed to add history folder:", error);
+      });
+    }
+  }, [addHistoryFolder, currentUser, folderNames, moveHistoryEntry]);
+
+  // Navigate to folder page
+  const handleNavigateToFolder = useCallback((folder: string) => {
+    if (folder === ALL_FOLDERS) {
+      router.push("/");
+    } else if (folder === UNSORTED_FOLDER) {
+      router.push(`/folders/${UNSORTED_FOLDER_SLUG}`);
+    } else {
+      router.push(`/folders/${encodeFolderSlug(folder)}`);
+    }
+  }, [router]);
 
   // Quiz state
   const quizState = useQuizState(
@@ -380,6 +439,30 @@ export default function AppClient() {
     generatingTabId,
     !loadedFromHistory // Don't persist when loading from history
   );
+  // Handle loading document from URL ?document= param
+  useEffect(() => {
+    if (!documentFromUrl || !documentIdFromUrl) return;
+
+    // Convert document to HistoryEntry and load it
+    const historyEntry: HistoryEntry = {
+      id: documentIdFromUrl,
+      title: documentFromUrl.title,
+      fileName: documentFromUrl.fileName,
+      extractedText: documentFromUrl.extractedText,
+      outputs: (documentFromUrl.outputs as Record<string, import("@/types").OutputEntry>) || {},
+      structureHints: documentFromUrl.structureHints,
+      createdAt: documentFromUrl.createdAt,
+      updatedAt: documentFromUrl.updatedAt,
+      folder: documentFromUrl.folder ?? null,
+      exportedSubject: documentFromUrl.exportedSubject,
+      notionPageId: documentFromUrl.notionPageId,
+    };
+
+    loadFromHistory(historyEntry);
+
+    // Clear the document param from URL
+    router.replace("/");
+  }, [documentFromUrl, documentIdFromUrl, loadFromHistory, router]);
   const { restoreSession, clearSession } = sessionPersistence;
 
   // Restore session state on mount (only if not loading from history and coming from settings)
@@ -560,39 +643,6 @@ export default function AppClient() {
     };
   }, [sidebarOpen, subjectPickerOpen, tabToDelete]);
 
-  useEffect(() => {
-    if (!settingsOpen) return;
-
-    /**
-     * Close settings when clicking outside the settings menu and button.
-     */
-    const onPointerDown = (e: PointerEvent) => {
-      const menu = settingsMenuRef.current;
-      const button = settingsButtonRef.current;
-      if (!menu || !button) return;
-      if (menu.contains(e.target as Node) || button.contains(e.target as Node)) {
-        return;
-      }
-      setSettingsOpen(false);
-    };
-
-    /**
-     * Close settings when Escape is pressed.
-     */
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setSettingsOpen(false);
-      }
-    };
-
-    window.addEventListener("pointerdown", onPointerDown);
-    window.addEventListener("keydown", onKeyDown);
-    return () => {
-      window.removeEventListener("pointerdown", onPointerDown);
-      window.removeEventListener("keydown", onKeyDown);
-    };
-  }, [settingsOpen]);
-
   // Refine effects
   useRefineEffects({
     chatConfig,
@@ -632,10 +682,8 @@ export default function AppClient() {
   // Keyboard shortcuts
   useKeyboardShortcuts({
     sidebarOpen,
-    settingsOpen,
     subjectPickerOpen,
     setSidebarOpen,
-    setSettingsOpen,
     setSubjectPickerOpen,
     fileHandling,
     selectedModel,
@@ -789,39 +837,45 @@ export default function AppClient() {
 
   return (
     <div className="app">
-      <HistorySidebar
-        isOpen={sidebarOpen}
-        history={history}
-        currentHistoryId={currentHistoryId}
-        onClose={() => setSidebarOpen(false)}
-        onSelectEntry={loadFromHistory}
-        onDeleteEntry={deleteHistoryEntry}
-        footer={
-          <>
-            <ClerkSignedIn>
-              <button
-                type="button"
-                className="sidebar-user-button"
-                onClick={() => navigateToSettings("/settings")}
-              >
-                <UserButton afterSignOutUrl="/" />
-                <div className="sidebar-user-info">
-                  <span className="sidebar-user-name">{preferredName || "User"}</span>
-                  <span className="sidebar-user-tier">{subscriptionTier}</span>
-                </div>
-              </button>
-            </ClerkSignedIn>
-            <ClerkSignedOut>
-              <ClerkSignInButton mode="modal">
-                <button type="button" className="sidebar-user-button">
-                  <span className="sidebar-user-avatar">?</span>
-                  <span>Login</span>
+        <HistorySidebar
+          isOpen={sidebarOpen}
+          history={history}
+          currentHistoryId={currentHistoryId}
+          onClose={() => setSidebarOpen(false)}
+          onSelectEntry={loadFromHistory}
+          onDeleteEntry={deleteHistoryEntry}
+          folderNames={folderNames}
+          selectedFolder={historyFolderFilter}
+          onFolderChange={handleFolderFilterChange}
+          onExportEntry={handleExportHistoryEntry}
+          onMoveEntry={handleMoveHistoryEntry}
+          footer={
+            <>
+              <ClerkSignedIn>
+                <button
+                  type="button"
+                  className="sidebar-user-button"
+                  onClick={() => navigateToSettings("/settings")}
+                >
+                  <UserButton afterSignOutUrl="/" />
+                  <div className="sidebar-user-info">
+                    <span className="sidebar-user-name">{preferredName || "User"}</span>
+                    <span className="sidebar-user-tier">{subscriptionTier}</span>
+                  </div>
                 </button>
-              </ClerkSignInButton>
-            </ClerkSignedOut>
-          </>
-        }
-      />
+              </ClerkSignedIn>
+              <ClerkSignedOut>
+                <ClerkSignInButton mode="modal">
+                  <button type="button" className="sidebar-user-button">
+                    <span className="sidebar-user-avatar">?</span>
+                    <span>Login</span>
+                  </button>
+                </ClerkSignInButton>
+              </ClerkSignedOut>
+
+            </>
+          }
+        />
 
       <div className="main">
 
@@ -905,53 +959,17 @@ export default function AppClient() {
                   </button>
                 }
                 topBarRight={
-                  <div className={`quick-menu${settingsOpen ? " open" : ""}`} ref={settingsMenuRef}>
-                    <button
-                      ref={settingsButtonRef}
-                      type="button"
-                      className="input-bar-btn"
-                      onClick={() => setSettingsOpen((prev) => !prev)}
-                      aria-label="Open quick settings"
-                      aria-expanded={settingsOpen}
-                      title="Quick settings"
-                    >
-                      <IconSettings />
-                      <span className="input-bar-btn-label">Settings</span>
-                    </button>
-                    {settingsOpen && (
-                      <div className="quick-menu-dropdown" role="menu" aria-label="Quick settings">
-                        <div className="quick-menu-header">
-                          <span>Quick Settings</span>
-                        </div>
-                        <button
-                          type="button"
-                          className="quick-menu-item"
-                          role="menuitem"
-                          onClick={() => {
-                            setTheme(theme === "dark" ? "light" : "dark");
-                          }}
-                        >
-                          <span className="quick-menu-item-icon">🌓</span>
-                          <span>Theme</span>
-                          <span className="quick-menu-item-meta">{theme === "dark" ? "Dark" : "Light"}</span>
-                        </button>
-                        <div className="quick-menu-divider" />
-                        <button
-                          type="button"
-                          className="quick-menu-item"
-                          role="menuitem"
-                          onClick={() => {
-                            setSettingsOpen(false);
-                            navigateToSettings("/settings");
-                          }}
-                        >
-                          <span className="quick-menu-item-icon">⚙️</span>
-                          <span>All Settings</span>
-                          <span className="quick-menu-item-arrow">→</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                  <FolderMenu
+                    folders={folderNames}
+                    selectedFolder={historyFolderFilter}
+                    onSelectFolder={handleNavigateToFolder}
+                    onCreateFolder={handleCreateFolder}
+                    onOpenSidebar={() => setSidebarOpen(true)}
+                    variant="input"
+                    buttonClassName="input-bar-btn folder-menu-btn"
+                    showAll={false}
+                    showUnsorted={true}
+                  />
                 }
                 dropzoneCorner={
                   <span
@@ -1000,56 +1018,27 @@ export default function AppClient() {
               showStructureHints={outputKind === "summary"}
               dragActive={fileHandling.dragActive}
               topBarLeft={
-                <button
-                  type="button"
-                  className="sidebar-toggle-input"
-                  onClick={() => setSidebarOpen(!sidebarOpen)}
-                  aria-label="Open history"
-                  title="History"
-                >
-                  <IconMenu />
-                </button>
-              }
-              topBarRight={
-                <div className={`settings-float${settingsOpen ? " open" : ""}`} ref={settingsMenuRef}>
+                <div className="topbar-left-group">
                   <button
-                    ref={settingsButtonRef}
                     type="button"
-                    className="icon-btn settings-btn"
-                    onClick={() => setSettingsOpen((prev) => !prev)}
-                    aria-label="Open quick settings"
-                    aria-expanded={settingsOpen}
-                    title="Quick settings"
+                    className="sidebar-toggle-input"
+                    onClick={() => setSidebarOpen(!sidebarOpen)}
+                    aria-label="Open history"
+                    title="History"
                   >
-                    <IconSettings />
+                    <IconMenu />
                   </button>
-                  {settingsOpen && (
-                    <div className="settings-popover" role="menu" aria-label="Quick settings">
-                      <div className="settings-popover-section">Quick settings</div>
-                      <button
-                        type="button"
-                        className="settings-popover-item"
-                        role="menuitem"
-                        onClick={() => {
-                          setTheme(theme === "dark" ? "light" : "dark");
-                        }}
-                      >
-                        <span>Theme</span>
-                        <span className="settings-popover-meta">{theme === "dark" ? "Dark" : "Light"}</span>
-                      </button>
-                      <button
-                        type="button"
-                        className="settings-popover-item"
-                        role="menuitem"
-                        onClick={() => {
-                          setSettingsOpen(false);
-                          navigateToSettings("/settings");
-                        }}
-                      >
-                        <span>Settings</span>
-                      </button>
-                    </div>
-                  )}
+                  <FolderMenu
+                    folders={folderNames}
+                    selectedFolder={historyFolderFilter}
+                    onSelectFolder={handleNavigateToFolder}
+                    onCreateFolder={handleCreateFolder}
+                    onOpenSidebar={() => setSidebarOpen(true)}
+                    variant="icon"
+                    buttonClassName="sidebar-toggle-input folder-toggle-input"
+                    showAll={false}
+                    showUnsorted={true}
+                  />
                 </div>
               }
               dropzoneCorner={
@@ -1198,6 +1187,15 @@ export default function AppClient() {
                     </>
                   );
                 })()}
+                <button
+                  type="button"
+                  className="icon-btn"
+                  onClick={() => navigateToSettings("/settings")}
+                  aria-label="Settings"
+                  title="Settings"
+                >
+                  <IconSettings />
+                </button>
               </div>
             </div>
             <ActivityBar 
@@ -1329,3 +1327,4 @@ export default function AppClient() {
     </div>
   );
 }
+

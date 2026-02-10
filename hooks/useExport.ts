@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { OutputKind, Status, Subject } from "@/types";
 import { handleExport as handleExportHandler, handleSubjectPicked as handleSubjectPickedHandler, type ExportHandlersContext, type NotionConfig } from "@/lib/handlers/export-handlers";
@@ -38,6 +38,7 @@ export function useExport(
   updateHistoryState: (updater: (prev: HistoryEntry[]) => HistoryEntry[]) => void
 ): UseExportReturn {
   const currentUser = useQuery(api.users.getCurrentUser);
+  const addHistoryFolder = useMutation(api.users.addHistoryFolder);
   const [exportProgress, setExportProgress] = useState<{ current: number; total: number } | null>(null);
   const [lastExportedPageId, setLastExportedPageId] = useState<string | null>(null);
   const [subjectPickerOpen, setSubjectPickerOpen] = useState(false);
@@ -53,6 +54,7 @@ export function useExport(
       token: currentUser.notionToken,
       databaseId: currentUser.notionDatabaseId || null,
       exportMethod: currentUser.notionExportMethod || "database",
+      autoCreateFoldersFromNotionSubjects: currentUser.autoCreateFoldersFromNotionSubjects ?? false,
     };
   }, [currentUser]);
 
@@ -75,7 +77,14 @@ export function useExport(
     setExportProgress,
     setLastExportedPageId,
     setLoadedFromHistory,
-    updateHistoryState
+    updateHistoryState,
+    addHistoryFolder: async (name: string) => {
+      try {
+        await addHistoryFolder({ name });
+      } catch (err) {
+        console.error("[useExport] Failed to add history folder:", err);
+      }
+    },
   };
 
   const handleExport = useCallback(async (overrideSubjectId?: string) => {
