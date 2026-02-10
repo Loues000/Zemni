@@ -2,7 +2,7 @@ import type { OutputEntry, Status, QuizQuestion, DocumentSection, QuizAnswerStat
 import { renderQuizPreview } from "@/lib/output-previews";
 import { estimateQuizQuestions } from "@/lib/study-heuristics";
 import { postJson } from "@/lib/utils/api-helpers";
-import { getQuizAnswerState, getQuizQuestionKey } from "@/lib/utils/quiz-state";
+import { getQuizAnswerState, getQuizQuestionKey, shuffleAllQuizOptions } from "@/lib/utils/quiz-state";
 const QUIZ_MORE_BATCH_SIZE = 8;
 
 export interface QuizHandlersContext {
@@ -174,7 +174,8 @@ export const handleQuizNext = async (context: QuizHandlersContext): Promise<void
     setOutputs((prev) => {
       const existing = prev[selectedTabId];
       if (!existing || existing.kind !== "quiz" || !existing.quizState) return prev;
-      const appended = data.questions ?? [];
+      // Shuffle options for new questions to randomize correct answer position
+      const appended = shuffleAllQuizOptions(data.questions ?? []);
       const cursor = (existing.quiz ?? []).length;
       const nextQuestion = [...(existing.quiz ?? []), ...appended][cursor];
       const answerState = getQuizAnswerState(existing.quizState, nextQuestion, cursor);

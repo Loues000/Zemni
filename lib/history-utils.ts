@@ -1,5 +1,5 @@
 import type { HistoryEntry, OutputEntry } from "@/types";
-import { getSummaryTitle, createPdfId } from "@/lib/output-previews";
+import { getSummaryTitle, getFlashcardsTitle, getQuizTitle, createPdfId } from "@/lib/output-previews";
 import { getDocumentTitle } from "@/lib/document-title";
 
 export interface SaveToHistoryParams {
@@ -32,10 +32,29 @@ export const saveToHistoryInternal = ({
     if (!extractedText || Object.keys(outputs).length === 0) return;
 
     const derivedTitle = getDocumentTitle(extractedText, fileName);
+    
+    // Generate title based on available outputs (summary > flashcards > quiz > fallback)
+    let title = derivedTitle;
     const summaryTab = Object.values(outputs).find(
         (o) => (o.kind ?? "summary") === "summary" && (o.summary ?? "").trim().length > 0
     );
-    const title = summaryTab ? getSummaryTitle(summaryTab.summary ?? "", derivedTitle) : derivedTitle;
+    if (summaryTab) {
+        title = getSummaryTitle(summaryTab.summary ?? "", derivedTitle);
+    } else {
+        const flashcardsTab = Object.values(outputs).find(
+            (o) => o.kind === "flashcards" && (o.flashcards ?? []).length > 0
+        );
+        if (flashcardsTab) {
+            title = getFlashcardsTitle(flashcardsTab.flashcards ?? [], fileName, derivedTitle);
+        } else {
+            const quizTab = Object.values(outputs).find(
+                (o) => o.kind === "quiz" && (o.quiz ?? []).length > 0
+            );
+            if (quizTab) {
+                title = getQuizTitle(quizTab.quiz ?? [], fileName, derivedTitle);
+            }
+        }
+    }
     const pdfId = createPdfId(fileName || "untitled", extractedText);
     const now = Date.now();
 
@@ -69,6 +88,7 @@ export const saveToHistoryInternal = ({
             structureHints,
             createdAt: existingEntry?.createdAt || now,
             updatedAt: now,
+            folder: existingEntry?.folder,
             exportedSubject: finalExportedSubject,
             notionPageId: notionPageId || existingEntry?.notionPageId
         };

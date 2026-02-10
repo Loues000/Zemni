@@ -88,15 +88,34 @@ export function useHistoryManagement({
     // If we have async save capability, also save to Convex
     if (saveEntryToConvex && fileHandling.extractedText && Object.keys(outputsToSave || outputs).length > 0) {
       const { getDocumentTitle } = require("@/lib/document-title");
-      const { getSummaryTitle, createPdfId } = require("@/lib/output-previews");
+      const { getSummaryTitle, getFlashcardsTitle, getQuizTitle, createPdfId } = require("@/lib/output-previews");
 
       // Build the entry that was just saved
       const currentOutputs = outputsToSave || outputs;
       const derivedTitle = getDocumentTitle(fileHandling.extractedText, fileHandling.fileName);
+      
+      // Generate title based on available outputs (summary > flashcards > quiz > fallback)
+      let title = derivedTitle;
       const summaryTab = Object.values(currentOutputs).find(
         (o) => (o.kind ?? "summary") === "summary" && (o.summary ?? "").trim().length > 0
       );
-      const title = summaryTab ? getSummaryTitle(summaryTab.summary ?? "", derivedTitle) : derivedTitle;
+      if (summaryTab) {
+        title = getSummaryTitle(summaryTab.summary ?? "", derivedTitle);
+      } else {
+        const flashcardsTab = Object.values(currentOutputs).find(
+          (o) => o.kind === "flashcards" && (o.flashcards ?? []).length > 0
+        );
+        if (flashcardsTab) {
+          title = getFlashcardsTitle(flashcardsTab.flashcards ?? [], fileHandling.fileName, derivedTitle);
+        } else {
+          const quizTab = Object.values(currentOutputs).find(
+            (o) => o.kind === "quiz" && (o.quiz ?? []).length > 0
+          );
+          if (quizTab) {
+            title = getQuizTitle(quizTab.quiz ?? [], fileHandling.fileName, derivedTitle);
+          }
+        }
+      }
       const pdfId = createPdfId(fileHandling.fileName || "untitled", fileHandling.extractedText);
       const now = Date.now();
 
@@ -157,14 +176,32 @@ export function useHistoryManagement({
     }
   }, [fileHandling, setOutputs, setStructureHints, setCurrentHistoryId, setLoadedFromHistory, setError, setSidebarOpen, isSmallScreen, setMobileView, setIsEditing, setIsEditingSecond, setSecondTabId, exportHook, setMessages, setInput, setData, setSelectedTabId, setSelectedModel]);
 
-  const deleteHistoryEntry = useCallback((id: string, event: React.MouseEvent): void => {
-    event.stopPropagation();
+  const deleteHistoryEntry = useCallback((id: string, event?: React.MouseEvent): void => {
+    event?.stopPropagation();
     updateHistoryState((prev) => prev.filter((entry) => entry.id !== id));
+  }, [updateHistoryState]);
+
+  const moveHistoryEntry = useCallback((id: string, folder: string | null): void => {
+    const normalizedFolder = folder && folder.trim().length > 0 ? folder.trim() : null;
+    updateHistoryState((prev) => {
+      const now = Date.now();
+      return prev.map((entry) => {
+        if (entry.id !== id) return entry;
+        const currentFolder = entry.folder ?? null;
+        if (currentFolder === normalizedFolder) return entry;
+        return {
+          ...entry,
+          folder: normalizedFolder,
+          updatedAt: now,
+        };
+      });
+    });
   }, [updateHistoryState]);
 
   return {
     saveToHistory,
     loadFromHistory,
-    deleteHistoryEntry
+    deleteHistoryEntry,
+    moveHistoryEntry,
   };
 }

@@ -9,6 +9,32 @@ export const getSummaryTitle = (summary: string, fallback: string): string => {
   return fallback;
 };
 
+/**
+ * Generate a title for flashcards output.
+ */
+export const getFlashcardsTitle = (cards: Flashcard[], fileName: string, fallback: string): string => {
+  if (cards.length > 0) {
+    const firstCard = cards[0];
+    if (firstCard?.sectionTitle) {
+      return firstCard.sectionTitle;
+    }
+  }
+  return fileName || fallback;
+};
+
+/**
+ * Generate a title for quiz output.
+ */
+export const getQuizTitle = (questions: QuizQuestion[], fileName: string, fallback: string): string => {
+  if (questions.length > 0) {
+    const firstQuestion = questions[0];
+    if (firstQuestion?.sectionTitle) {
+      return firstQuestion.sectionTitle;
+    }
+  }
+  return fileName || fallback;
+};
+
 export const createPdfId = (fileName: string, extractedText: string): string => {
   const content = fileName + ":" + extractedText.slice(0, 1000);
   let hash = 0;

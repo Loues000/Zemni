@@ -6,6 +6,7 @@ import { createDocHash, createCacheKey, getCachedResult, setCachedResult, type C
 import { retryWithBackoff, isRetryableError } from "@/lib/utils/retry";
 import { formatErrorMessage, getErrorInfo, isRetryableErrorMessage } from "@/lib/utils/error-messages";
 import { getModelPerformanceConfig } from "@/lib/ai-performance";
+import { shuffleAllQuizOptions } from "@/lib/utils/quiz-state";
 
 const QUIZ_INITIAL_BATCH_CAP = 12;
 
@@ -256,10 +257,12 @@ export const handleGenerate = async (context: GenerationHandlersContext): Promis
       setOutputs((prev) => {
         const existing = prev[tabId];
         if (!existing) return prev;
+        // Shuffle options to randomize correct answer position
+        const shuffledQuestions = shuffleAllQuizOptions(data.questions ?? []);
         const next: OutputEntry = {
           ...existing,
           error: undefined,
-          quiz: data.questions ?? [],
+          quiz: shuffledQuestions,
           usage: data.usage ?? null,
           updatedAt: Date.now(),
           isGenerating: false,
