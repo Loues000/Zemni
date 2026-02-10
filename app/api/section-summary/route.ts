@@ -5,7 +5,7 @@ import { loadModels } from "@/lib/models";
 import { buildUsageStats } from "@/lib/usage";
 import { enforceOutputFormat } from "@/lib/format-output";
 import { buildChunkNotesPrompts, buildSectionSummaryPrompts } from "@/lib/study-prompts";
-import { isAbortError, mapWithConcurrency, splitTextIntoChunks, sumUsage } from "@/lib/ai-performance";
+import { createTimeoutController, getModelPerformanceConfig, isAbortError, mapWithConcurrency, splitTextIntoChunks, sumUsage } from "@/lib/ai-performance";
 import { getUserContext, checkModelAvailability, getApiKeyToUse, getApiKeyForModel } from "@/lib/api-helpers";
 import { isModelAvailable } from "@/lib/models";
 import { generateWithProvider, type ProviderInfo } from "@/lib/providers";
@@ -25,13 +25,22 @@ const generateWithTimeout = async (
   openrouterClient: ReturnType<typeof createOpenRouterClient> | null,
   options: { maxTokens?: number; temperature?: number; maxRetries?: number; timeoutMs: number; apiId?: string }
 ): Promise<{ text: string; usage: LanguageModelUsage | undefined }> => {
-  let timeoutId: NodeJS.Timeout | null = null;
+  const timeout = createTimeoutController(options.timeoutMs);
+  const abortSignal = timeout.signal;
+  let abortHandler: (() => void) | null = null;
   const timeoutPromise = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(() => {
+    abortHandler = () => {
       const err = new Error("Timeout");
       err.name = "AbortError";
       reject(err);
-    }, options.timeoutMs);
+    };
+
+    if (abortSignal.aborted) {
+      abortHandler();
+      return;
+    }
+
+    abortSignal.addEventListener("abort", abortHandler, { once: true });
   });
 
   const isUsingOwnKey = apiKeys.length > 0 && apiKeys.some(k => k.isOwnKey);
@@ -44,6 +53,7 @@ const generateWithTimeout = async (
           maxTokens: options.maxTokens,
           temperature: options.temperature,
           maxRetries: options.maxRetries,
+          signal: abortSignal,
         }),
         timeoutPromise,
       ]);
@@ -56,6 +66,7 @@ const generateWithTimeout = async (
           maxTokens: options.maxTokens,
           temperature: options.temperature,
           maxRetries: options.maxRetries,
+          abortSignal,
         }),
         timeoutPromise,
       ]);
@@ -72,10 +83,10 @@ const generateWithTimeout = async (
     }
     throw err;
   } finally {
-    // Clear timeout to prevent unhandled promise rejections
-    if (timeoutId !== null) {
-      clearTimeout(timeoutId);
+    if (abortHandler) {
+      abortSignal.removeEventListener("abort", abortHandler);
     }
+    timeout.cancel();
   }
 };
 
@@ -183,6 +194,9 @@ export async function POST(request: Request) {
   const start = Date.now();
 
   const totalChars = sections.reduce((acc, s) => acc + (s.text?.length ?? 0), 0);
+  const perfConfig = getModelPerformanceConfig(modelId, totalChars);
+  const notesTimeoutMs = Math.max(NOTES_CALL_TIMEOUT_MS, Math.floor(perfConfig.timeoutMs * 0.7));
+  const finalTimeoutMs = Math.max(FINAL_CALL_TIMEOUT_MS, perfConfig.timeoutMs);
 
   const shouldChunk =
     totalChars > CHUNKING_THRESHOLD_CHARS ||
@@ -217,7 +231,7 @@ export async function POST(request: Request) {
         maxTokens,
         temperature: 0.1,
         maxRetries: 1,
-        timeoutMs: FINAL_CALL_TIMEOUT_MS,
+        timeoutMs: finalTimeoutMs,
       }
     );
     return { text: result.text, usage: result.usage };
@@ -265,7 +279,7 @@ export async function POST(request: Request) {
             maxTokens: allowUnlimitedOutput ? undefined : 950,
             temperature: 0.2,
             maxRetries: 1,
-            timeoutMs: NOTES_CALL_TIMEOUT_MS,
+            timeoutMs: notesTimeoutMs,
           }
         );
         return { section: noteSection, notes: result.text, usage: result.usage };
@@ -310,7 +324,7 @@ export async function POST(request: Request) {
         maxTokens,
         temperature: 0.1,
         maxRetries: 1,
-        timeoutMs: FINAL_CALL_TIMEOUT_MS,
+        timeoutMs: finalTimeoutMs,
       }
     );
     return { text: result.text, usage: result.usage };

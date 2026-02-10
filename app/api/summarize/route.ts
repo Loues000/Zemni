@@ -6,7 +6,7 @@ import { buildSummaryPrompts } from "@/lib/prompts";
 import { loadModels } from "@/lib/models";
 import { buildUsageStats } from "@/lib/usage";
 import { enforceOutputFormat } from "@/lib/format-output";
-import { createTimeoutController, isAbortError } from "@/lib/ai-performance";
+import { createTimeoutController, getModelPerformanceConfig, isAbortError } from "@/lib/ai-performance";
 import { getUserContext, checkModelAvailability, getApiKeyToUse, getApiKeyForModel } from "@/lib/api-helpers";
 import { generateWithProvider, type ProviderInfo } from "@/lib/providers";
 import { isModelAvailable } from "@/lib/models";
@@ -16,9 +16,7 @@ import { validateTextLength, validateStructureHints, validateModelId } from "@/l
 import { getConvexClient } from "@/lib/convex-server";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
-
-const MODEL_CALL_TIMEOUT_MS = 70_000;
+export const maxDuration = 300;
 
 export async function POST(request: Request) {
   const { userId: clerkUserId, getToken } = await auth();
@@ -150,9 +148,10 @@ export async function POST(request: Request) {
   const customGuidelines = userContext?.customGuidelines;
   const { systemPrompt, userPrompt } = await buildSummaryPrompts(text, structure, userLanguage, customGuidelines);
   const start = Date.now();
+  const perfConfig = getModelPerformanceConfig(modelId, text.length);
 
   let result: { text: string; usage: any; costInUsd?: number };
-  const timeout = createTimeoutController(MODEL_CALL_TIMEOUT_MS);
+  const timeout = createTimeoutController(perfConfig.timeoutMs);
 
   try {
     if (isOwnKey && modelApiKeyInfo) {
