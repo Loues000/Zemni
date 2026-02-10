@@ -224,12 +224,6 @@
     }
   },
   {
-    "id": "moonshotai/kimi-k2.5",
-    "display_name": "Kimi K2.5",
-    "tokenizer": { "tiktoken_encoding": "cl100k_base" },
-    "pricing": { "currency": "USD", "input_per_1m": 0.6, "output_per_1m": 3 }
-  },
-  {
     "id": "deepseek/deepseek-v3.2",
     "display_name": "DeepSeek V3.2",
     "subscription_tier": "basic",
