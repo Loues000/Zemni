@@ -45,7 +45,7 @@ Zemni is an intelligent study companion that helps you prepare for exams by conv
 
 3. **Set up your environment**
    - Copy `.env.example` to `.env.local`
-   - Fill in the required variables (see [Environment Variables Guide](docs/environment-variables.md))
+   - Fill in the required variables (see [Environment Variables Guide](environment-variables.md))
    - You'll need accounts for:
      - [Convex](https://convex.dev) (free tier available) - Database
      - [Clerk](https://clerk.com) (free tier available) - Authentication

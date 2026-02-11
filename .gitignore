@@ -58,10 +58,6 @@ CLAUDE.md
 # Local-only scratch/data (keep ignored)
 data/
 tasks/
-docs/
 old_guidelines.md
 benchmark/results/
-
-# User guide (setup instructions)
-user_guide.md
 
