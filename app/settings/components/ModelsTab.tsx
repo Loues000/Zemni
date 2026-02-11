@@ -90,6 +90,7 @@ function getModelDescription(modelId: string): string {
     "moonshotai/kimi-k2.5": "Enhanced reasoning and longer context window",
     "deepseek/deepseek-v3.2": "Cost-efficient model with strong coding capabilities",
     "z-ai/glm-4.7": "Versatile model with strong multilingual support",
+    "z-ai/glm-5": "Next-generation GLM model with improved quality and reasoning",
     "z-ai/glm-4.7-flash": "Rapid response model optimized for quick answers",
     "arcee-ai/trinity-large-preview:free": "Community model available at no cost",
   };
