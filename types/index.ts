@@ -132,6 +132,23 @@ export type HistoryEntry = {
   notionPageId?: string;
 };
 
+/**
+ * Lightweight metadata for list views (excludes extractedText to save bandwidth)
+ */
+export type HistoryEntryMetadata = {
+  id: string;
+  title: string;
+  fileName: string;
+  extractedText?: string; // Optional - not loaded for list views
+  outputs: Record<string, OutputEntry>;
+  structureHints: string;
+  createdAt: number;
+  updatedAt: number;
+  folder?: string | null;
+  exportedSubject?: string;
+  notionPageId?: string;
+};
+
 export type CostHeuristic = {
   outputRatio: number;
   outputCap: number;

@@ -53,12 +53,13 @@ export const saveHistoryToStorage = (entries: HistoryEntry[]): void => {
 
 /**
  * Convert Convex document to HistoryEntry format
+ * Supports both full documents (with extractedText) and metadata-only documents
  */
 export function documentToHistoryEntry(doc: {
   _id: string;
   title: string;
   fileName: string;
-  extractedText: string;
+  extractedText?: string;
   outputs: any;
   structureHints: string;
   createdAt: number;
@@ -71,7 +72,7 @@ export function documentToHistoryEntry(doc: {
     id: doc._id,
     title: doc.title,
     fileName: doc.fileName,
-    extractedText: doc.extractedText,
+    extractedText: doc.extractedText ?? "", // Default to empty string for metadata-only docs
     outputs: doc.outputs || {},
     structureHints: doc.structureHints,
     createdAt: doc.createdAt,
@@ -80,7 +81,9 @@ export function documentToHistoryEntry(doc: {
     exportedSubject: doc.exportedSubject,
     notionPageId: doc.notionPageId,
   };
-}/**
+}
+
+/**
  * Convert HistoryEntry to Convex document format
  */
 export function historyEntryToDocument(entry: HistoryEntry, userId: string): {

@@ -30,7 +30,9 @@ export interface UseHistoryReturn {
 
 export function useHistory(): UseHistoryReturn {
   const currentUser = useQuery(api.users.getCurrentUser);
-  const documents = useQuery(api.documents.getAll);
+  // Use metadata-only query to reduce bandwidth (excludes extractedText)
+  // Limit to 100 most recent documents to stay under bandwidth limits
+  const documents = useQuery(api.documents.getMetadataList, { limit: 100 });
   const upsertDocument = useMutation(api.documents.upsert);
   const removeDocument = useMutation(api.documents.remove);
 

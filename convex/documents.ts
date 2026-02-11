@@ -283,18 +283,19 @@ export const search = query({
     const limit = args.limit ?? 50;
     const searchLower = args.query.toLowerCase();
 
-    const allDocs = await ctx.db
+    // Use paginated query instead of collect() to avoid loading all documents
+    const documents = await ctx.db
       .query("documents")
-      .withIndex("by_user_id", (q: any) => q.eq("userId", user._id))
-      .collect();
+      .withIndex("by_user_id_updated", (q: any) => q.eq("userId", user._id))
+      .order("desc")
+      .take(200); // Limit to recent 200 for search
 
-    const filtered = allDocs
+    const filtered = documents
       .filter(
         (doc: any) =>
           doc.title.toLowerCase().includes(searchLower) ||
           doc.fileName.toLowerCase().includes(searchLower)
       )
-      .sort((a: any, b: any) => b.updatedAt - a.updatedAt)
       .slice(0, limit);
 
     return filtered;
@@ -302,11 +303,14 @@ export const search = query({
 });
 
 /**
- * Get all documents for current user (for history loading)
+ * Get recent documents for current user (optimized for history loading)
+ * Limited to 100 most recent documents to prevent bandwidth issues
  */
 export const getAll = query({
-  args: {},
-  handler: async (ctx) => {
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) {
       return [];
@@ -321,12 +325,62 @@ export const getAll = query({
       return [];
     }
 
+    const limit = Math.min(args.limit ?? 100, 200); // Cap at 200 max
     const allDocs = await ctx.db
       .query("documents")
-      .withIndex("by_user_id", (q: any) => q.eq("userId", user._id))
-      .collect();
+      .withIndex("by_user_id_updated", (q: any) => q.eq("userId", user._id))
+      .order("desc")
+      .take(limit);
 
-    // Sort by updatedAt descending (most recent first)
-    return allDocs.sort((a: any, b: any) => b.updatedAt - a.updatedAt);
+    return allDocs;
+  },
+});
+
+/**
+ * Get document metadata only (excludes extractedText for list views)
+ * Significantly reduces bandwidth for history sidebar
+ */
+export const getMetadataList = query({
+  args: {
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return [];
+    }
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_user_id", (q: any) => q.eq("clerkUserId", identity.subject))
+      .first();
+
+    if (!user) {
+      return [];
+    }
+
+    const limit = Math.min(args.limit ?? 50, 100);
+    const documents = await ctx.db
+      .query("documents")
+      .withIndex("by_user_id_updated", (q: any) => q.eq("userId", user._id))
+      .order("desc")
+      .take(limit);
+
+    // Return only metadata fields, exclude extractedText
+    return documents.map((doc: any) => ({
+      _id: doc._id,
+      _creationTime: doc._creationTime,
+      userId: doc.userId,
+      title: doc.title,
+      fileName: doc.fileName,
+      outputs: doc.outputs,
+      structureHints: doc.structureHints,
+      folder: doc.folder,
+      exportedSubject: doc.exportedSubject,
+      notionPageId: doc.notionPageId,
+      createdAt: doc.createdAt,
+      updatedAt: doc.updatedAt,
+      // Note: extractedText is intentionally excluded to save bandwidth
+    }));
   },
 });

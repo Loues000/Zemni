@@ -38,7 +38,9 @@ export function useExport(
   updateHistoryState: (updater: (prev: HistoryEntry[]) => HistoryEntry[]) => void
 ): UseExportReturn {
   const currentUser = useQuery(api.users.getCurrentUser);
-  const addHistoryFolder = useMutation(api.users.addHistoryFolder);
+  // Safety check for Convex API availability
+  const addHistoryFolderMutation = (api.users as any)?.addHistoryFolder;
+  const addHistoryFolderFn = addHistoryFolderMutation ? useMutation(addHistoryFolderMutation) : null;
   const [exportProgress, setExportProgress] = useState<{ current: number; total: number } | null>(null);
   const [lastExportedPageId, setLastExportedPageId] = useState<string | null>(null);
   const [subjectPickerOpen, setSubjectPickerOpen] = useState(false);
@@ -79,8 +81,12 @@ export function useExport(
     setLoadedFromHistory,
     updateHistoryState,
     addHistoryFolder: async (name: string) => {
+      if (!addHistoryFolderFn) {
+        console.warn("[useExport] addHistoryFolder mutation not available");
+        return;
+      }
       try {
-        await addHistoryFolder({ name });
+        await addHistoryFolderFn({ name });
       } catch (err) {
         console.error("[useExport] Failed to add history folder:", err);
       }

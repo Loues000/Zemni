@@ -121,10 +121,12 @@ export const getUsageStats = query({
       };
     }
 
+    // Limit to last 5000 usage records to prevent bandwidth issues
     const allUsage = await ctx.db
       .query("usage")
-      .withIndex("by_user_id", (q: any) => q.eq("userId", user._id))
-      .collect();
+      .withIndex("by_user_timestamp", (q: any) => q.eq("userId", user._id))
+      .order("desc")
+      .take(5000);
 
     const now = Date.now();
     // Use billing cycle start instead of calendar month start
@@ -237,11 +239,12 @@ export const getMonthlyGenerationCount = query({
     const tier = user.subscriptionTier || "free";
     const limit = getUsageLimit(tier);
 
-    // Get all usage entries for this user
+    // Limit to last 5000 usage records for current billing cycle calculation
     const allUsage = await ctx.db
       .query("usage")
-      .withIndex("by_user_id", (q: any) => q.eq("userId", user._id))
-      .collect();
+      .withIndex("by_user_timestamp", (q: any) => q.eq("userId", user._id))
+      .order("desc")
+      .take(5000);
 
     // Calculate current billing cycle start based on account/subscription creation date
     const now = Date.now();
@@ -284,10 +287,12 @@ export const getUsageByModel = query({
       return [];
     }
 
+    // Limit to last 2000 usage records for model stats to prevent bandwidth issues
     const allUsage = await ctx.db
       .query("usage")
-      .withIndex("by_user_id", (q: any) => q.eq("userId", user._id))
-      .collect();
+      .withIndex("by_user_timestamp", (q: any) => q.eq("userId", user._id))
+      .order("desc")
+      .take(2000);
 
     const modelStats = new Map<
       string,
