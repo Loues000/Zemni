@@ -17,6 +17,10 @@ JUDGE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 # Cost optimization: Reduced source text length for judges (1500 instead of 2000)
 JUDGE_SOURCE_TEXT_MAX_CHARS = 1500
 
+# Limit concurrent judge calls to prevent API overload
+JUDGE_CONCURRENCY_LIMIT = 3
+_judge_semaphore = asyncio.Semaphore(JUDGE_CONCURRENCY_LIMIT)
+
 
 def get_judge_source_text(source_text: str, max_chars: int = JUDGE_SOURCE_TEXT_MAX_CHARS) -> str:
     """
@@ -107,29 +111,68 @@ def build_judge_prompt(
     judge_source = get_judge_source_text(source_text)
     
     if task_type == "summary":
-        prompt = f"""Bewerte eine KI-generierte Zusammenfassung von Vorlesungsmaterial.
+        prompt = f"""Bewerte die Qualität einer KI-generierten Zusammenfassung für akademische Lernzwecke.
 
-Quelle: {judge_source}
+QUELLE (Referenztext): {judge_source}
 
-Zusammenfassung: {output_text}
+ZUSAMMENFASSUNG: {output_text}
 
-Bewertungsgrundlage: Quelltext ist EINZIGE Referenz. Prüfe nur Übereinstimmung, nicht absolute Korrektheit.
+=== BEWERTUNG ===
 
-Bewerte auf Skala 1-100:
-1. **Source Fidelity**: Entspricht Ausgabe dem Quelltext? Halluzinationen? (1=many errors, 100=perfect match)
-2. **Completeness**: Werden wichtige Konzepte abgedeckt? (1=incomplete, 100=complete)
-3. **Quality**: Nützlich für Prüfungsvorbereitung? Klar strukturiert? (1=unusable, 100=excellent)
-4. **LaTeX Correctness**: Formeln korrekt escaped? ($...$ oder \\(...\\) inline, $$...$$ oder \\[...\\] display) (1=errors, 100=perfect)
+Bewerte auf Skala 1-100 (universelle Kriterien für akademische Zusammenfassungen):
 
-Leere Ausgabe = alle Scores 1.
+**1. FACTUAL ACCURACY (30%)** - Sachliche Korrektheit
+- Entspricht der Inhalt der Quelle? (1=viele Fehler, 100=perfekt)
+- Keine Erfindungen oder externe Informationen?
+- Zahlen, Daten, Fakten korrekt übernommen?
+
+**2. COMPLETENESS (25%)** - Inhaltliche Vollständigkeit  
+- Alle wichtigen Konzepte aus der Quelle enthalten? (1=unvollständig, 100=vollständig)
+- Kernargumente nicht ausgelassen?
+- Ausreichend Detailtiefe für Verständnis?
+
+**3. CLARITY & STRUCTURE (20%)** - Verständlichkeit und Aufbau
+- Logischer, nachvollziehbarer Aufbau? (1=chaotisch, 100=klar)
+- Gute Gliederung mit Überschriften?
+- Flüssige Übergänge zwischen Abschnitten?
+- Leicht verständlich für Zielgruppe (Studenten)?
+
+**4. LANGUAGE QUALITY (15%)** - Sprachliche Qualität
+- Präzise, klare Ausdrucksweise? (1=unklar, 100=präzise)
+- Angemessene Fachterminologie?
+- Keine Wiederholungen oder Füllwörter?
+- Eigenständige Formulierung (nicht kopiert)?
+
+**5. USABILITY (10%)** - Nutzbarkeit als Lernmaterial
+- Direkt für Prüfungsvorbereitung verwendbar? (1=unbrauchbar, 100=sehr nützlich)
+- Schlüssige Konzepte verständlich erklärt?
+- Keine Meta-Kommentare oder Ablenkungen?
+
+**6. TECHNICAL CORRECTNESS (optional)** - Technische Ausführung
+- Korrekte Formatierung (Markdown, LaTeX)? (1=fehlerhaft, 100=korrekt)
+- Formeln richtig dargestellt?
+- Keine Syntax-Fehler?
+
+=== BEWERTUNGSSKALA ===
+
+90-100: Exzellent - Kann direkt als Lernmaterial verwendet werden, kaum Mängel
+75-89: Gut - Hochwertig, kleine Mängel, gut für Prüfungsvorbereitung geeignet  
+60-74: Befriedigend - Verwendbar, aber mit deutlichen Lücken oder Fehlern
+40-59: Ausreichend - Nur eingeschränkt nutzbar, wesentliche Probleme
+20-39: Mangelhaft - Nicht als Lernmaterial verwendbar, gravierende Fehler
+1-19: Ungenügend - Völlig unbrauchbar
+
+Leere Ausgabe = alle Scores 1
 
 Antworte NUR mit JSON:
 {{
   "factual_accuracy": <1-100>,
   "completeness": <1-100>,
-  "quality": <1-100>,
-  "latex_correctness": <1-100>,
-  "reasoning": "Kurze Begründung"
+  "clarity_structure": <1-100>,
+  "language_quality": <1-100>,
+  "usability": <1-100>,
+  "technical_correctness": <1-100>,
+  "reasoning": "Kurze Begründung der Hauptstärken und -schwächen"
 }}"""
     
     elif task_type == "quiz":
@@ -215,13 +258,15 @@ async def judge_with_model(
     system_prompt = """Du bist ein Experte für die Bewertung von KI-generierten Lernmaterialien. 
 Bewerte objektiv und konsistent. Nutze die volle Skala von 1-100."""
     
-    result = await client.generate(
-        model_id=model_id,
-        system_prompt=system_prompt,
-        user_prompt=prompt,
-        max_tokens=500,
-        temperature=0.1
-    )
+    # Use semaphore to limit concurrent judge calls
+    async with _judge_semaphore:
+        result = await client.generate(
+            model_id=model_id,
+            system_prompt=system_prompt,
+            user_prompt=prompt,
+            max_tokens=500,
+            temperature=0.1
+        )
     
     # Update cost calculation with actual pricing if model_config provided
     if model_config and result.get("usage") and not result.get("error"):
