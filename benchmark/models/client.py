@@ -8,7 +8,11 @@ from typing import Optional, Dict, Any, List
 import httpx
 from dotenv import load_dotenv
 
-load_dotenv()
+# Try to load .env.local first, then fall back to .env
+env_path = Path(__file__).parent.parent.parent / ".env.local"
+if not env_path.exists():
+    env_path = Path(__file__).parent.parent.parent / ".env"
+load_dotenv(dotenv_path=env_path)
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
