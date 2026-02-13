@@ -163,14 +163,14 @@ class ModelClient:
     ) -> float:
         """Calculate cost based on token usage and pricing."""
         if pricing is None:
-            print(f"[COST WARNING] No pricing info for model {model_id}, cost will be 0")
+            print(f"[COST] No pricing info for model {model_id}, cost will be 0")
             return 0.0
         
         input_per_1m = pricing.get("input_per_1m")
         output_per_1m = pricing.get("output_per_1m")
         
         if input_per_1m is None or output_per_1m is None:
-            print(f"[COST WARNING] Incomplete pricing for model {model_id}: input={input_per_1m}, output={output_per_1m}")
+            print(f"[COST] Incomplete pricing for model {model_id}: input={input_per_1m}, output={output_per_1m}")
             input_per_1m = input_per_1m or 0
             output_per_1m = output_per_1m or 0
         

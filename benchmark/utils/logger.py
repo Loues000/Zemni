@@ -55,13 +55,13 @@ class BenchmarkLogger:
         
         # Print to console if enabled
         if self.console:
-            # Format for console readability
+            # Format for console readability (ASCII-safe for Windows)
             prefix = {
-                "info": "ℹ",
-                "warning": "⚠",
-                "error": "✗",
-                "debug": "🔍"
-            }.get(level, "•")
+                "info": "[i]",
+                "warning": "[!]",
+                "error": "[x]",
+                "debug": "[D]"
+            }.get(level, "[*]")
             
             if kwargs:
                 # Include key data in console output
