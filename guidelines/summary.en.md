@@ -2,29 +2,49 @@
 
 These rules apply **in addition** to `guidelines/general.en.md` and only for the Summary mode.
 
-## Structure
-- Use H1 (`#`) only for large, real lecture topic blocks.
-  - Align H1 titles with lecture headings whenever possible.
-  - Use H1 sparingly.
-- Use H2/H3 for meaningful sub-structure derived from the lecture structure.
-- Prefer **more** structure over long unstructured bullet dumps:
-  - Use multiple H2 blocks for major subtopics.
-  - Use H3 to group bullets under a clear sub-subtopic.
-- Really try to bring a structure in the dummarie via the different headlines, a summary only using the same headline typ over and over is not allowed.
-- Do not use numbered headings.
-- Do not include page/slide numbers or explicit source references.
+## Structure and headings
+
+**IMPORTANT**: The first H1 heading (`# Title`) is ONLY the document title and is NOT part of the content structure. After this title, the actual summary content begins.
+
+**Content structure hierarchy** (after the title):
+- Use `#` (H1) for main topics/chapters (equivalent to "1." in a numbered structure)
+- Use `##` (H2) for subtopics (equivalent to "1.2" in a numbered structure)
+- Use `###` (H3) for sub-subtopics (equivalent to "1.2.3" in a numbered structure)
+
+**Critical rules**:
+- The first H1 is the document title only. The actual content structure starts AFTER the title and should use H1 for main topics.
+- Use H1 (`#`) for each major topic/chapter in the summary content (not just the title).
+- Use multiple H1 headings to separate major lecture topics/chapters.
+- Use H2 (`##`) for subtopics within each H1 section.
+- Use H3 (`###`) to group bullets under clear sub-subtopics.
+- Prefer **more** structure over long unstructured bullet dumps.
+
+**Example structure**:
+```markdown
+# Document Title (required, not part of content structure)
+
+# Main Topic 1 (first major lecture topic)
+## Subtopic 1.1
+### Detail 1.1.1
+- Bullet points
+## Subtopic 1.2
+- More content
+
+# Main Topic 2 (second major lecture topic)
+## Subtopic 2.1
+- Content
+```
 
 ## Forbidden meta / outro
-- Do not add closing sentences like "Damit kann man sich gut vorbereiten." / "Alles kommt aus den Vorlesungsfolien." / "Diese Zusammenfassung basiert auf ..." or any other self-referential filler.
+- Do not add closing sentences like "Damit kann man sich gut vorbereiten." or any other self-referential filler.
 - Do not mention that you are an AI, that you summarized, or how the summary can be used.
+- Do not reference an Example that you don't display on the summary.
 
 ## Format contract (strict)
 - Output must be **pure Markdown**.
+- Do **not** use raw HTML tags (including `<br>`). Use proper Markdown structure (separate bullets/paragraphs) instead.
 - Start **immediately** with the first H1 heading (`# Title`).
 - No metadata, no frontmatter, no introductory chatter.
-- Prefer bullet points, but short prose is allowed when needed for understanding.
-- Use `**bold**` sparingly for central technical terms.
-- Definitions should be written as callouts using `> ` at the beginning of the line.
 
 ## Lists (important for Notion export)
 - Bullets must use `- ` (dash + space).
@@ -32,7 +52,7 @@ These rules apply **in addition** to `guidelines/general.en.md` and only for the
 - Nested lists: **4 spaces indentation**, directly under the parent bullet (**no blank line**).
 
 Example (correct):
-```
+```markdown
 - Main point
     - Subpoint 1
     - Subpoint 2
@@ -40,7 +60,7 @@ Example (correct):
 ```
 
 Incorrect (breaks Notion rendering):
-```
+```markdown
 - Main point
 
   - Subpoint with blank line above
@@ -50,13 +70,45 @@ Incorrect (breaks Notion rendering):
 - Use at most H1-H3 (H4+ does not export reliably to Notion).
 - For deeper structure, use **bold labels** within the text instead of deeper headings.
 
-## Other Markdown rules
-- Code blocks should include a language tag (e.g. ```python).
+## Markdown features and formatting
+
+### Tables
+- Use tables for comparisons, multi-column data, or structured information with multiple attributes.
+- **Avoid tables with "#" or numbering columns** - use bullet points or prose instead.
+- **Table cells must be single-line**: no `<br>`, no multi-paragraph content, no bullet lists inside cells.
+- **Never place fenced code blocks inside tables**. If a code example is needed, put it in a dedicated subsection *after* the table.
+- Example:
+  ```markdown
+  | Feature | Option A | Option B |
+  |---------|----------|----------|
+  | Speed   | Fast     | Slow     |
+  | Cost    | High     | Low      |
+  ```
+
+### Diagrams and flowcharts
+- Use Mermaid syntax (```mermaid code blocks) for process flows, relationships, system architectures, or any visual concepts.
+- Example:
+  ```mermaid
+  graph TD
+    A[Start] --> B[Process]
+    B --> C[End]
+  ```
+
+### Code blocks
+- Include a language tag for syntax highlighting (e.g. ```python, ```javascript).
+- Use for algorithms, formulas, technical snippets, or any code-like content.
+- Code blocks must stand alone (not inside tables).
+
+### Callouts and emphasis
+- Use blockquotes (`> `) for truly important definitions, warnings, or key takeaways. Do not overuse.
+- Use `**bold**` for key concepts and technical terms.
+- Use `*italic*` for emphasis or subtle distinctions.
+- Use inline code (backticks) for technical terms, variables, function names, or code references.
+
+### Other formatting
 - Math / LaTeX:
   - Inline: use `$...$` for short symbols (variables, units, small expressions).
   - Display: use `$$` blocks for important formulas (prefer multi-line `$$ ... $$` when needed).
   - Keep KaTeX-compatible LaTeX (avoid obscure packages).
-  - After a formula, explain variables/symbols in plain German (1-3 bullets if helpful).
-- Tables: standard Markdown tables for comparisons.
-- Use `---` as a thematic divider (maps to a Notion divider).
-
+  - After a formula, explain variables/symbols (1-3 bullets if helpful).
+- Use `---` (horizontal rule) as a thematic divider to separate major sections (maps to a Notion divider).
