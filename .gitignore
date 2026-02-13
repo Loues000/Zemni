@@ -10,11 +10,13 @@ node_modules/
 *.tsbuildinfo
 
 # Env files (secrets)
-.env
+# Note: This project uses `.env.local` for local secrets; do not commit env files.
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+# Sentry Config File
+.env.sentry-build-plugin
 
 coverage/
 
@@ -36,7 +38,7 @@ out/
 .mypy_cache/
 .ruff_cache/
 
-# Local model config overrides (keep example committed)
+# Local model config overrides (commit `openrouter-models.example.json`)
 config/openrouter-models.json
 config/openrouter-models.prices.json
 
@@ -45,12 +47,17 @@ config/openrouter-models.prices.json
 .vscode/
 .cursor/
 .qodo/
+.opencode/
 .DS_Store
 Thumbs.db
 
 # Local AI/agent notes (personal)
 AGENTS.md
+CLAUDE.md
 
 # Local-only scratch/data (keep ignored)
 data/
+tasks/
 old_guidelines.md
+benchmark/results/
+
