@@ -7,6 +7,23 @@ OVERALL_SCORE_BASE_WEIGHT = 0.5  # Base weight for combined reliability+quality 
 OVERALL_SCORE_FACTUAL_WEIGHT = 0.3  # Weight for factual accuracy component
 OVERALL_SCORE_AVERAGE_WEIGHT = 0.2  # Weight for average performance component
 
+# Universal evaluation weights for summary quality assessment
+WEIGHT_FACTUAL_ACCURACY = 0.30   # Core: Is it factually correct?
+WEIGHT_COMPLETENESS = 0.25       # Core: Is everything important included?
+WEIGHT_CLARITY_STRUCTURE = 0.20  # Important: Can students understand it?
+WEIGHT_LANGUAGE_QUALITY = 0.15   # Important: Is it well written?
+WEIGHT_USABILITY = 0.10          # Practical: Can it be used for learning?
+
+# All evaluation dimensions (6 universal criteria)
+EVALUATION_DIMENSIONS = [
+    "factual_accuracy",
+    "completeness",
+    "clarity_structure",
+    "language_quality",
+    "usability",
+    "technical_correctness"
+]
+
 # Reliability penalty thresholds (1-100 scale)
 RELIABILITY_LOW_THRESHOLD = 50.0  # Below this: heavy penalty
 RELIABILITY_MEDIUM_THRESHOLD = 70.0  # Between 50-70: moderate penalty
@@ -46,6 +63,46 @@ def calculate_percentiles(values: List[float]) -> Dict[str, float]:
     }
 
 
+def calculate_universal_weighted_score(aggregated_scores: Dict[str, Dict[str, float]]) -> float:
+    """
+    Calculate weighted score based on universal quality criteria for summaries.
+    
+    Weight distribution:
+    - Factual Accuracy: 30%
+    - Completeness: 25%
+    - Clarity & Structure: 20%
+    - Language Quality: 15%
+    - Usability: 10%
+    
+    Args:
+        aggregated_scores: Dict mapping dimension name to aggregated stats dict with "mean" key
+        
+    Returns:
+        Weighted score from 1-100
+    """
+    def get_score(dimension: str) -> float:
+        """Get score for a single dimension."""
+        if dimension in aggregated_scores and "mean" in aggregated_scores[dimension]:
+            return aggregated_scores[dimension]["mean"]
+        return 50.0  # Default to middle if missing
+    
+    factual_score = get_score("factual_accuracy")
+    completeness_score = get_score("completeness")
+    clarity_score = get_score("clarity_structure")
+    language_score = get_score("language_quality")
+    usability_score = get_score("usability")
+    
+    weighted_score = (
+        factual_score * WEIGHT_FACTUAL_ACCURACY +
+        completeness_score * WEIGHT_COMPLETENESS +
+        clarity_score * WEIGHT_CLARITY_STRUCTURE +
+        language_score * WEIGHT_LANGUAGE_QUALITY +
+        usability_score * WEIGHT_USABILITY
+    )
+    
+    return max(1.0, min(100.0, weighted_score))
+
+
 def aggregate_model_metrics(
     results: List[Dict[str, Any]], 
     config: Optional[Dict[str, Any]] = None
@@ -70,6 +127,16 @@ def aggregate_model_metrics(
     completeness_scores: List[float] = []
     quality_overall: List[float] = []
     
+    # Universal evaluation dimension scores (6 core criteria)
+    evaluation_scores: Dict[str, List[float]] = {
+        "factual_accuracy": [],
+        "completeness": [],
+        "clarity_structure": [],
+        "language_quality": [],
+        "usability": [],
+        "technical_correctness": []
+    }
+    
     costs = [r.get("cost", 0) for r in results if "cost" in r]
     latencies = [r.get("latency_ms", 0) for r in results if "latency_ms" in r]
     
@@ -78,6 +145,7 @@ def aggregate_model_metrics(
         judge_result = r.get("judge_evaluation", {})
         aggregated = judge_result.get("aggregated_scores", {})
         
+        # Legacy quality score (backward compatibility)
         if "quality" in aggregated:
             quality_scores.append(aggregated["quality"]["mean"])
             quality_overall.append(aggregated["quality"]["mean"])
@@ -88,11 +156,17 @@ def aggregate_model_metrics(
             quality_scores.append(aggregated["clarity"]["mean"])
             quality_overall.append(aggregated["clarity"]["mean"])
         
+        # Legacy dimensions
         if "factual_accuracy" in aggregated:
             factual_scores.append(aggregated["factual_accuracy"]["mean"])
         
         if "completeness" in aggregated:
             completeness_scores.append(aggregated["completeness"]["mean"])
+        
+        # Extract all evaluation dimensions
+        for dim in evaluation_scores.keys():
+            if dim in aggregated:
+                evaluation_scores[dim].append(aggregated[dim]["mean"])
 
     # --- Backward compatibility: auto-upscale legacy 0-10 runs to 1-100 ---
     #
@@ -108,6 +182,10 @@ def aggregate_model_metrics(
     all_score_values.extend(factual_scores)
     all_score_values.extend(completeness_scores)
 
+    # Also collect evaluation dimension values for scale detection
+    for dim_scores in evaluation_scores.values():
+        all_score_values.extend(dim_scores)
+    
     if all_score_values:
         max_val = max(all_score_values)
         min_pos = min(v for v in all_score_values if v > 0) if any(v > 0 for v in all_score_values) else 0
@@ -118,6 +196,9 @@ def aggregate_model_metrics(
             quality_overall = [v * scale for v in quality_overall]
             factual_scores = [v * scale for v in factual_scores]
             completeness_scores = [v * scale for v in completeness_scores]
+            # Scale evaluation dimensions too
+            for dim in evaluation_scores:
+                evaluation_scores[dim] = [v * scale for v in evaluation_scores[dim]]
 
     metrics = {
         "reliability": {
@@ -147,6 +228,18 @@ def aggregate_model_metrics(
             "median": statistics.median(completeness_scores) if completeness_scores else 0,
             "std_dev": statistics.stdev(completeness_scores) if len(completeness_scores) > 1 else 0,
             "percentiles": calculate_percentiles(completeness_scores) if completeness_scores else {}
+        },
+        # Abitur evaluation dimensions
+        **{
+            dim: {
+                "mean": statistics.mean(scores) if scores else 0,
+                "median": statistics.median(scores) if scores else 0,
+                "std_dev": statistics.stdev(scores) if len(scores) > 1 else 0,
+                "min": min(scores) if scores else 0,
+                "max": max(scores) if scores else 0,
+                "percentiles": calculate_percentiles(scores) if scores else {}
+            }
+            for dim, scores in evaluation_scores.items()
         },
         "cost": {
             "total": sum(costs),
@@ -239,6 +332,36 @@ def aggregate_model_metrics(
     # Clamp to 1-100
     metrics["overall_score"] = max(1.0, min(100.0, metrics["overall_score"]))
     
+    # Calculate universal weighted score based on 6 core dimensions
+    universal_aggregated = {
+        dim: metrics[dim] for dim in EVALUATION_DIMENSIONS if dim in metrics
+    }
+    metrics["universal_weighted_score"] = calculate_universal_weighted_score(universal_aggregated)
+    
+    # Add category scores for detailed analysis
+    metrics["quality_categories"] = {
+        "factual_accuracy": {
+            "mean": metrics.get("factual_accuracy", {}).get("mean", 50),
+            "weight": WEIGHT_FACTUAL_ACCURACY
+        },
+        "completeness": {
+            "mean": metrics.get("completeness", {}).get("mean", 50),
+            "weight": WEIGHT_COMPLETENESS
+        },
+        "clarity_structure": {
+            "mean": metrics.get("clarity_structure", {}).get("mean", 50),
+            "weight": WEIGHT_CLARITY_STRUCTURE
+        },
+        "language_quality": {
+            "mean": metrics.get("language_quality", {}).get("mean", 50),
+            "weight": WEIGHT_LANGUAGE_QUALITY
+        },
+        "usability": {
+            "mean": metrics.get("usability", {}).get("mean", 50),
+            "weight": WEIGHT_USABILITY
+        }
+    }
+    
     return metrics
 
 
@@ -279,6 +402,11 @@ def calculate_comparative_metrics(
         "by_overall_score": sorted(
             models,
             key=lambda m: all_model_metrics[m].get("overall_score", 0),
+            reverse=True
+        ),
+        "by_universal_score": sorted(
+            models,
+            key=lambda m: all_model_metrics[m].get("universal_weighted_score", 0),
             reverse=True
         ),
         "by_cost_effectiveness": sorted(
