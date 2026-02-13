@@ -90,7 +90,7 @@ def load_config() -> Dict[str, Any]:
 
 
 def load_models_config() -> List[Dict[str, Any]]:
-    """Load models from config file."""
+    """Load models from config file, filtering out unavailable models."""
     models_file = Path(__file__).parent.parent / "config" / "openrouter-models.example.json"
     if not models_file.exists():
         # Try local config
@@ -98,7 +98,13 @@ def load_models_config() -> List[Dict[str, Any]]:
     
     if models_file.exists():
         with open(models_file, encoding="utf-8") as f:
-            return json.load(f)
+            all_models = json.load(f)
+            # Filter to only available models (available=True or not specified)
+            available_models = [
+                m for m in all_models 
+                if m.get("available", True)  # Default to True if field not present
+            ]
+            return available_models
     return []
 
 
@@ -130,13 +136,20 @@ def get_cache_key(model_id: str, task: str, test_case: Dict[str, Any]) -> str:
     return hashlib.sha256(content.encode()).hexdigest()
 
 
-def load_cached_result(cache_key: str) -> Optional[Dict[str, Any]]:
-    """Load cached result if available."""
+def load_cached_result(cache_key: str, max_age_days: int = 30) -> Optional[Dict[str, Any]]:
+    """Load cached result if available and not expired."""
     cache_file = CACHE_DIR / f"{cache_key}.json"
     if cache_file.exists():
         try:
+            # Check cache age
+            file_age = time.time() - cache_file.stat().st_mtime
+            if file_age > max_age_days * 86400:  # 86400 seconds in a day
+                print(f"[CACHE] Expired entry removed: {cache_key[:8]}...")
+                cache_file.unlink()
+                return None
             return json.loads(cache_file.read_text())
         except Exception:
+            # Silently return None on cache errors
             return None
     return None
 
@@ -159,6 +172,11 @@ def get_pricing_tier(pricing: Dict[str, Any]) -> str:
         return "mid_tier"
     else:
         return "premium"
+
+
+def get_subscription_tier(model_config: Dict[str, Any]) -> str:
+    """Get subscription tier from model config (free, basic, plus, pro)."""
+    return model_config.get("subscription_tier", "free")  # Default to free if not specified
 
 
 def get_adaptive_limits(config: Dict[str, Any], pricing_tier: str, default_max_tokens: int) -> tuple[int, int]:
@@ -331,7 +349,9 @@ async def run_single_benchmark(
             "judge_cost": judge_cost,
             "latency_ms": result.get("latency_ms", 0),
             "usage": result.get("usage", {}),
-            "pricing_tier": pricing_tier
+            "pricing_tier": pricing_tier,
+            "subscription_tier": model_config.get("subscription_tier", "free"),
+            "model_available": model_config.get("available", True)
         }
         
         # Cache result
@@ -365,7 +385,26 @@ async def run_benchmark(
     with open(test_cases_path, encoding="utf-8") as f:
         test_cases = json.load(f)
     
-    logger.info(f"Loaded {len(test_cases)} test cases", test_cases_file=str(test_cases_path))
+    # Validate and filter test cases
+    original_count = len(test_cases)
+    test_cases = [
+        tc for tc in test_cases 
+        if tc.get("text") and len(tc.get("text", "")) >= 100
+    ]
+    filtered_count = original_count - len(test_cases)
+    
+    if filtered_count > 0:
+        logger.warning(
+            f"Filtered {filtered_count} invalid test cases (empty or too short)",
+            original_count=original_count,
+            valid_count=len(test_cases)
+        )
+    
+    if not test_cases:
+        logger.error("No valid test cases remaining after filtering")
+        return
+    
+    logger.info(f"Loaded {len(test_cases)} valid test cases", test_cases_file=str(test_cases_path))
     
     # Load models config
     models_config_list = load_models_config()
@@ -491,23 +530,34 @@ async def run_benchmark(
 
         try:
             for coro in asyncio.as_completed(benchmark_tasks):
-                result = await coro
-                results.append(result)
+                try:
+                    result = await coro
+                    results.append(result)
 
-                # Track costs
-                if result.get("cost"):
-                    total_cost += result.get("cost", 0)
+                    # Track costs
+                    if result.get("cost"):
+                        total_cost += result.get("cost", 0)
 
-                # Log individual result
-                logger.model_result(
-                    model_id=result.get("model_id", "unknown"),
-                    task=result.get("task", "unknown"),
-                    test_case_id=result.get("test_case_id", "unknown"),
-                    reliability=result.get("reliability_score", 0),
-                    quality=result.get("content_quality_score", 0),
-                    cost=result.get("cost", 0),
-                    latency_ms=result.get("latency_ms", 0)
-                )
+                    # Log individual result
+                    logger.model_result(
+                        model_id=result.get("model_id", "unknown"),
+                        task=result.get("task", "unknown"),
+                        test_case_id=result.get("test_case_id", "unknown"),
+                        reliability=result.get("reliability_score", 0),
+                        quality=result.get("content_quality_score", 0),
+                        cost=result.get("cost", 0),
+                        latency_ms=result.get("latency_ms", 0)
+                    )
+                except Exception as e:
+                    logger.error(f"Task failed with exception: {e}")
+                    results.append({
+                        "error": str(e),
+                        "model_id": "unknown",
+                        "task": "unknown",
+                        "test_case_id": "unknown",
+                        "cost": 0,
+                        "latency_ms": 0
+                    })
 
                 # Update progress bar
                 pbar.update(1)
