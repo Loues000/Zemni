@@ -90,7 +90,7 @@ def load_config() -> Dict[str, Any]:
 
 
 def load_models_config() -> List[Dict[str, Any]]:
-    """Load models from config file, filtering out unavailable models."""
+    """Load models from config file."""
     models_file = Path(__file__).parent.parent / "config" / "openrouter-models.example.json"
     if not models_file.exists():
         # Try local config
@@ -98,13 +98,7 @@ def load_models_config() -> List[Dict[str, Any]]:
     
     if models_file.exists():
         with open(models_file, encoding="utf-8") as f:
-            all_models = json.load(f)
-            # Filter to only available models (available=True or not specified)
-            available_models = [
-                m for m in all_models 
-                if m.get("available", True)  # Default to True if field not present
-            ]
-            return available_models
+            return json.load(f)
     return []
 
 
