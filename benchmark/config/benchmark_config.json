@@ -1,8 +1,7 @@
 {
   "judge_models": [
+    "z-ai/glm-5",
     "anthropic/claude-sonnet-4.5",
-    "openai/gpt-5.1",
-    "openai/gpt-5-mini",
     "deepseek/deepseek-v3.2",
     "google/gemini-3-flash-preview",
     "x-ai/grok-4.1-fast"
