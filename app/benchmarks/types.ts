@@ -16,21 +16,66 @@ export interface BenchmarkResult {
   };
   judge_cost?: number;
   total_judge_cost?: number;
+  input_length_chars?: number;
+  input_length_original_chars?: number;
+  input_standardization_mode?: string;
+  length_penalty_factor?: number;
+  judge_quality_excluded?: boolean;
+  judge_quality_exclusion_reason?: string;
+}
+
+export interface MetricWithCI {
+  mean: number;
+  std_dev: number;
+  ci_95_lower?: number;
+  ci_95_upper?: number;
+  stderr?: number;
+  margin_of_error?: number;
 }
 
 export interface ModelMetrics {
-  reliability: { mean: number; std_dev: number };
-  content_quality: { mean: number; std_dev: number };
-  factual_accuracy: { mean: number };
-  completeness: { mean: number };
+  reliability: MetricWithCI;
+  content_quality: MetricWithCI;
+  factual_accuracy: MetricWithCI;
+  completeness: MetricWithCI;
   cost: { total: number; mean: number };
   latency: { mean: number; p50: number; p95: number };
+  input_length?: {
+    mean: number;
+    median?: number;
+    min: number;
+    max: number;
+    below_1000_warning?: boolean;
+  };
   cost_per_quality_point: number;
   overall_score: number;
   combined_score: number;
   test_count: number;
+  quality_sample_count?: number;
+  quality_excluded_count?: number;
   total_tokens?: number;
   judge_cost_total?: number;
+}
+
+export interface RankingDetail {
+  rank: number;
+  model_id: string;
+  score: number;
+  ci_95_lower?: number;
+  ci_95_upper?: number;
+  margin_of_error?: number;
+  is_statistical_tie?: boolean;
+  tie_with_previous?: boolean;
+  tie_with_next?: boolean;
+  significance_marker?: string;
+  significance_note?: string;
+}
+
+export interface ModelRankingStatus {
+  task_counts?: Record<string, number>;
+  eligible_for_overall?: boolean;
+  is_partial?: boolean;
+  missing_requirements?: string[];
 }
 
 export interface ComprehensiveMetrics {
@@ -63,7 +108,14 @@ export interface BenchmarkData {
       by_reliability?: string[];
       by_content_quality?: string[];
       by_cost_effectiveness?: string[];
+      by_task?: Record<string, string[]>;
     };
+    ranking_details?: {
+      by_content_quality?: RankingDetail[];
+      by_reliability?: RankingDetail[];
+    };
+    model_status?: Record<string, ModelRankingStatus>;
+    coverage_thresholds?: Record<string, number>;
   };
   hasResults: boolean;
 }

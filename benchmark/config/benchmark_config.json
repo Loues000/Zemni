@@ -1,7 +1,7 @@
 {
   "judge_models": [
     "z-ai/glm-5",
-    "anthropic/claude-sonnet-4.5",
+    "minimax/minimax-m2.5",
     "deepseek/deepseek-v3.2",
     "google/gemini-3-flash-preview",
     "x-ai/grok-4.1-fast"
@@ -11,13 +11,26 @@
     "x-ai/grok-4.1-fast",
     "arcee-ai/trinity-large-preview:free",
     "stepfun/step-3.5-flash:free",
-    "openrouter/pony-alpha"
+    "openrouter/aurora-alpha"
   ],
   "concurrency_limit": 30,
   "max_retries": 2,
   "timeout_seconds": 120,
   "reliability_weight": 0.3,
   "quality_weight": 0.7,
+  "input_standardization": {
+    "mode": "fixed",
+    "fixed_chars": 1500,
+    "reference_chars": 1500,
+    "length_penalty_exponent": 0.1
+  },
+  "output_budget": {
+    "summary_max_tokens": 1800,
+    "quiz_max_tokens": 1400,
+    "flashcards_max_tokens": 1400,
+    "quiz_questions_count": 4,
+    "flashcards_per_section": 4
+  },
   "adaptive_input_sizing": {
     "free": 2000,
     "budget": 1200,

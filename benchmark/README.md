@@ -22,6 +22,26 @@ OPENROUTER_API_KEY=your-api-key
 
 ## Usage
 
+### Statistical Analysis (NEW)
+
+After running benchmarks, analyze statistical significance and confidence intervals:
+
+```bash
+# Run significance analysis
+npm run bench:analyze
+
+# Or directly with Python
+python scripts/analyze_significance.py --results results/benchmark_results.json --output results/significance_report.json
+```
+
+This generates a report with:
+- **95% Confidence Intervals** for all metrics (reliability, quality, factual accuracy)
+- **Paired comparisons** between models with Cohen's d effect sizes
+- **Significance flags** for rankings (models marked with `=` have overlapping CIs)
+- **Judge consensus analysis** to identify low-confidence evaluations
+
+See [`docs/BENCHMARK_HARDENING_SPEC.md`](docs/BENCHMARK_HARDENING_SPEC.md) for full methodology.
+
 ## Deploy (Vercel) – Benchmark Results anzeigen
 
 Vercel bekommt keine Dateien aus `benchmark/results/`, weil dieses Verzeichnis absichtlich in `benchmark/.gitignore` ignoriert wird.
@@ -46,12 +66,17 @@ npm run bench:publish-results
 Generate synthetic test cases using free models. Generated text is automatically saved and reused for future test cases.
 
 ```bash
-python generate_tests.py --count 10
+python generate_tests.py --count 24
 ```
 
 **Flags:**
 - `--count` (required): Number of test cases to generate
-  - Example: `--count 20` generates 20 test cases
+  - Default: `24` (auto-raised when balance minimum is not met)
+  - Balanced generation enforces minimum coverage per topic x format cell
+  - Example: `--count 48` generates 48 balanced test cases
+- `--min-per-cell` (optional): Minimum tests per `(topic, format)` cell
+  - Default: `0`
+  - With 8 topics x 4 formats x 1, balanced minimum is 32 tests
 - `--models` (optional): Comma-separated list of model IDs to use for generation
   - Default: Uses all free models from `benchmark_config.json`
   - Example: `--models "mistralai/devstral-2512:free,google/gemini-2.0-flash-exp:free"`
@@ -89,6 +114,11 @@ python run_benchmark.py --models "openai/gpt-4o,anthropic/claude-sonnet-4.5" --t
   - Default behavior uses cache to save time and costs
   - Use `--skip-cached` to skip already-computed results
   - Example: `--skip-cached`
+- `--judge-quality-filter` (optional): Consensus quality filtering mode
+  - Options: `strict` (default), `variance_only`, `off`
+  - `strict`: exclude low-judge-count, high-variance, and low-agreement quality samples
+  - `variance_only`: exclude only `consensus_flag=high_variance`
+  - `off`: disable quality exclusion
 
 **Caching:** Results are cached by default using hash-based keys (model_id + task + test_case). Use `--force` to ignore cache, or `--skip-cached` to skip cached entries.
 
@@ -114,11 +144,13 @@ python reports/generator.py
 ## Features
 
 ### Cost Optimization
-- **Adaptive Input Sizing**: Smaller inputs for expensive models
-  - Free models: 2000 chars
-  - Budget (<$1/1M): 1500 chars
-  - Mid-tier ($1-5/1M): 1000 chars
-  - Premium (>$5/1M): 500 chars
+- **Input Standardization (default hardening mode)**: fixed 1500 chars for all models
+  - Config: `input_standardization.mode = "fixed"`, `fixed_chars = 1500`
+  - Optional modes: `adaptive` (legacy per-tier limits), `tier_adjusted` (length-penalized scoring)
+- **Output Budget (default low-cost mode)**: shorter generated outputs per task
+  - Config block: `output_budget`
+  - Default caps: summary `1800`, quiz `1400`, flashcards `1400` max tokens
+  - Default object counts: quiz `4` questions, flashcards `4` cards/section
 - **Adaptive Token Limits**: Reduced max_tokens for expensive models
   - Free/Budget: 100% of normal limits
   - Mid-tier: 75% of normal limits
@@ -138,6 +170,8 @@ python reports/generator.py
 - Consensus evaluation using 5 cost-effective judge models
 - Aggregates scores (mean, median, std dev)
 - Caches judge evaluations to avoid redundant calls
+- Adds consensus quality flags (`ok`, `warning`, `high_variance`, `low_agreement`, `low_judge_count`)
+- Marks low-confidence evaluations when fewer than 3 judges are available
 
 ### Scoring System
 
@@ -167,9 +201,14 @@ Reliable composite score that considers:
 
 ### Extensive Statistics
 - Score distributions (min, max, median, percentiles p0, p25, p50, p75, p95, p99, p100, std dev)
+- Confidence intervals (95%) and standard error for mean scores
 - Cost per quality/reliability point
 - Latency statistics (mean, p50, p95, p99)
 - Judge consensus metrics (agreement, variance)
+- Coverage-gated overall rankings (requires summary>=30, quiz>=10, flashcards>=10)
+- Statistical tie markers (`*`) when adjacent ranking CIs overlap
+- Partial model status metadata for incomplete task coverage
+- Input length distribution with warning when model average is below 1000 chars
 - Performance by topic category
 - Performance by format type
 - Comprehensive breakdowns: by task, by topic, by format, and nested combinations
@@ -183,6 +222,8 @@ Edit `benchmark/config/benchmark_config.json` to customize:
 - **concurrency_limit**: Max concurrent API requests (default: 30)
 - **reliability_weight**: Weight for reliability in combined score (default: 0.3)
 - **quality_weight**: Weight for quality in combined score (default: 0.7)
+- **input_standardization**: Cross-model input comparability mode and limits
+- **output_budget**: Output token caps and per-task object counts
 - **adaptive_input_sizing**: Character limits per pricing tier
 - **token_limit_multipliers**: Token limit multipliers per pricing tier
 
@@ -202,11 +243,11 @@ Benchmark results are automatically available in the Next.js app at `/benchmarks
 ## Example Workflow
 
 ```bash
-# 1. Generate 20 test cases
-python generate_tests.py --count 20
+# 1. Generate balanced test cases
+python generate_tests.py --count 24 --min-per-cell 1
 
 # 2. Run benchmark on specific models
-python run_benchmark.py --models "gpt-4o,claude-sonnet-4.5" --tasks summary,quiz
+python run_benchmark.py --models "gpt-4o,claude-sonnet-4.5" --tasks summary,quiz --judge-quality-filter strict
 
 # 3. View results in web app
 # Navigate to http://localhost:3420/benchmarks

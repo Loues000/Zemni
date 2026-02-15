@@ -5,6 +5,7 @@ import hashlib
 import json
 import sys
 import time
+from collections import Counter
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 import json as json_lib
@@ -28,6 +29,17 @@ from utils.logger import BenchmarkLogger
 CONFIG_PATH = Path(__file__).parent / "config" / "benchmark_config.json"
 CACHE_DIR = Path(__file__).parent / "results" / "cache"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+MIN_VALID_TEST_CASES_FOR_SIGNIFICANCE = 50
+MIN_TOPIC_COUNT = 6
+MIN_FORMAT_COUNT = 12
+MIN_CELL_COUNT = 3
+DEFAULT_FIXED_INPUT_CHARS = 1500
+DEFAULT_SUMMARY_MAX_TOKENS = 1800
+DEFAULT_QUIZ_MAX_TOKENS = 1400
+DEFAULT_FLASHCARDS_MAX_TOKENS = 1400
+DEFAULT_QUIZ_QUESTIONS_COUNT = 4
+DEFAULT_FLASHCARDS_PER_SECTION = 4
 
 
 def validate_config(config: Dict[str, Any]) -> None:
@@ -78,6 +90,19 @@ def validate_config(config: Dict[str, Any]) -> None:
     missing_multiplier_tiers = [tier for tier in required_tiers if tier not in config["token_limit_multipliers"]]
     if missing_multiplier_tiers:
         raise ValueError(f"token_limit_multipliers missing tiers: {missing_multiplier_tiers}")
+
+    # Optional input standardization block (hardening).
+    if "input_standardization" in config:
+        standardization = config["input_standardization"]
+        if not isinstance(standardization, dict):
+            raise ValueError("input_standardization must be a dictionary when present")
+        mode = standardization.get("mode", "fixed")
+        if mode not in {"fixed", "tier_adjusted", "adaptive"}:
+            raise ValueError("input_standardization.mode must be one of: fixed, tier_adjusted, adaptive")
+
+    # Optional output budget block.
+    if "output_budget" in config and not isinstance(config["output_budget"], dict):
+        raise ValueError("output_budget must be a dictionary when present")
 
 
 def load_config() -> Dict[str, Any]:
@@ -186,6 +211,112 @@ def get_adaptive_limits(config: Dict[str, Any], pricing_tier: str, default_max_t
     return max_tokens, max_input_chars
 
 
+def get_input_standardization(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Get input standardization settings with safe defaults."""
+    standardization = config.get("input_standardization", {})
+    mode = standardization.get("mode", "fixed")
+    if mode not in {"fixed", "tier_adjusted", "adaptive"}:
+        mode = "fixed"
+
+    return {
+        "mode": mode,
+        "fixed_chars": int(standardization.get("fixed_chars", DEFAULT_FIXED_INPUT_CHARS)),
+        "reference_chars": int(standardization.get("reference_chars", DEFAULT_FIXED_INPUT_CHARS)),
+        "length_penalty_exponent": float(standardization.get("length_penalty_exponent", 0.1)),
+    }
+
+
+def get_output_budget(config: Dict[str, Any]) -> Dict[str, int]:
+    """Get output-token and object-count budget settings with defaults."""
+    budget = config.get("output_budget", {})
+    return {
+        "summary_max_tokens": int(budget.get("summary_max_tokens", DEFAULT_SUMMARY_MAX_TOKENS)),
+        "quiz_max_tokens": int(budget.get("quiz_max_tokens", DEFAULT_QUIZ_MAX_TOKENS)),
+        "flashcards_max_tokens": int(budget.get("flashcards_max_tokens", DEFAULT_FLASHCARDS_MAX_TOKENS)),
+        "quiz_questions_count": int(budget.get("quiz_questions_count", DEFAULT_QUIZ_QUESTIONS_COUNT)),
+        "flashcards_per_section": int(budget.get("flashcards_per_section", DEFAULT_FLASHCARDS_PER_SECTION)),
+    }
+
+
+def get_effective_input_limit(config: Dict[str, Any], pricing_tier: str) -> tuple[int, str]:
+    """Resolve per-request input limit based on configured standardization mode."""
+    standardization = get_input_standardization(config)
+    mode = standardization["mode"]
+    if mode == "adaptive":
+        _, adaptive_chars = get_adaptive_limits(config, pricing_tier, 2000)
+        return adaptive_chars, mode
+    if mode == "tier_adjusted":
+        _, adaptive_chars = get_adaptive_limits(config, pricing_tier, 2000)
+        return adaptive_chars, mode
+    return standardization["fixed_chars"], mode
+
+
+def get_length_penalty_factor(config: Dict[str, Any], input_length_chars: int) -> float:
+    """Length-based correction factor for tier-adjusted scoring mode."""
+    standardization = get_input_standardization(config)
+    if standardization["mode"] != "tier_adjusted":
+        return 1.0
+
+    reference_chars = max(1, standardization["reference_chars"])
+    exponent = standardization["length_penalty_exponent"]
+    ratio = max(0.0, input_length_chars / reference_chars)
+    return ratio ** exponent if ratio > 0 else 0.0
+
+
+def should_exclude_judge_quality(judge_result: Dict[str, Any], judge_quality_filter: str) -> tuple[bool, str]:
+    """Decide whether a sample should be excluded from quality aggregation."""
+    mode = (judge_quality_filter or "strict").lower()
+    if mode in {"off", "none", "disabled"}:
+        return False, ""
+
+    consensus_flag = judge_result.get("consensus_flag", "")
+    judge_count = int(judge_result.get("judge_count") or 0)
+    low_confidence = bool(judge_result.get("low_confidence"))
+
+    if mode == "variance_only":
+        if consensus_flag == "high_variance":
+            return True, "high_variance"
+        return False, ""
+
+    # strict mode
+    if judge_count and judge_count < 3:
+        return True, "low_judge_count"
+    if consensus_flag in {"high_variance", "low_agreement", "low_judge_count"}:
+        return True, consensus_flag
+    if low_confidence:
+        return True, "low_confidence"
+    return False, ""
+
+
+def validate_test_case_balance(
+    test_cases: List[Dict[str, Any]],
+    topics: List[str],
+    formats: List[str]
+) -> Dict[str, Any]:
+    """Validate topic/format/cell coverage for benchmark test case quality."""
+    topic_counts = Counter(tc.get("topic_category") for tc in test_cases)
+    format_counts = Counter(tc.get("format_type") for tc in test_cases)
+    cell_counts = Counter((tc.get("topic_category"), tc.get("format_type")) for tc in test_cases)
+
+    topic_violations = {topic: topic_counts.get(topic, 0) for topic in topics if topic_counts.get(topic, 0) < MIN_TOPIC_COUNT}
+    format_violations = {fmt: format_counts.get(fmt, 0) for fmt in formats if format_counts.get(fmt, 0) < MIN_FORMAT_COUNT}
+    cell_violations = {
+        f"{topic}::{fmt}": cell_counts.get((topic, fmt), 0)
+        for topic in topics
+        for fmt in formats
+        if cell_counts.get((topic, fmt), 0) < MIN_CELL_COUNT
+    }
+
+    return {
+        "topic_counts": dict(topic_counts),
+        "format_counts": dict(format_counts),
+        "topic_violations": topic_violations,
+        "format_violations": format_violations,
+        "cell_violations": cell_violations,
+        "is_balanced": not topic_violations and not format_violations and not cell_violations
+    }
+
+
 async def run_single_benchmark(
     client: ModelClient,
     model_id: str,
@@ -196,7 +327,8 @@ async def run_single_benchmark(
     judge_models: List[str],
     semaphore: asyncio.Semaphore,
     models_dict: Dict[str, Dict[str, Any]],
-    use_cache: bool = True
+    use_cache: bool = True,
+    judge_quality_filter: str = "strict"
 ) -> Dict[str, Any]:
     """Run benchmark for a single model+task+test_case combination."""
     async with semaphore:
@@ -209,35 +341,45 @@ async def run_single_benchmark(
                 return cached
         
         # Prepare input
-        text = test_case.get("text", "")
+        source_text = test_case.get("text", "")
+        original_input_length_chars = len(source_text)
         pricing = model_config.get("pricing", {})
         pricing_tier = get_pricing_tier(pricing)
-        
-        # Adaptive input sizing
-        _, max_input_chars = get_adaptive_limits(config, pricing_tier, 2000)
-        if len(text) > max_input_chars:
-            text = text[:max_input_chars] + "..."
+        output_budget = get_output_budget(config)
+
+        # Input standardization for cross-model comparability.
+        max_input_chars, input_standardization_mode = get_effective_input_limit(config, pricing_tier)
+        if len(source_text) > max_input_chars:
+            source_text = source_text[:max_input_chars] + "..."
+        input_length_chars = len(source_text)
         
         # Build prompts
         if task == "summary":
-            prompts = build_summary_prompts(text)
-            default_max_tokens = 2800
+            prompts = build_summary_prompts(source_text)
+            default_max_tokens = output_budget["summary_max_tokens"]
         elif task == "quiz":
             section = {
                 "id": test_case.get("id", "test"),
                 "title": test_case.get("title", "Test"),
-                "text": text
+                "text": source_text
             }
-            prompts = build_quiz_prompts(section, questions_count=6, avoid_questions=[])
-            default_max_tokens = 3200
+            prompts = build_quiz_prompts(
+                section,
+                questions_count=output_budget["quiz_questions_count"],
+                avoid_questions=[]
+            )
+            default_max_tokens = output_budget["quiz_max_tokens"]
         elif task == "flashcards":
             sections = [{
                 "id": test_case.get("id", "test"),
                 "title": test_case.get("title", "Test"),
-                "text": text
+                "text": source_text
             }]
-            prompts = build_flashcards_prompts(sections, cards_per_section=6)
-            default_max_tokens = 4096
+            prompts = build_flashcards_prompts(
+                sections,
+                cards_per_section=output_budget["flashcards_per_section"]
+            )
+            default_max_tokens = output_budget["flashcards_max_tokens"]
         else:
             return {"error": f"Unknown task: {task}"}
         
@@ -250,18 +392,9 @@ async def run_single_benchmark(
             system_prompt=prompts["systemPrompt"],
             user_prompt=prompts["userPrompt"],
             max_tokens=max_tokens,
-            temperature=0.2
+            temperature=0.2,
+            pricing=pricing
         )
-        
-        # Update cost calculation with actual pricing
-        if result.get("usage") and not result.get("error"):
-            actual_cost = client._calculate_cost(
-                model_id,
-                result["usage"].get("prompt_tokens", 0),
-                result["usage"].get("completion_tokens", 0),
-                pricing
-            )
-            result["cost"] = actual_cost
         
         if result.get("error"):
             return {
@@ -280,13 +413,13 @@ async def run_single_benchmark(
         if task in ["quiz", "flashcards"]:
             try:
                 # Try to extract JSON from response
-                text = output_text.strip()
-                if "```json" in text:
-                    text = text.split("```json")[1].split("```")[0].strip()
-                elif "```" in text:
-                    text = text.split("```")[1].split("```")[0].strip()
-                
-                output_json = json_lib.loads(text)
+                output_text_for_json = output_text.strip()
+                if "```json" in output_text_for_json:
+                    output_text_for_json = output_text_for_json.split("```json")[1].split("```")[0].strip()
+                elif "```" in output_text_for_json:
+                    output_text_for_json = output_text_for_json.split("```")[1].split("```")[0].strip()
+
+                output_json = json_lib.loads(output_text_for_json)
             except Exception:
                 output_json = None
         
@@ -301,16 +434,16 @@ async def run_single_benchmark(
         judge_result = await evaluate_with_consensus(
             judge_models=judge_models_for_this,
             task_type=task,
-            source_text=text,
+            source_text=source_text,
             output_text=output_text,
             output_json=output_json,
             client=client,
             use_cache=True,
             models_dict=models_dict
         )
-        
+
         # Calculate content quality score (mean of aggregated scores)
-        content_quality_score = 1.0  # Minimum is 1, not 0
+        raw_content_quality_score = 1.0  # Minimum is 1, not 0
         if judge_result.get("aggregated_scores"):
             scores = []
             for key, value in judge_result["aggregated_scores"].items():
@@ -318,9 +451,17 @@ async def run_single_benchmark(
                     mean_score = value.get("mean", 1.0)
                     scores.append(max(1.0, mean_score))  # Ensure minimum is 1
             if scores:
-                content_quality_score = sum(scores) / len(scores)
+                raw_content_quality_score = sum(scores) / len(scores)
         elif judge_result.get("error") == "Empty output":
-            content_quality_score = 1.0  # Empty output gets minimum score
+            raw_content_quality_score = 1.0  # Empty output gets minimum score
+
+        length_penalty_factor = get_length_penalty_factor(config, input_length_chars=input_length_chars)
+        content_quality_score = max(1.0, min(100.0, raw_content_quality_score * length_penalty_factor))
+
+        judge_quality_excluded, judge_quality_exclusion_reason = should_exclude_judge_quality(
+            judge_result,
+            judge_quality_filter
+        )
         
         # Calculate total cost (generation + judge evaluation)
         generation_cost = result.get("cost", 0)
@@ -337,12 +478,19 @@ async def run_single_benchmark(
             "reliability_score": reliability_result["reliability_score"],
             "reliability_issues": reliability_result["issues"],
             "content_quality_score": content_quality_score,
+            "raw_content_quality_score": raw_content_quality_score,
             "judge_evaluation": judge_result,
+            "judge_quality_excluded": judge_quality_excluded,
+            "judge_quality_exclusion_reason": judge_quality_exclusion_reason,
             "cost": total_cost,
             "generation_cost": generation_cost,
             "judge_cost": judge_cost,
             "latency_ms": result.get("latency_ms", 0),
             "usage": result.get("usage", {}),
+            "input_length_chars": input_length_chars,
+            "input_length_original_chars": original_input_length_chars,
+            "input_standardization_mode": input_standardization_mode,
+            "length_penalty_factor": length_penalty_factor,
             "pricing_tier": pricing_tier,
             "subscription_tier": model_config.get("subscription_tier", "free"),
             "model_available": model_config.get("available", True)
@@ -362,7 +510,8 @@ async def run_benchmark(
     config: Dict[str, Any],
     use_cache: bool = True,
     force: bool = False,
-    logger: Optional[BenchmarkLogger] = None
+    logger: Optional[BenchmarkLogger] = None,
+    judge_quality_filter: str = "strict"
 ):
     """Run benchmark for all model+task+test_case combinations."""
     start_time = time.time()
@@ -370,6 +519,7 @@ async def run_benchmark(
     # Initialize logger if not provided
     if logger is None:
         logger = BenchmarkLogger(console=True)
+    config = {**config, "judge_quality_filter": judge_quality_filter}
     
     # Load test cases
     if not test_cases_path.exists():
@@ -399,6 +549,25 @@ async def run_benchmark(
         return
     
     logger.info(f"Loaded {len(test_cases)} valid test cases", test_cases_file=str(test_cases_path))
+    if len(test_cases) < MIN_VALID_TEST_CASES_FOR_SIGNIFICANCE:
+        logger.warning(
+            "Low sample size after filtering; significance claims are underpowered",
+            valid_test_cases=len(test_cases),
+            recommended_min=MIN_VALID_TEST_CASES_FOR_SIGNIFICANCE
+        )
+
+    balance_report = validate_test_case_balance(
+        test_cases,
+        topics=config.get("topics", []),
+        formats=config.get("test_case_formats", [])
+    )
+    if not balance_report["is_balanced"]:
+        logger.warning(
+            "Test set is imbalanced and may bias rankings",
+            topic_violations=balance_report["topic_violations"],
+            format_violations=balance_report["format_violations"],
+            cell_violations=balance_report["cell_violations"]
+        )
     
     # Load models config
     models_config_list = load_models_config()
@@ -474,6 +643,11 @@ async def run_benchmark(
         
         if not available_judges:
             logger.warning("No judge models available! Evaluation will be limited.")
+        elif len(available_judges) < 3:
+            logger.warning(
+                "Fewer than 3 judge models available; results will be low confidence",
+                available_judge_models=available_judges
+            )
         
         logger.info(
             "Model availability check complete",
@@ -505,7 +679,8 @@ async def run_benchmark(
                             available_judges,
                             semaphore,
                             models_dict,
-                            use_cache=use_cache and not force
+                            use_cache=use_cache and not force,
+                            judge_quality_filter=judge_quality_filter
                         )
                     )
         
@@ -611,7 +786,25 @@ async def run_benchmark(
             raise
         
         logger.info(f"Saved results to: {results_path}", results_file=str(results_path), results_count=len(merged_results))
-        
+
+        # Hardening warning: per-model per-task sample size.
+        sample_counts = Counter(
+            (result.get("model_id"), result.get("task"))
+            for result in merged_results
+            if result.get("model_id") and result.get("task") and not result.get("error")
+        )
+        underpowered_pairs = [
+            {"model_id": model_id, "task": task, "count": count}
+            for (model_id, task), count in sample_counts.items()
+            if count < MIN_VALID_TEST_CASES_FOR_SIGNIFICANCE
+        ]
+        if underpowered_pairs:
+            logger.warning(
+                "Some model/task combinations are underpowered for significance claims",
+                underpowered=underpowered_pairs,
+                recommended_min=MIN_VALID_TEST_CASES_FOR_SIGNIFICANCE
+            )
+
         # Calculate and save metrics
         # Get all unique model IDs from merged_results (not just available_models)
         # This ensures metrics are calculated for all models with data, even if they weren't available in this run
@@ -630,15 +823,40 @@ async def run_benchmark(
             model_results = [r for r in merged_results if r.get("model_id") == model_id]
             if model_results:
                 model_metrics_comprehensive[model_id] = calculate_comprehensive_model_metrics(model_results, config)
-        
-        comparative = calculate_comparative_metrics(model_metrics_overall)
+
+        comparative = calculate_comparative_metrics(
+            model_metrics_overall,
+            model_metrics_comprehensive=model_metrics_comprehensive
+        )
+
+        input_length_distribution = {
+            model_id: metrics.get("input_length", {})
+            for model_id, metrics in model_metrics_overall.items()
+        }
+        low_input_length_models = [
+            model_id for model_id, distribution in input_length_distribution.items()
+            if distribution.get("below_1000_warning")
+        ]
+        if low_input_length_models:
+            logger.warning(
+                "Some models received short average input context (<1000 chars)",
+                low_input_length_models=low_input_length_models
+            )
         
         metrics_path = Path(__file__).parent / "results" / "benchmark_metrics.json"
         with open(metrics_path, "w", encoding="utf-8") as f:
             json.dump({
                 "model_metrics": model_metrics_overall,  # For backward compatibility
                 "model_metrics_comprehensive": model_metrics_comprehensive,  # New comprehensive breakdowns
-                "comparative_metrics": comparative
+                "comparative_metrics": comparative,
+                "input_length_distribution": input_length_distribution,
+                "hardening_metadata": {
+                    "minimum_tests_for_significance": MIN_VALID_TEST_CASES_FOR_SIGNIFICANCE,
+                    "judge_quality_filter": judge_quality_filter,
+                    "input_standardization": get_input_standardization(config),
+                    "underpowered_model_tasks": underpowered_pairs,
+                    "low_input_length_models": low_input_length_models
+                }
             }, f, indent=2, ensure_ascii=False)
         
         logger.info(
@@ -665,8 +883,8 @@ def main():
     parser.add_argument(
         "--test-cases",
         type=str,
-        default="benchmark/results/test_cases.json",
-        help="Path to test cases JSON file"
+        default=None,
+        help="Path to test cases JSON file (default: benchmark/results/test_cases.json)"
     )
     parser.add_argument(
         "--force",
@@ -683,6 +901,13 @@ def main():
         action="store_true",
         help="Only check and print model availability, do not run benchmarks or write results"
     )
+    parser.add_argument(
+        "--judge-quality-filter",
+        type=str,
+        default="strict",
+        choices=["strict", "variance_only", "off"],
+        help="Quality aggregation filter mode for judge consensus flags"
+    )
     
     args = parser.parse_args()
     
@@ -691,7 +916,16 @@ def main():
         models = [m.strip() for m in args.models.split(",")]
     
     tasks = [t.strip() for t in args.tasks.split(",")]
-    test_cases_path = Path(args.test_cases)
+
+    # Resolve test-cases path robustly from both repo root and benchmark/ directory
+    if args.test_cases:
+        test_cases_path = Path(args.test_cases)
+        if not test_cases_path.exists() and not test_cases_path.is_absolute():
+            alt_path = Path(__file__).parent.parent / args.test_cases
+            if alt_path.exists():
+                test_cases_path = alt_path
+    else:
+        test_cases_path = Path(__file__).parent / "results" / "test_cases.json"
     
     config = load_config()
     
@@ -784,7 +1018,8 @@ def main():
         config,
         use_cache=use_cache,
         force=args.force,
-        logger=logger
+        logger=logger,
+        judge_quality_filter=args.judge_quality_filter
     ))
 
 

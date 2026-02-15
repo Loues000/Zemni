@@ -1,5 +1,6 @@
 """Metrics calculation and aggregation with extensive statistics."""
 import statistics
+from collections import Counter
 from typing import Dict, Any, List, Optional
 
 # Overall score calculation constants
@@ -34,15 +35,23 @@ RELIABILITY_MODERATE_PENALTY = 0.7  # Multiplier for reliability 50-70
 CONSISTENCY_MAX_PENALTY = 0.2  # Maximum penalty for high variance
 CONSISTENCY_VARIANCE_DIVISOR = 200.0  # Divisor for variance normalization
 
+# Hardening thresholds
+MIN_TASK_COUNTS_FOR_OVERALL = {
+    "summary": 30,
+    "quiz": 10,
+    "flashcards": 10
+}
+MIN_REQUIRED_JUDGES = 3
+
 
 def calculate_percentiles(values: List[float]) -> Dict[str, float]:
     """Calculate percentiles for a list of values."""
     if not values:
         return {}
-    
+
     sorted_vals = sorted(values)
     n = len(sorted_vals)
-    
+
     def percentile(p: float) -> float:
         if n == 1:
             return sorted_vals[0]
@@ -51,7 +60,7 @@ def calculate_percentiles(values: List[float]) -> Dict[str, float]:
         upper = min(lower + 1, n - 1)
         weight = index - lower
         return sorted_vals[lower] * (1 - weight) + sorted_vals[upper] * weight
-    
+
     return {
         "p0": min(sorted_vals),
         "p25": percentile(0.25),
@@ -61,6 +70,159 @@ def calculate_percentiles(values: List[float]) -> Dict[str, float]:
         "p99": percentile(0.99),
         "p100": max(sorted_vals)
     }
+
+
+def calculate_confidence_interval(values: List[float], confidence: float = 0.95) -> Dict[str, float]:
+    """
+    Calculate confidence interval for a list of values.
+
+    Uses t-distribution for small samples (n < 30), normal approximation for larger.
+
+    Returns dict with ci_95_lower, ci_95_upper, stderr, margin_of_error.
+    """
+    import math
+
+    if not values:
+        return {"ci_95_lower": 0.0, "ci_95_upper": 0.0, "stderr": 0.0, "margin_of_error": 0.0}
+
+    n = len(values)
+    mean = statistics.mean(values)
+
+    if n == 1:
+        std_dev = 0.0
+    else:
+        std_dev = statistics.stdev(values)
+
+    stderr = std_dev / math.sqrt(n)
+
+    # t-critical values (approximate)
+    if n > 30:
+        t_crit = 1.96 if confidence == 0.95 else 2.576
+    elif n > 20:
+        t_crit = 2.086
+    elif n > 10:
+        t_crit = 2.228
+    else:
+        t_crit = 2.262
+
+    margin = t_crit * stderr
+
+    return {
+        "ci_95_lower": max(0.0, mean - margin),  # Clamp to 0-100 for scores
+        "ci_95_upper": min(100.0, mean + margin),
+        "stderr": stderr,
+        "margin_of_error": margin
+    }
+
+
+def confidence_intervals_overlap(metric_a: Dict[str, Any], metric_b: Dict[str, Any]) -> bool:
+    """Check if two metric confidence intervals overlap."""
+    a_low = metric_a.get("ci_95_lower")
+    a_high = metric_a.get("ci_95_upper")
+    b_low = metric_b.get("ci_95_lower")
+    b_high = metric_b.get("ci_95_upper")
+
+    if any(value is None for value in [a_low, a_high, b_low, b_high]):
+        return False
+
+    return not (a_high < b_low or b_high < a_low)
+
+
+def should_exclude_from_quality_aggregation(
+    result: Dict[str, Any],
+    judge_quality_filter: str
+) -> bool:
+    """
+    Decide whether a sample should be excluded from quality means.
+
+    Modes:
+    - off: never exclude based on judge consensus
+    - variance_only: exclude only high-variance consensus
+    - strict: exclude low judge count, high variance, and low agreement
+    """
+    mode = (judge_quality_filter or "strict").lower()
+    if mode in {"off", "none", "disabled"}:
+        return False
+
+    if result.get("judge_quality_excluded"):
+        return True
+
+    judge_eval = result.get("judge_evaluation", {}) or {}
+    judge_count = int(judge_eval.get("judge_count") or 0)
+    consensus_flag = judge_eval.get("consensus_flag", "")
+    low_confidence = bool(judge_eval.get("low_confidence"))
+
+    if mode == "variance_only":
+        return consensus_flag == "high_variance"
+
+    # strict
+    if judge_count and judge_count < MIN_REQUIRED_JUDGES:
+        return True
+    if consensus_flag in {"high_variance", "low_agreement", "low_judge_count"}:
+        return True
+    return low_confidence
+
+
+def build_sorted_ranking_details(
+    model_ids: List[str],
+    all_model_metrics: Dict[str, Dict[str, Any]],
+    score_metric_key: str,
+    higher_is_better: bool = True
+) -> List[Dict[str, Any]]:
+    """Build ranking rows with optional CI overlap tie markers."""
+    sorted_models = sorted(
+        model_ids,
+        key=lambda model_id: all_model_metrics[model_id].get(score_metric_key, {}).get("mean", 0)
+        if isinstance(all_model_metrics[model_id].get(score_metric_key), dict)
+        else all_model_metrics[model_id].get(score_metric_key, 0),
+        reverse=higher_is_better
+    )
+
+    details: List[Dict[str, Any]] = []
+    for idx, model_id in enumerate(sorted_models):
+        metrics = all_model_metrics[model_id]
+        metric_value = metrics.get(score_metric_key, {})
+        if isinstance(metric_value, dict):
+            score = metric_value.get("mean", 0)
+            ci_low = metric_value.get("ci_95_lower")
+            ci_high = metric_value.get("ci_95_upper")
+            margin = metric_value.get("margin_of_error")
+        else:
+            score = metric_value
+            ci_low = None
+            ci_high = None
+            margin = None
+
+        tie_with_prev = False
+        tie_with_next = False
+
+        if isinstance(metric_value, dict) and idx > 0:
+            prev_model_id = sorted_models[idx - 1]
+            prev_metric = all_model_metrics[prev_model_id].get(score_metric_key, {})
+            if isinstance(prev_metric, dict):
+                tie_with_prev = confidence_intervals_overlap(metric_value, prev_metric)
+        if isinstance(metric_value, dict) and idx < len(sorted_models) - 1:
+            next_model_id = sorted_models[idx + 1]
+            next_metric = all_model_metrics[next_model_id].get(score_metric_key, {})
+            if isinstance(next_metric, dict):
+                tie_with_next = confidence_intervals_overlap(metric_value, next_metric)
+
+        details.append({
+            "rank": idx + 1,
+            "model_id": model_id,
+            "score": score,
+            "ci_95_lower": ci_low,
+            "ci_95_upper": ci_high,
+            "margin_of_error": margin,
+            "is_statistical_tie": tie_with_prev or tie_with_next,
+            "tie_with_previous": tie_with_prev,
+            "tie_with_next": tie_with_next,
+            "significance_marker": "*" if tie_with_prev or tie_with_next else "",
+            "significance_note": "Statistically indistinguishable from adjacent rank"
+            if tie_with_prev or tie_with_next else ""
+        })
+
+    return details
 
 
 def calculate_universal_weighted_score(aggregated_scores: Dict[str, Dict[str, float]]) -> float:
@@ -122,10 +284,10 @@ def aggregate_model_metrics(
     
     # Extract all scores
     reliability_scores = [r.get("reliability_score", 0) for r in results if "reliability_score" in r]
-    quality_scores: List[float] = []
     factual_scores: List[float] = []
     completeness_scores: List[float] = []
     quality_overall: List[float] = []
+    input_lengths = [r.get("input_length_chars", 0) for r in results if isinstance(r.get("input_length_chars"), (int, float))]
     
     # Universal evaluation dimension scores (6 core criteria)
     evaluation_scores: Dict[str, List[float]] = {
@@ -139,21 +301,35 @@ def aggregate_model_metrics(
     
     costs = [r.get("cost", 0) for r in results if "cost" in r]
     latencies = [r.get("latency_ms", 0) for r in results if "latency_ms" in r]
+    judge_filter_mode = (config or {}).get("judge_quality_filter", "strict")
+    excluded_quality_samples = 0
+    judge_flag_counter: Counter = Counter()
     
     # Extract content quality scores from judge evaluations
     for r in results:
         judge_result = r.get("judge_evaluation", {})
         aggregated = judge_result.get("aggregated_scores", {})
-        
+        consensus_flag = judge_result.get("consensus_flag")
+        if consensus_flag:
+            judge_flag_counter[consensus_flag] += 1
+
+        exclude_from_quality = should_exclude_from_quality_aggregation(r, judge_filter_mode)
+        if exclude_from_quality:
+            excluded_quality_samples += 1
+            continue
+
+        # Prefer the explicit per-sample score produced by run_benchmark.py.
+        # Newer runs compute and store this under content_quality_score, while
+        # judge_result.aggregated_scores may not include a top-level "quality".
+        if "content_quality_score" in r:
+            sample_quality = r.get("content_quality_score", 0)
+            quality_overall.append(sample_quality)
         # Legacy quality score (backward compatibility)
-        if "quality" in aggregated:
-            quality_scores.append(aggregated["quality"]["mean"])
+        elif "quality" in aggregated:
             quality_overall.append(aggregated["quality"]["mean"])
         elif "question_quality" in aggregated:
-            quality_scores.append(aggregated["question_quality"]["mean"])
             quality_overall.append(aggregated["question_quality"]["mean"])
         elif "clarity" in aggregated:
-            quality_scores.append(aggregated["clarity"]["mean"])
             quality_overall.append(aggregated["clarity"]["mean"])
         
         # Legacy dimensions
@@ -207,7 +383,8 @@ def aggregate_model_metrics(
             "std_dev": statistics.stdev(reliability_scores) if len(reliability_scores) > 1 else 0,
             "min": min(reliability_scores) if reliability_scores else 0,
             "max": max(reliability_scores) if reliability_scores else 0,
-            "percentiles": calculate_percentiles(reliability_scores) if reliability_scores else {}
+            "percentiles": calculate_percentiles(reliability_scores) if reliability_scores else {},
+            **calculate_confidence_interval(reliability_scores)
         },
         "content_quality": {
             "mean": statistics.mean(quality_overall) if quality_overall else 0,
@@ -215,19 +392,26 @@ def aggregate_model_metrics(
             "std_dev": statistics.stdev(quality_overall) if len(quality_overall) > 1 else 0,
             "min": min(quality_overall) if quality_overall else 0,
             "max": max(quality_overall) if quality_overall else 0,
-            "percentiles": calculate_percentiles(quality_overall) if quality_overall else {}
+            "percentiles": calculate_percentiles(quality_overall) if quality_overall else {},
+            **calculate_confidence_interval(quality_overall)
         },
         "factual_accuracy": {
             "mean": statistics.mean(factual_scores) if factual_scores else 0,
             "median": statistics.median(factual_scores) if factual_scores else 0,
             "std_dev": statistics.stdev(factual_scores) if len(factual_scores) > 1 else 0,
-            "percentiles": calculate_percentiles(factual_scores) if factual_scores else {}
+            "min": min(factual_scores) if factual_scores else 0,
+            "max": max(factual_scores) if factual_scores else 0,
+            "percentiles": calculate_percentiles(factual_scores) if factual_scores else {},
+            **calculate_confidence_interval(factual_scores)
         },
         "completeness": {
             "mean": statistics.mean(completeness_scores) if completeness_scores else 0,
             "median": statistics.median(completeness_scores) if completeness_scores else 0,
             "std_dev": statistics.stdev(completeness_scores) if len(completeness_scores) > 1 else 0,
-            "percentiles": calculate_percentiles(completeness_scores) if completeness_scores else {}
+            "min": min(completeness_scores) if completeness_scores else 0,
+            "max": max(completeness_scores) if completeness_scores else 0,
+            "percentiles": calculate_percentiles(completeness_scores) if completeness_scores else {},
+            **calculate_confidence_interval(completeness_scores)
         },
         # Abitur evaluation dimensions
         **{
@@ -237,7 +421,8 @@ def aggregate_model_metrics(
                 "std_dev": statistics.stdev(scores) if len(scores) > 1 else 0,
                 "min": min(scores) if scores else 0,
                 "max": max(scores) if scores else 0,
-                "percentiles": calculate_percentiles(scores) if scores else {}
+                "percentiles": calculate_percentiles(scores) if scores else {},
+                **calculate_confidence_interval(scores)
             }
             for dim, scores in evaluation_scores.items()
         },
@@ -254,7 +439,17 @@ def aggregate_model_metrics(
             "p99": calculate_percentiles(latencies).get("p99", 0) if latencies else 0,
             "percentiles": calculate_percentiles(latencies) if latencies else {}
         },
-        "test_count": len(results)
+        "input_length": {
+            "mean": statistics.mean(input_lengths) if input_lengths else 0,
+            "median": statistics.median(input_lengths) if input_lengths else 0,
+            "min": min(input_lengths) if input_lengths else 0,
+            "max": max(input_lengths) if input_lengths else 0,
+            "below_1000_warning": (statistics.mean(input_lengths) < 1000) if input_lengths else False
+        },
+        "test_count": len(results),
+        "quality_sample_count": len(quality_overall),
+        "quality_excluded_count": excluded_quality_samples,
+        "judge_consensus_flags": dict(judge_flag_counter)
     }
     
     # Calculate cost per quality point
@@ -366,7 +561,9 @@ def aggregate_model_metrics(
 
 
 def calculate_comparative_metrics(
-    all_model_metrics: Dict[str, Dict[str, Any]]
+    all_model_metrics: Dict[str, Dict[str, Any]],
+    model_metrics_comprehensive: Optional[Dict[str, Dict[str, Any]]] = None,
+    coverage_thresholds: Optional[Dict[str, int]] = None
 ) -> Dict[str, Any]:
     """
     Calculate comparative metrics across all models.
@@ -379,68 +576,154 @@ def calculate_comparative_metrics(
     """
     if not all_model_metrics:
         return {}
-    
+
     models = list(all_model_metrics.keys())
-    
-    # Rankings by different criteria
+    coverage_thresholds = coverage_thresholds or MIN_TASK_COUNTS_FOR_OVERALL
+    model_metrics_comprehensive = model_metrics_comprehensive or {}
+    has_comprehensive_data = bool(model_metrics_comprehensive)
+
+    model_status: Dict[str, Dict[str, Any]] = {}
+    eligible_models: List[str] = []
+    partial_models: List[str] = []
+
+    for model_id in models:
+        if has_comprehensive_data:
+            task_counts = (
+                model_metrics_comprehensive.get(model_id, {})
+                .get("summary_stats", {})
+                .get("test_count_by_task", {})
+            )
+            normalized_task_counts = {task: int(task_counts.get(task, 0)) for task in coverage_thresholds}
+            missing_requirements = [
+                task for task, required in coverage_thresholds.items()
+                if normalized_task_counts.get(task, 0) < required
+            ]
+            eligible_for_overall = not missing_requirements
+            is_partial = len(missing_requirements) > 0
+        else:
+            normalized_task_counts = {task: 0 for task in coverage_thresholds}
+            missing_requirements = []
+            eligible_for_overall = True
+            is_partial = False
+
+        if eligible_for_overall:
+            eligible_models.append(model_id)
+        if is_partial:
+            partial_models.append(model_id)
+
+        model_status[model_id] = {
+            "task_counts": normalized_task_counts,
+            "eligible_for_overall": eligible_for_overall,
+            "is_partial": is_partial,
+            "missing_requirements": missing_requirements
+        }
+
+    def rank_models(
+        model_ids: List[str],
+        key_fn,
+        reverse: bool = True
+    ) -> List[str]:
+        return sorted(model_ids, key=key_fn, reverse=reverse)
+
+    # Overall rankings include only complete models.
     rankings = {
-        "by_reliability": sorted(
-            models,
-            key=lambda m: all_model_metrics[m].get("reliability", {}).get("mean", 0),
+        "by_reliability": rank_models(
+            eligible_models,
+            key_fn=lambda model_id: all_model_metrics[model_id].get("reliability", {}).get("mean", 0),
             reverse=True
         ),
-        "by_content_quality": sorted(
-            models,
-            key=lambda m: all_model_metrics[m].get("content_quality", {}).get("mean", 0),
+        "by_content_quality": rank_models(
+            eligible_models,
+            key_fn=lambda model_id: all_model_metrics[model_id].get("content_quality", {}).get("mean", 0),
             reverse=True
         ),
-        "by_combined_score": sorted(
-            models,
-            key=lambda m: all_model_metrics[m].get("combined_score", 0),
+        "by_combined_score": rank_models(
+            eligible_models,
+            key_fn=lambda model_id: all_model_metrics[model_id].get("combined_score", 0),
             reverse=True
         ),
-        "by_overall_score": sorted(
-            models,
-            key=lambda m: all_model_metrics[m].get("overall_score", 0),
+        "by_overall_score": rank_models(
+            eligible_models,
+            key_fn=lambda model_id: all_model_metrics[model_id].get("overall_score", 0),
             reverse=True
         ),
-        "by_universal_score": sorted(
-            models,
-            key=lambda m: all_model_metrics[m].get("universal_weighted_score", 0),
+        "by_universal_score": rank_models(
+            eligible_models,
+            key_fn=lambda model_id: all_model_metrics[model_id].get("universal_weighted_score", 0),
             reverse=True
         ),
-        "by_cost_effectiveness": sorted(
-            models,
-            key=lambda m: all_model_metrics[m].get("cost_per_quality_point", float('inf')),
-            reverse=False  # Lower is better
+        "by_cost_effectiveness": rank_models(
+            eligible_models,
+            key_fn=lambda model_id: all_model_metrics[model_id].get("cost_per_quality_point", float("inf")),
+            reverse=False
         ),
-        "by_reliability_cost": sorted(
-            models,
-            key=lambda m: all_model_metrics[m].get("cost_per_reliability_point", float('inf')),
+        "by_reliability_cost": rank_models(
+            eligible_models,
+            key_fn=lambda model_id: all_model_metrics[model_id].get("cost_per_reliability_point", float("inf")),
             reverse=False
         )
     }
-    
-    # Best value models (combined score / cost)
+
+    # Task-specific rankings include any model with task coverage.
+    task_rankings: Dict[str, List[str]] = {}
+    for task in ["summary", "quiz", "flashcards"]:
+        candidates = [
+            model_id for model_id in models
+            if model_status.get(model_id, {}).get("task_counts", {}).get(task, 0) > 0
+        ]
+        task_rankings[task] = sorted(
+            candidates,
+            key=lambda model_id: (
+                model_metrics_comprehensive.get(model_id, {})
+                .get("by_task", {})
+                .get(task, {})
+                .get("overall_score", 0)
+            ),
+            reverse=True
+        )
+    rankings["by_task"] = task_rankings
+
+    # Best value models (combined score / cost), only for overall-eligible models.
     value_scores = {}
-    for model_id, metrics in all_model_metrics.items():
+    for model_id in eligible_models:
+        metrics = all_model_metrics[model_id]
         combined = metrics.get("combined_score", 0)
         total_cost = metrics.get("cost", {}).get("total", 0)
         if total_cost > 0:
             value_scores[model_id] = combined / total_cost
         else:
-            value_scores[model_id] = float('inf') if combined > 0 else 0
-    
+            value_scores[model_id] = float("inf") if combined > 0 else 0
+
     rankings["by_value"] = sorted(
-        models,
-        key=lambda m: value_scores.get(m, 0),
+        eligible_models,
+        key=lambda model_id: value_scores.get(model_id, 0),
         reverse=True
     )
-    
+
+    ranking_details = {
+        "by_content_quality": build_sorted_ranking_details(
+            rankings["by_content_quality"],
+            all_model_metrics,
+            score_metric_key="content_quality",
+            higher_is_better=True
+        ),
+        "by_reliability": build_sorted_ranking_details(
+            rankings["by_reliability"],
+            all_model_metrics,
+            score_metric_key="reliability",
+            higher_is_better=True
+        )
+    }
+
     return {
         "rankings": rankings,
+        "ranking_details": ranking_details,
         "value_scores": value_scores,
-        "model_count": len(models)
+        "model_count": len(models),
+        "overall_eligible_models": eligible_models,
+        "excluded_from_overall_rankings": partial_models,
+        "coverage_thresholds": coverage_thresholds,
+        "model_status": model_status
     }
 
 

@@ -73,6 +73,11 @@ REPORT_TEMPLATE = """
         .rank-1 { background: #ffd700; }
         .rank-2 { background: #c0c0c0; }
         .rank-3 { background: #cd7f32; }
+        .tie-marker {
+            color: #8a5a00;
+            font-weight: 700;
+            margin-left: 4px;
+        }
         .metric-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -145,6 +150,49 @@ REPORT_TEMPLATE = """
                 {% endfor %}
             </tbody>
         </table>
+
+        {% if ranking_details.by_content_quality %}
+        <h3>By Content Quality (95% CI)</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Rank</th>
+                    <th>Model</th>
+                    <th>Quality Mean</th>
+                    <th>95% CI</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in ranking_details.by_content_quality[:10] %}
+                <tr>
+                    <td>
+                        <span class="ranking rank-{{ loop.index }}">{{ row.rank }}</span>
+                    </td>
+                    <td>
+                        <strong>{{ row.model_id }}</strong>
+                        {% if model_status[row.model_id] and model_status[row.model_id].is_partial %}
+                        <span style="font-size: 0.85em; color: #8a5a00;">(partial)</span>
+                        {% endif %}
+                    </td>
+                    <td class="score score-high">
+                        {{ "%.2f"|format(row.score) }}
+                        {% if row.margin_of_error is not none %}+/- {{ "%.2f"|format(row.margin_of_error) }}{% endif %}
+                        {% if row.is_statistical_tie %}
+                        <span class="tie-marker" title="{{ row.significance_note or 'Statistical tie with adjacent rank' }}">*</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if row.ci_95_lower is not none and row.ci_95_upper is not none %}
+                        [{{ "%.2f"|format(row.ci_95_lower) }}, {{ "%.2f"|format(row.ci_95_upper) }}]
+                        {% else %}
+                        N/A
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
 
         <h3>By Cost Effectiveness</h3>
         <table>
@@ -258,6 +306,8 @@ def generate_report(
     model_metrics = metrics_data.get("model_metrics", {})
     comparative_metrics = metrics_data.get("comparative_metrics", {})
     rankings = comparative_metrics.get("rankings", {})
+    ranking_details = comparative_metrics.get("ranking_details", {})
+    model_status = comparative_metrics.get("model_status", {})
     
     # Get sample outputs
     sample_outputs = [
@@ -282,6 +332,8 @@ def generate_report(
         model_metrics=model_metrics,
         comparative_metrics=comparative_metrics,
         rankings=rankings,
+        ranking_details=ranking_details,
+        model_status=model_status,
         sample_outputs=sample_outputs
     )
     

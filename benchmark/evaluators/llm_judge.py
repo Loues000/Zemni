@@ -16,10 +16,18 @@ JUDGE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 # Cost optimization: Reduced source text length for judges (1500 instead of 2000)
 JUDGE_SOURCE_TEXT_MAX_CHARS = 1500
+JUDGE_RESPONSE_MAX_TOKENS = 220
 
 # Limit concurrent judge calls to prevent API overload
 JUDGE_CONCURRENCY_LIMIT = 3
 _judge_semaphore = asyncio.Semaphore(JUDGE_CONCURRENCY_LIMIT)
+
+# Judge robustness thresholds (1-100 scoring regime)
+MIN_REQUIRED_JUDGES = 3
+JUDGE_VARIANCE_WARNING_THRESHOLD = 25.0
+JUDGE_VARIANCE_CRITICAL_THRESHOLD = 100.0
+JUDGE_AGREEMENT_WARNING_THRESHOLD = 0.9
+JUDGE_AGREEMENT_CRITICAL_THRESHOLD = 0.7
 
 
 def get_judge_source_text(source_text: str, max_chars: int = JUDGE_SOURCE_TEXT_MAX_CHARS) -> str:
@@ -99,6 +107,53 @@ def save_cached_judgment(hash_key: str, judgment: Dict[str, Any]):
     cache_file.write_text(json.dumps(judgment, indent=2))
 
 
+def summarize_consensus_quality(consensus_metrics: Dict[str, Any], judge_count: int) -> Dict[str, Any]:
+    """Classify consensus quality for downstream filtering and UI badges."""
+    variances = [float(v) for key, v in consensus_metrics.items() if key.endswith("_variance") and isinstance(v, (int, float))]
+    agreements = [float(v) for key, v in consensus_metrics.items() if key.endswith("_agreement") and isinstance(v, (int, float))]
+
+    max_variance = max(variances) if variances else 0.0
+    min_agreement = min(agreements) if agreements else 1.0
+
+    consensus_flag = "ok"
+    low_confidence = False
+    quality_band = "acceptable"
+
+    if judge_count < MIN_REQUIRED_JUDGES:
+        consensus_flag = "low_judge_count"
+        low_confidence = True
+        quality_band = "critical"
+    elif max_variance > JUDGE_VARIANCE_CRITICAL_THRESHOLD:
+        consensus_flag = "high_variance"
+        low_confidence = True
+        quality_band = "critical"
+    elif min_agreement < JUDGE_AGREEMENT_CRITICAL_THRESHOLD:
+        consensus_flag = "low_agreement"
+        low_confidence = True
+        quality_band = "critical"
+    elif max_variance >= JUDGE_VARIANCE_WARNING_THRESHOLD or min_agreement <= JUDGE_AGREEMENT_WARNING_THRESHOLD:
+        consensus_flag = "warning"
+        quality_band = "warning"
+
+    return {
+        "consensus_flag": consensus_flag,
+        "low_confidence": low_confidence,
+        "quality_band": quality_band,
+        "max_variance": max_variance,
+        "min_agreement": min_agreement,
+        "judge_count": judge_count,
+        "min_required_judges": MIN_REQUIRED_JUDGES,
+        "variance_thresholds": {
+            "warning": JUDGE_VARIANCE_WARNING_THRESHOLD,
+            "critical": JUDGE_VARIANCE_CRITICAL_THRESHOLD
+        },
+        "agreement_thresholds": {
+            "warning": JUDGE_AGREEMENT_WARNING_THRESHOLD,
+            "critical": JUDGE_AGREEMENT_CRITICAL_THRESHOLD
+        }
+    }
+
+
 def build_judge_prompt(
     task_type: str,
     source_text: str,
@@ -172,7 +227,7 @@ Antworte NUR mit JSON:
   "language_quality": <1-100>,
   "usability": <1-100>,
   "technical_correctness": <1-100>,
-  "reasoning": "Kurze Begründung der Hauptstärken und -schwächen"
+  "reasoning": "Sehr kurze Begründung (max 20 Wörter)"
 }}"""
     
     elif task_type == "quiz":
@@ -203,7 +258,7 @@ Antworte NUR mit JSON:
   "question_quality": <1-100>,
   "distractor_quality": <1-100>,
   "pedagogical_usefulness": <1-100>,
-  "reasoning": "Kurze Begründung"
+  "reasoning": "Sehr kurze Begründung (max 20 Wörter)"
 }}"""
     
     elif task_type == "flashcards":
@@ -234,7 +289,7 @@ Antworte NUR mit JSON:
   "clarity": <1-100>,
   "memorability": <1-100>,
   "appropriate_detail": <1-100>,
-  "reasoning": "Kurze Begründung"
+  "reasoning": "Sehr kurze Begründung (max 20 Wörter)"
 }}"""
     
     else:
@@ -264,20 +319,10 @@ Bewerte objektiv und konsistent. Nutze die volle Skala von 1-100."""
             model_id=model_id,
             system_prompt=system_prompt,
             user_prompt=prompt,
-            max_tokens=500,
-            temperature=0.1
+            max_tokens=JUDGE_RESPONSE_MAX_TOKENS,
+            temperature=0.1,
+            pricing=(model_config or {}).get("pricing")
         )
-    
-    # Update cost calculation with actual pricing if model_config provided
-    if model_config and result.get("usage") and not result.get("error"):
-        pricing = model_config.get("pricing", {})
-        actual_cost = client._calculate_cost(
-            model_id,
-            result["usage"].get("prompt_tokens", 0),
-            result["usage"].get("completion_tokens", 0),
-            pricing
-        )
-        result["cost"] = actual_cost
     
     if result.get("error"):
         return {
@@ -369,6 +414,9 @@ async def evaluate_with_consensus(
             },
             "individual_judgments": [],
             "consensus_metrics": {},
+            "consensus_quality": summarize_consensus_quality({}, judge_count=0),
+            "consensus_flag": "low_judge_count",
+            "low_confidence": True,
             "judge_count": 0,
             "available_models": [],
             "total_judge_cost": 0.0
@@ -406,15 +454,17 @@ async def _evaluate_consensus_internal(
 ) -> Dict[str, Any]:
     """Internal function to run consensus evaluation."""
     
-    # Check model availability
-    availability = await client.check_models_availability(judge_models)
-    available_models = [m for m in judge_models if availability.get(m, False)]
-    
+    # Judge models are already availability-checked by the benchmark runner.
+    available_models = judge_models
+
     if not available_models:
         return {
             "error": "No judge models available",
             "scores": {},
             "judgments": [],
+            "consensus_quality": summarize_consensus_quality({}, judge_count=0),
+            "consensus_flag": "low_judge_count",
+            "low_confidence": True,
             "total_judge_cost": 0.0
         }
     
@@ -451,6 +501,9 @@ async def _evaluate_consensus_internal(
             "error": "All judge models failed",
             "scores": {},
             "judgments": [],
+            "consensus_quality": summarize_consensus_quality({}, judge_count=0),
+            "consensus_flag": "low_judge_count",
+            "low_confidence": True,
             "total_judge_cost": total_judge_cost
         }
     
@@ -496,11 +549,22 @@ async def _evaluate_consensus_internal(
                 variance = sum((x - mean) ** 2 for x in values) / len(values)
                 consensus_metrics[f"{key}_variance"] = variance
                 consensus_metrics[f"{key}_agreement"] = 1.0 / (1.0 + variance)  # Higher = more agreement
-    
+
+    consensus_quality = summarize_consensus_quality(consensus_metrics, judge_count=len(valid_judgments))
+    if consensus_quality["quality_band"] != "acceptable":
+        print(
+            f"[JUDGE] consensus {consensus_quality['consensus_flag']} "
+            f"(judges={len(valid_judgments)}, max_variance={consensus_quality['max_variance']:.2f}, "
+            f"min_agreement={consensus_quality['min_agreement']:.3f})"
+        )
+
     result = {
         "aggregated_scores": aggregated,
         "individual_judgments": valid_judgments,
         "consensus_metrics": consensus_metrics,
+        "consensus_quality": consensus_quality,
+        "consensus_flag": consensus_quality["consensus_flag"],
+        "low_confidence": consensus_quality["low_confidence"],
         "judge_count": len(valid_judgments),
         "available_models": available_models,
         "total_judge_cost": total_judge_cost
