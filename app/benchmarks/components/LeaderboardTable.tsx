@@ -1,4 +1,4 @@
-import type { ModelMetrics, TaskFilter } from "../types";
+import type { ModelMetrics, ModelRankingStatus, TaskFilter } from "../types";
 import { clamp0to100, costPer100QualityPoints, formatMoney, formatMs, getDisplayName, scoreFor } from "../utils";
 
 interface LeaderboardTableProps {
@@ -7,6 +7,7 @@ interface LeaderboardTableProps {
   filters: { task: TaskFilter; topic: string };
   onSelect: (modelId: string) => void;
   modelDisplayNames: Record<string, string>;
+  modelStatus?: Record<string, ModelRankingStatus>;
   metricsComprehensive?: Record<string, any>;
 }
 
@@ -16,6 +17,7 @@ export function LeaderboardTable({
   filters,
   onSelect,
   modelDisplayNames,
+  modelStatus,
   metricsComprehensive,
 }: LeaderboardTableProps) {
   // Check if task data is present
@@ -68,6 +70,7 @@ export function LeaderboardTable({
         <tbody>
           {rows.map(({ modelId, model }, idx) => {
             if (!model) return null;
+            const status = modelStatus?.[modelId];
             const rank = idx + 1;
             const badgeClass =
               rank === 1
@@ -102,6 +105,27 @@ export function LeaderboardTable({
                 </td>
                 <td style={{ fontWeight: "600" }}>
                   <span className="benchmark-model-id">{getDisplayName(modelId, modelDisplayNames)}</span>
+                  {status?.is_partial && (
+                    <span
+                      style={{
+                        marginLeft: "0.5rem",
+                        fontSize: "0.75rem",
+                        fontWeight: 500,
+                        color: "#8a5a00",
+                        background: "#fff4d6",
+                        border: "1px solid #f0d48a",
+                        borderRadius: "999px",
+                        padding: "0.1rem 0.45rem",
+                      }}
+                      title={
+                        status.missing_requirements?.length
+                          ? `Missing overall coverage: ${status.missing_requirements.join(", ")}`
+                          : "Incomplete task coverage"
+                      }
+                    >
+                      partial
+                    </span>
+                  )}
                 </td>
                 <td className="benchmark-td-right">
                   <div className="benchmark-scorecell">

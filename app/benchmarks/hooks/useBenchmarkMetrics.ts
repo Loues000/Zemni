@@ -29,6 +29,8 @@ export function useBenchmarkMetrics({
   const metricsComprehensive = data?.metricsComprehensive;
   const comparative = data?.comparative || {};
   const rankings = comparative.rankings || {};
+  const rankingDetails = comparative.ranking_details || {};
+  const modelStatus = comparative.model_status || {};
 
   // Get metrics for current filter
   const getFilteredMetrics = useCallback(
@@ -97,6 +99,12 @@ export function useBenchmarkMetrics({
       .map((modelId) => ({ modelId, model: getFilteredMetrics(modelId) }))
       .filter((row) => row.model && (row.model.test_count || 0) > 0)
       .filter((row) => {
+        if (filters.task !== "all") return true;
+        const status = modelStatus[row.modelId];
+        if (!status) return true;
+        return status.eligible_for_overall !== false;
+      })
+      .filter((row) => {
         if (!query) return true;
         const displayName = getDisplayName(row.modelId, modelDisplayNames).toLowerCase();
         return displayName.includes(query) || row.modelId.toLowerCase().includes(query);
@@ -124,7 +132,7 @@ export function useBenchmarkMetrics({
     });
 
     return rows;
-  }, [getFilteredMetrics, modelIds, view.modelQuery, view.sortDir, view.sortKey, modelDisplayNames]);
+  }, [filters.task, getFilteredMetrics, modelIds, modelDisplayNames, modelStatus, view.modelQuery, view.sortDir, view.sortKey]);
 
   const limitedLeaderboardRows = useMemo(() => {
     if (view.leaderboardLimit <= 0) return leaderboardRows;
@@ -174,6 +182,8 @@ export function useBenchmarkMetrics({
     metrics,
     metricsComprehensive,
     rankings,
+    rankingDetails,
+    modelStatus,
     modelIds,
     topicsList,
     filteredResults,

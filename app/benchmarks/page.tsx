@@ -40,6 +40,8 @@ export default function BenchmarksPage() {
     metrics,
     metricsComprehensive,
     rankings,
+    rankingDetails,
+    modelStatus,
     modelIds,
     topicsList,
     leaderboardRows,
@@ -124,6 +126,7 @@ python run_benchmark.py --models "gpt-4o,claude-sonnet" --tasks summary,quiz`}
           filters={filters}
           onSelect={(modelId) => setSelection({ modelId, testKey: "" })}
           modelDisplayNames={modelDisplayNames}
+          modelStatus={modelStatus}
           metricsComprehensive={metricsComprehensive}
         />
       </section>
@@ -170,7 +173,13 @@ python run_benchmark.py --models "gpt-4o,claude-sonnet" --tasks summary,quiz`}
       />
 
       {/* Rankings by Category */}
-      <RankingsSection rankings={rankings} metrics={metrics} modelDisplayNames={modelDisplayNames} />
+      <RankingsSection
+        rankings={rankings}
+        rankingDetails={rankingDetails}
+        metrics={metrics}
+        modelStatus={modelStatus}
+        modelDisplayNames={modelDisplayNames}
+      />
     </div>
   );
 }
