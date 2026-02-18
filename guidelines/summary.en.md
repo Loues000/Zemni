@@ -15,6 +15,7 @@ These rules apply **in addition** to `guidelines/general.en.md` and only for the
 - The first H1 is the document title only. The actual content structure starts AFTER the title and should use H1 for main topics.
 - Use H1 (`#`) for each major topic/chapter in the summary content (not just the title).
 - Use multiple H1 headings to separate major lecture topics/chapters.
+- Before each major topic H1 (`# ...`) after the title, insert a divider line `---` on its own line (with a blank line above and below). Do not put a divider before the initial title H1.
 - Use H2 (`##`) for subtopics within each H1 section.
 - Use H3 (`###`) to group bullets under clear sub-subtopics.
 - Prefer **more** structure over long unstructured bullet dumps.
@@ -65,6 +66,13 @@ Incorrect (breaks Notion rendering):
 
   - Subpoint with blank line above
 ```
+
+## Key Definitions (bounded, optional)
+If a subtopic introduces terms that need crisp definitions, add a clearly delimited block at the end of that subtopic:
+
+- Use this exact label line: `**Key Definitions**`
+- Then a bullet list with this exact shape: `- **Term**: definition`
+- Keep definitions short and lecture-grounded (no external knowledge). If nothing needs defining, omit the block.
 
 ## Headings
 - Use at most H1-H3 (H4+ does not export reliably to Notion).
