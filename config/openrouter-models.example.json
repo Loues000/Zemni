@@ -280,6 +280,20 @@
     }
   },
   {
+    "id": "minimax/minimax-m2.5",
+    "display_name": "Minimax M2.5",
+    "subscription_tier": "basic",
+    "available": false,
+    "tokenizer": {
+      "tiktoken_encoding": "cl100k_base"
+    },
+    "pricing": {
+      "currency": "USD",
+      "input_per_1m": 0.3,
+      "output_per_1m": 1.2
+    }
+  },
+  {
     "id": "arcee-ai/trinity-large-preview:free",
     "display_name": "Trinity Large Preview",
     "subscription_tier": "free",
@@ -325,7 +339,21 @@
     "id": "openrouter/pony-alpha",
     "display_name": "Pony Alpha",
     "subscription_tier": "free",
-    "available": true,
+    "available": false,
+    "tokenizer": {
+      "tiktoken_encoding": "cl100k_base"
+    },
+    "pricing": {
+      "currency": "USD",
+      "input_per_1m": 0,
+      "output_per_1m": 0
+    }
+  },
+  {
+    "id": "openrouter/aurora-alpha",
+    "display_name": "Aurora Alpha",
+    "subscription_tier": "free",
+    "available": false,
     "tokenizer": {
       "tiktoken_encoding": "cl100k_base"
     },
