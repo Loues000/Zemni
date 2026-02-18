@@ -32,7 +32,9 @@ const FORMAT_CONTRACT = [
   "- Ausgabe beginnt DIREKT mit einer H1-Ueberschrift (# Titel).",
   "- KEINE Metadaten, KEIN Frontmatter, KEINE einleitenden Kommentare.",
   "- Nur reines Markdown.",
+  "- Nach der Titel-H1: Vor jeder neuen Hauptkapitel-H1 (# ...) steht genau eine Divider-Zeile `---` (mit Leerzeile davor/danach).",
   "- Ueberschriften niemals nummerieren (kein '## 1.' / '## I.' etc).",
+  "- Key Definitions (wenn sinnvoll): Am Ende eines Unterkapitels eine Zeile `**Key Definitions**`, danach Bullets im Format `- **Term**: Definition`.",
   "- Wenn Mathe/Formeln vorkommen: nutze LaTeX (inline $...$, Display $$ ... $$) und erklaere Variablen direkt danach.",
   "- VERBOTEN: Abschluss-Saetze wie 'Damit kann man sich gut vorbereiten' oder 'Alles kommt aus den Vorlesungsfolien'."
 ].join("\n");
