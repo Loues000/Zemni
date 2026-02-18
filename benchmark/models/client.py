@@ -53,12 +53,12 @@ class ModelClient:
                 # Log error for debugging
                 try:
                     error_data = response.json()
-                    print(f"⚠ Model {model_id} unavailable: {error_data.get('error', {}).get('message', f'Status {response.status_code}')}")
+                    print(f"[WARN] Model {model_id} unavailable: {error_data.get('error', {}).get('message', f'Status {response.status_code}')}")
                 except:
-                    print(f"⚠ Model {model_id} unavailable: Status {response.status_code}")
+                    print(f"[WARN] Model {model_id} unavailable: Status {response.status_code}")
             return response.status_code == 200
         except Exception as e:
-            print(f"⚠ Model {model_id} check failed: {str(e)}")
+            print(f"[WARN] Model {model_id} check failed: {str(e)}")
             return False
     
     async def check_models_availability(self, model_ids: List[str]) -> Dict[str, bool]:
@@ -82,7 +82,8 @@ class ModelClient:
         user_prompt: str,
         max_tokens: int = 2000,
         temperature: float = 0.2,
-        max_retries: int = 2
+        max_retries: int = 2,
+        pricing: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Generate text using OpenRouter API.
@@ -93,6 +94,49 @@ class ModelClient:
         """
         start_time = time.time()
         
+        def extract_choice_text(choice: Dict[str, Any]) -> str:
+            """
+            OpenRouter generally returns chat-completions-like payloads, but some models/providers
+            may vary (e.g. content as parts, or legacy `text` field). Keep extraction defensive.
+            """
+            message = choice.get("message") or {}
+            if isinstance(message, dict):
+                content = message.get("content")
+                if isinstance(content, str):
+                    return content
+                if isinstance(content, list):
+                    parts: List[str] = []
+                    for part in content:
+                        if isinstance(part, str):
+                            parts.append(part)
+                            continue
+                        if isinstance(part, dict):
+                            # OpenAI-style content parts: {"type":"text","text":"..."}
+                            text_part = part.get("text")
+                            if isinstance(text_part, str):
+                                parts.append(text_part)
+                    return "".join(parts)
+                if isinstance(content, dict):
+                    text_part = content.get("text")
+                    if isinstance(text_part, str):
+                        return text_part
+
+                refusal = message.get("refusal")
+                if isinstance(refusal, str) and refusal.strip():
+                    return refusal
+
+            legacy_text = choice.get("text")
+            if isinstance(legacy_text, str):
+                return legacy_text
+
+            delta = choice.get("delta")
+            if isinstance(delta, dict):
+                delta_content = delta.get("content")
+                if isinstance(delta_content, str):
+                    return delta_content
+
+            return ""
+
         payload = {
             "model": model_id,
             "messages": [
@@ -106,18 +150,35 @@ class ModelClient:
         last_error = None
         for attempt in range(max_retries + 1):
             try:
+                # Some providers occasionally return empty `message.content` even with non-zero token usage.
+                # Retrying with a smaller token cap reduces the chance of these "empty content" anomalies.
+                attempt_max_tokens = max_tokens if attempt == 0 else min(max_tokens, 1024)
+                payload["max_tokens"] = attempt_max_tokens
+
                 response = await self.client.post("/chat/completions", json=payload)
                 response.raise_for_status()
                 
                 data = response.json()
                 choice = data.get("choices", [{}])[0]
-                text = choice.get("message", {}).get("content", "")
+                text = extract_choice_text(choice)
                 usage = data.get("usage", {})
                 
                 latency_ms = (time.time() - start_time) * 1000
+
+                # Treat empty content with non-zero completion usage as retryable.
+                completion_tokens = usage.get("completion_tokens", 0) or 0
+                if (not text or not str(text).strip()) and completion_tokens > 0 and attempt < max_retries:
+                    last_error = "Empty content returned from API (retrying)"
+                    await asyncio.sleep(0.5 * (attempt + 1))
+                    continue
                 
-                # Calculate cost (will be updated with actual pricing from model config)
-                cost = self._calculate_cost(model_id, usage.get("prompt_tokens", 0), usage.get("completion_tokens", 0))
+                # Calculate cost when pricing is provided
+                cost = self._calculate_cost(
+                    model_id,
+                    usage.get("prompt_tokens", 0),
+                    usage.get("completion_tokens", 0),
+                    pricing
+                )
                 
                 return {
                     "text": text,
@@ -128,7 +189,8 @@ class ModelClient:
                     },
                     "cost": cost,
                     "latency_ms": latency_ms,
-                    "error": None
+                    "error": None,
+                    "finish_reason": choice.get("finish_reason")
                 }
             except httpx.HTTPStatusError as e:
                 last_error = f"HTTP {e.response.status_code}: {e.response.text}"
@@ -163,7 +225,6 @@ class ModelClient:
     ) -> float:
         """Calculate cost based on token usage and pricing."""
         if pricing is None:
-            print(f"[COST] No pricing info for model {model_id}, cost will be 0")
             return 0.0
         
         input_per_1m = pricing.get("input_per_1m")
