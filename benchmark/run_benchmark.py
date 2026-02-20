@@ -42,6 +42,156 @@ DEFAULT_QUIZ_QUESTIONS_COUNT = 4
 DEFAULT_FLASHCARDS_PER_SECTION = 4
 
 
+def atomic_write_json(path: Path, payload: Any) -> None:
+    """Write JSON to disk atomically (Windows-safe) to avoid partial writes."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_suffix(path.suffix + ".tmp")
+    try:
+        with open(temp_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2, ensure_ascii=False)
+        temp_path.replace(path)
+    finally:
+        if temp_path.exists():
+            try:
+                temp_path.unlink()
+            except OSError:
+                pass
+
+
+def recompute_and_save_metrics(
+    *,
+    results: List[Dict[str, Any]],
+    config: Dict[str, Any],
+    metrics_path: Path,
+    judge_quality_filter: str,
+    logger: Optional[BenchmarkLogger] = None
+) -> None:
+    """Recompute benchmark_metrics.json from a benchmark_results.json list."""
+    sample_counts = Counter(
+        (result.get("model_id"), result.get("task"))
+        for result in results
+        if result.get("model_id") and result.get("task") and not result.get("error")
+    )
+    underpowered_pairs = [
+        {"model_id": model_id, "task": task, "count": count}
+        for (model_id, task), count in sample_counts.items()
+        if count < MIN_VALID_TEST_CASES_FOR_SIGNIFICANCE
+    ]
+
+    all_model_ids = set(r.get("model_id") for r in results if r.get("model_id"))
+
+    model_metrics_overall: Dict[str, Any] = {}
+    for model_id in all_model_ids:
+        model_results = [r for r in results if r.get("model_id") == model_id and not r.get("error")]
+        if model_results:
+            model_metrics_overall[model_id] = aggregate_model_metrics(model_results, config)
+
+    model_metrics_comprehensive: Dict[str, Any] = {}
+    for model_id in all_model_ids:
+        model_results = [r for r in results if r.get("model_id") == model_id]
+        if model_results:
+            model_metrics_comprehensive[model_id] = calculate_comprehensive_model_metrics(model_results, config)
+
+    comparative = calculate_comparative_metrics(
+        model_metrics_overall,
+        model_metrics_comprehensive=model_metrics_comprehensive
+    )
+
+    input_length_distribution = {
+        model_id: metrics.get("input_length", {})
+        for model_id, metrics in model_metrics_overall.items()
+    }
+    low_input_length_models = [
+        model_id for model_id, distribution in input_length_distribution.items()
+        if distribution.get("below_1000_warning")
+    ]
+
+    atomic_write_json(metrics_path, {
+        "model_metrics": model_metrics_overall,  # For backward compatibility
+        "model_metrics_comprehensive": model_metrics_comprehensive,  # New comprehensive breakdowns
+        "comparative_metrics": comparative,
+        "input_length_distribution": input_length_distribution,
+        "hardening_metadata": {
+            "minimum_tests_for_significance": MIN_VALID_TEST_CASES_FOR_SIGNIFICANCE,
+            "judge_quality_filter": judge_quality_filter,
+            "input_standardization": get_input_standardization(config),
+            "underpowered_model_tasks": underpowered_pairs,
+            "low_input_length_models": low_input_length_models
+        }
+    })
+
+    if logger:
+        logger.info(
+            f"Saved metrics to: {metrics_path}",
+            metrics_file=str(metrics_path),
+            models_evaluated=len(model_metrics_overall)
+        )
+
+
+def purge_model_results(
+    *,
+    model_id: str,
+    results_dir: Path,
+    config: Dict[str, Any],
+    judge_quality_filter: str,
+    logger: Optional[BenchmarkLogger] = None
+) -> Dict[str, int]:
+    """
+    Purge a single model's benchmark artifacts from a results directory.
+
+    Removes:
+    - results_dir/benchmark_results.json entries for model_id
+    - results_dir/cache/*.json entries for model_id
+    Then recomputes results_dir/benchmark_metrics.json from remaining results.
+    """
+    normalized_model_id = (model_id or "").strip()
+    if not normalized_model_id:
+        raise ValueError("model_id must be a non-empty string")
+
+    results_path = results_dir / "benchmark_results.json"
+    metrics_path = results_dir / "benchmark_metrics.json"
+    cache_dir = results_dir / "cache"
+
+    removed_cache_files = 0
+    if cache_dir.exists():
+        for cache_file in cache_dir.glob("*.json"):
+            try:
+                with open(cache_file, "r", encoding="utf-8") as f:
+                    cached = json.load(f)
+            except (json.JSONDecodeError, OSError):
+                continue
+            if isinstance(cached, dict) and cached.get("model_id") == normalized_model_id:
+                try:
+                    cache_file.unlink()
+                    removed_cache_files += 1
+                except OSError:
+                    pass
+
+    removed_results = 0
+    remaining_results: List[Dict[str, Any]] = []
+    if results_path.exists():
+        with open(results_path, "r", encoding="utf-8") as f:
+            all_results = json.load(f)
+        if not isinstance(all_results, list):
+            raise ValueError(f"{results_path} must contain a JSON list")
+        remaining_results = [r for r in all_results if r.get("model_id") != normalized_model_id]
+        removed_results = len(all_results) - len(remaining_results)
+        atomic_write_json(results_path, remaining_results)
+
+    recompute_and_save_metrics(
+        results=remaining_results,
+        config=config,
+        metrics_path=metrics_path,
+        judge_quality_filter=judge_quality_filter,
+        logger=logger
+    )
+
+    return {
+        "removed_results": removed_results,
+        "removed_cache_files": removed_cache_files
+    }
+
+
 def validate_config(config: Dict[str, Any]) -> None:
     """
     Validate benchmark configuration.
@@ -897,6 +1047,12 @@ def main():
         help="Skip cached results (opposite of --force)"
     )
     parser.add_argument(
+        "--purge-model",
+        type=str,
+        default=None,
+        help="Purge one model from benchmark/results (results + cache) and recompute metrics, then exit"
+    )
+    parser.add_argument(
         "--check-availability-only",
         action="store_true",
         help="Only check and print model availability, do not run benchmarks or write results"
@@ -935,6 +1091,22 @@ def main():
     
     # Initialize logger
     logger = BenchmarkLogger(console=True)
+
+    if args.purge_model:
+        results_dir = Path(__file__).parent / "results"
+        summary = purge_model_results(
+            model_id=args.purge_model,
+            results_dir=results_dir,
+            config=config,
+            judge_quality_filter=args.judge_quality_filter,
+            logger=logger
+        )
+        print(
+            f"Purged model '{args.purge_model}' from {results_dir}: "
+            f"removed_results={summary['removed_results']}, "
+            f"removed_cache_files={summary['removed_cache_files']}"
+        )
+        return
 
     # Fast path: only check availability and exit
     if args.check_availability_only:
