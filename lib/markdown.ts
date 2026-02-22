@@ -3,18 +3,31 @@ import { isStandaloneLatexMathLine } from "./latex-math";
 
 type RichTextColor = "default" | "gray" | "brown" | "orange" | "yellow" | "green" | "blue" | "purple" | "pink" | "red" | "default_background" | "gray_background" | "brown_background" | "orange_background" | "yellow_background" | "green_background" | "blue_background" | "purple_background" | "pink_background" | "red_background";
 
-type RichTextItemRequest = {
-  type: "text";
-  text: { content: string; link?: { url: string } | null };
-  annotations?: {
-    bold?: boolean;
-    italic?: boolean;
-    strikethrough?: boolean;
-    underline?: boolean;
-    code?: boolean;
-    color?: RichTextColor;
-  };
-};
+type RichTextItemRequest =
+  | {
+      type: "text";
+      text: { content: string; link?: { url: string } | null };
+      annotations?: {
+        bold?: boolean;
+        italic?: boolean;
+        strikethrough?: boolean;
+        underline?: boolean;
+        code?: boolean;
+        color?: RichTextColor;
+      };
+    }
+  | {
+      type: "equation";
+      equation: { expression: string };
+      annotations?: {
+        bold?: boolean;
+        italic?: boolean;
+        strikethrough?: boolean;
+        underline?: boolean;
+        code?: boolean;
+        color?: RichTextColor;
+      };
+    };
 
 const defaultAnnotations = {
   bold: false,
@@ -23,6 +36,83 @@ const defaultAnnotations = {
   underline: false,
   code: false,
   color: "default" as RichTextColor
+};
+
+const textRichText = (
+  content: string,
+  annotations = { ...defaultAnnotations },
+  link?: { url: string } | null
+): RichTextItemRequest => ({
+  type: "text",
+  text: { content, ...(link ? { link } : {}) },
+  annotations
+});
+
+const equationRichText = (expression: string): RichTextItemRequest => ({
+  type: "equation",
+  equation: { expression },
+  annotations: { ...defaultAnnotations }
+});
+
+const isLikelyInlineMathExpression = (expression: string): boolean => {
+  const trimmed = expression.trim();
+  if (!trimmed || trimmed.includes("\n")) return false;
+
+  // Avoid obvious plain text/currency-ish spans.
+  if (/^[0-9]+(?:[.,][0-9]+)?$/.test(trimmed)) return false;
+  if (/^[A-Za-z]{4,}$/.test(trimmed)) return false;
+
+  if (/\\[a-zA-Z]{2,}/.test(trimmed)) return true;
+  if (/^[A-Za-z](?:[A-Za-z]{0,2})?(?:[_^][A-Za-z0-9]+)?$/.test(trimmed)) return true;
+  if (/[=<>+\-*/^_]/.test(trimmed)) return true;
+  if (/[\[\]{}()]/.test(trimmed) && /[A-Za-z0-9]/.test(trimmed)) return true;
+  if (/^[A-Za-z]\d$/.test(trimmed) || /^\d[A-Za-z]$/.test(trimmed)) return true;
+
+  return false;
+};
+
+const isEscapedAt = (text: string, index: number): boolean => {
+  let slashCount = 0;
+  for (let i = index - 1; i >= 0 && text[i] === "\\"; i -= 1) {
+    slashCount += 1;
+  }
+  return slashCount % 2 === 1;
+};
+
+const findClosingMathDelimiter = (text: string, open: string, close: string): number => {
+  for (let i = open.length; i <= text.length - close.length; i += 1) {
+    if (text.slice(i, i + close.length) !== close) continue;
+    if (isEscapedAt(text, i)) continue;
+    return i;
+  }
+  return -1;
+};
+
+const parseInlineMath = (text: string): { match: string; expression: string } | null => {
+  const delimiters: Array<{ open: string; close: string }> = [
+    { open: "$$", close: "$$" },
+    { open: "$", close: "$" },
+    { open: "\\(", close: "\\)" },
+    { open: "\\[", close: "\\]" }
+  ];
+
+  for (const delimiter of delimiters) {
+    if (!text.startsWith(delimiter.open)) continue;
+    const closingIndex = findClosingMathDelimiter(text, delimiter.open, delimiter.close);
+    if (closingIndex === -1) return null;
+
+    const rawExpression = text.slice(delimiter.open.length, closingIndex);
+    const expression = rawExpression.trim();
+    if (!expression || !isLikelyInlineMathExpression(expression)) return null;
+
+    const end = closingIndex + delimiter.close.length;
+    return {
+      match: text.slice(0, end),
+      expression
+    };
+  }
+
+  return null;
 };
 
 const buildRichText = (text: string): RichTextItemRequest[] => {
@@ -34,38 +124,34 @@ const buildRichText = (text: string): RichTextItemRequest[] => {
   let remaining = text;
 
   while (remaining.length > 0) {
+    // Preserve escaped markdown tokens (e.g. \$ should stay literal)
+    const escapedTokenMatch = remaining.match(/^\\([\\`*~$\[\]])/);
+    if (escapedTokenMatch) {
+      parts.push(textRichText(escapedTokenMatch[1], { ...defaultAnnotations }));
+      remaining = remaining.slice(escapedTokenMatch[0].length);
+      continue;
+    }
+
     // Check for inline code first
     const codeMatch = remaining.match(/^`([^`]+)`/);
     if (codeMatch) {
-      parts.push({
-        type: "text",
-        text: { content: codeMatch[1] },
-        annotations: { ...defaultAnnotations, code: true }
-      });
+      parts.push(textRichText(codeMatch[1], { ...defaultAnnotations, code: true }));
       remaining = remaining.slice(codeMatch[0].length);
       continue;
     }
 
-    // Check for inline math ($...$) - convert to code style
-    const inlineMathMatch = remaining.match(/^\$([^$]+)\$/);
-    if (inlineMathMatch && !remaining.startsWith("$$")) {
-      parts.push({
-        type: "text",
-        text: { content: inlineMathMatch[1] },
-        annotations: { ...defaultAnnotations, code: true }
-      });
-      remaining = remaining.slice(inlineMathMatch[0].length);
+    // Convert inline LaTeX to native Notion inline equation rich text.
+    const inlineMathMatch = parseInlineMath(remaining);
+    if (inlineMathMatch) {
+      parts.push(equationRichText(inlineMathMatch.expression));
+      remaining = remaining.slice(inlineMathMatch.match.length);
       continue;
     }
 
     // Check for markdown links [text](url)
     const linkMatch = remaining.match(/^\[([^\]]+)\]\(([^)]+)\)/);
     if (linkMatch) {
-      parts.push({
-        type: "text",
-        text: { content: linkMatch[1], link: { url: linkMatch[2] } },
-        annotations: { ...defaultAnnotations }
-      });
+      parts.push(textRichText(linkMatch[1], { ...defaultAnnotations }, { url: linkMatch[2] }));
       remaining = remaining.slice(linkMatch[0].length);
       continue;
     }
@@ -73,11 +159,7 @@ const buildRichText = (text: string): RichTextItemRequest[] => {
     // Check for strikethrough ~~text~~
     const strikeMatch = remaining.match(/^~~([^~]+)~~/);
     if (strikeMatch) {
-      parts.push({
-        type: "text",
-        text: { content: strikeMatch[1] },
-        annotations: { ...defaultAnnotations, strikethrough: true }
-      });
+      parts.push(textRichText(strikeMatch[1], { ...defaultAnnotations, strikethrough: true }));
       remaining = remaining.slice(strikeMatch[0].length);
       continue;
     }
@@ -85,11 +167,7 @@ const buildRichText = (text: string): RichTextItemRequest[] => {
     // Check for bold
     const boldMatch = remaining.match(/^\*\*([^*]+)\*\*/);
     if (boldMatch) {
-      parts.push({
-        type: "text",
-        text: { content: boldMatch[1] },
-        annotations: { ...defaultAnnotations, bold: true }
-      });
+      parts.push(textRichText(boldMatch[1], { ...defaultAnnotations, bold: true }));
       remaining = remaining.slice(boldMatch[0].length);
       continue;
     }
@@ -97,47 +175,31 @@ const buildRichText = (text: string): RichTextItemRequest[] => {
     // Check for italic with * (but not **)
     const italicMatch = remaining.match(/^\*([^*]+)\*/);
     if (italicMatch && !remaining.startsWith("**")) {
-      parts.push({
-        type: "text",
-        text: { content: italicMatch[1] },
-        annotations: { ...defaultAnnotations, italic: true }
-      });
+      parts.push(textRichText(italicMatch[1], { ...defaultAnnotations, italic: true }));
       remaining = remaining.slice(italicMatch[0].length);
       continue;
     }
 
     // Find next special character
-    const nextSpecial = remaining.search(/[`*~$\[]/);
+    const nextSpecial = remaining.search(/[\\`*~$\[]/);
     if (nextSpecial === -1) {
       // No more special chars, add rest as plain text
-      parts.push({
-        type: "text",
-        text: { content: remaining },
-        annotations: { ...defaultAnnotations }
-      });
+      parts.push(textRichText(remaining, { ...defaultAnnotations }));
       break;
     } else if (nextSpecial === 0) {
       // Special char at start but didn't match patterns, treat as literal
-      parts.push({
-        type: "text",
-        text: { content: remaining[0] },
-        annotations: { ...defaultAnnotations }
-      });
+      parts.push(textRichText(remaining[0], { ...defaultAnnotations }));
       remaining = remaining.slice(1);
     } else {
       // Add text before special char
-      parts.push({
-        type: "text",
-        text: { content: remaining.slice(0, nextSpecial) },
-        annotations: { ...defaultAnnotations }
-      });
+      parts.push(textRichText(remaining.slice(0, nextSpecial), { ...defaultAnnotations }));
       remaining = remaining.slice(nextSpecial);
     }
   }
 
   return parts.length > 0
     ? parts
-    : [{ type: "text", text: { content: "" }, annotations: { ...defaultAnnotations } }];
+    : [textRichText("", { ...defaultAnnotations })];
 };
 
 const paragraphBlock = (text: string): BlockObjectRequest => ({
@@ -385,7 +447,7 @@ export const markdownToBlocks = (markdown: string): BlockObjectRequest[] => {
       continue;
     }
 
-    // Block math ($$ ... $$) - single line
+    // Block math ($$ ... $$ / \[ ... \]) - single line
     const trimmedLine = line.trim();
     const singleLineMathMatch = trimmedLine.match(/^\$\$(.+)\$\$$/);
     if (singleLineMathMatch) {
@@ -393,13 +455,30 @@ export const markdownToBlocks = (markdown: string): BlockObjectRequest[] => {
       blocks.push(equationBlock(singleLineMathMatch[1].trim()));
       continue;
     }
+    const singleLineBracketMathMatch = trimmedLine.match(/^\\\[(.+)\\\]$/);
+    if (singleLineBracketMathMatch) {
+      flushParagraph();
+      blocks.push(equationBlock(singleLineBracketMathMatch[1].trim()));
+      continue;
+    }
 
-    // Block math ($$ ... $$) - multi line
+    // Block math ($$ ... $$ / \[ ... \]) - multi line
     if (trimmedLine === "$$") {
       flushParagraph();
       const exprLines: string[] = [];
       i += 1;
       while (i < lines.length && lines[i].trim() !== "$$") {
+        exprLines.push(lines[i]);
+        i += 1;
+      }
+      blocks.push(equationBlock(exprLines.join("\n").trim()));
+      continue;
+    }
+    if (trimmedLine === "\\[") {
+      flushParagraph();
+      const exprLines: string[] = [];
+      i += 1;
+      while (i < lines.length && lines[i].trim() !== "\\]") {
         exprLines.push(lines[i]);
         i += 1;
       }

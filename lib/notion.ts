@@ -29,6 +29,138 @@ export type ExportProgress =
   | { type: "done"; pageId: string }
   | { type: "error"; message: string };
 
+const DEFAULT_ANNOTATIONS = {
+  bold: false,
+  italic: false,
+  strikethrough: false,
+  underline: false,
+  code: false,
+  color: "default" as const
+};
+
+// Notion request limits: equation expression is capped at 1000 chars.
+const NOTION_EQUATION_MAX_EXPRESSION_LENGTH = 1000;
+
+const toLegacyInlineLatexText = (expression: string) => ({
+  type: "text" as const,
+  text: { content: `$${expression}$` },
+  annotations: { ...DEFAULT_ANNOTATIONS }
+});
+
+const toLegacyLatexCodeBlock = (expression: string): BlockObjectRequest => ({
+  object: "block",
+  type: "code",
+  code: {
+    rich_text: [
+      {
+        type: "text",
+        text: { content: expression },
+        annotations: { ...DEFAULT_ANNOTATIONS }
+      }
+    ],
+    language: "latex"
+  }
+});
+
+const isEquationTooLong = (expression: string): boolean =>
+  expression.length > NOTION_EQUATION_MAX_EXPRESSION_LENGTH;
+
+const transformRichTextForEquationHandling = (
+  richText: any[] | undefined,
+  forceLegacyEquationFallback: boolean
+): any[] | undefined => {
+  if (!Array.isArray(richText)) return richText;
+
+  return richText.map((item) => {
+    if (item?.type !== "equation") return item;
+
+    const expression = String(item.equation?.expression || "");
+    if (!expression) return item;
+
+    if (!forceLegacyEquationFallback && !isEquationTooLong(expression)) {
+      return item;
+    }
+
+    return toLegacyInlineLatexText(expression);
+  });
+};
+
+const transformBlockForEquationHandling = (
+  block: BlockObjectRequest,
+  forceLegacyEquationFallback: boolean
+): BlockObjectRequest => {
+  const next: any = { ...(block as any) };
+
+  if (next.type === "equation") {
+    const expression = String(next.equation?.expression || "");
+    if (!expression) return next as BlockObjectRequest;
+    if (!forceLegacyEquationFallback && !isEquationTooLong(expression)) {
+      return next as BlockObjectRequest;
+    }
+    return toLegacyLatexCodeBlock(expression);
+  }
+
+  const payloadKey = next.type;
+  if (payloadKey && next[payloadKey]) {
+    const payload = { ...next[payloadKey] };
+
+    if (Array.isArray(payload.rich_text)) {
+      payload.rich_text = transformRichTextForEquationHandling(
+        payload.rich_text,
+        forceLegacyEquationFallback
+      );
+    }
+
+    if (Array.isArray(payload.children)) {
+      payload.children = payload.children.map((child: BlockObjectRequest) =>
+        transformBlockForEquationHandling(child, forceLegacyEquationFallback)
+      );
+    }
+
+    next[payloadKey] = payload;
+  }
+
+  if (next.type === "table" && Array.isArray(next.table?.children)) {
+    next.table = {
+      ...next.table,
+      children: next.table.children.map((child: BlockObjectRequest) =>
+        transformBlockForEquationHandling(child, forceLegacyEquationFallback)
+      )
+    };
+  }
+
+  if (next.type === "table_row" && Array.isArray(next.table_row?.cells)) {
+    next.table_row = {
+      ...next.table_row,
+      cells: next.table_row.cells.map((cell: any[]) =>
+        transformRichTextForEquationHandling(cell, forceLegacyEquationFallback)
+      )
+    };
+  }
+
+  return next as BlockObjectRequest;
+};
+
+const sanitizeBlocksForEquationHandling = (
+  blocks: BlockObjectRequest[],
+  forceLegacyEquationFallback: boolean
+): BlockObjectRequest[] =>
+  blocks.map((block) =>
+    transformBlockForEquationHandling(block, forceLegacyEquationFallback)
+  );
+
+const isEquationValidationError = (error: unknown): boolean => {
+  const anyError = error as any;
+  const message = String(anyError?.message || "").toLowerCase();
+  const code = String(anyError?.code || "").toLowerCase();
+
+  if (!message) return false;
+  const mentionsEquation = message.includes("equation") || message.includes("latex");
+  const isValidation = code.includes("validation") || message.includes("validation");
+
+  return mentionsEquation && isValidation;
+};
+
 const getPageTitle = (page: PageObjectResponse): string => {
   const properties = page.properties as Record<string, any>;
   const titleProp = Object.values(properties).find((prop) => prop?.type === "title");
@@ -104,31 +236,11 @@ export const exportSummary = async (
     const client = notionToken ? createNotionClient(notionToken) : getNotionClient();
     const cleanedMarkdown = stripLeadingH1(markdown);
     const blocks = markdownToBlocks(cleanedMarkdown);
+    const normalizedBlocks = sanitizeBlocksForEquationHandling(blocks, false);
     const totalChunks = Math.ceil(blocks.length / 100);
 
     onProgress?.({ type: "started", totalBlocks: blocks.length, totalChunks });
-
-    // Filter out equation blocks and convert them to code blocks
-    // Notion API may not support equation blocks in all contexts
-    const safeBlocks = blocks.map((block) => {
-      if (block.type === "equation") {
-        return {
-          object: "block",
-          type: "code",
-          code: {
-            rich_text: [{ 
-              type: "text", 
-              text: { content: (block as any).equation?.expression || "" },
-              annotations: { bold: false, italic: false, strikethrough: false, underline: false, code: false, color: "default" }
-            }],
-            language: "latex"
-          }
-        } as BlockObjectRequest;
-      }
-      return block;
-    });
-
-    const firstChunk = safeBlocks.slice(0, 100);
+    const firstChunk = normalizedBlocks.slice(0, 100);
 
     // Determine parent based on what's provided
     let parent: { page_id: string } | { database_id: string } | { workspace: true };
@@ -151,27 +263,50 @@ export const exportSummary = async (
       parent = { workspace: true };
     }
 
-    const page = await client.pages.create({
-      parent: parent as any,
-      properties: {
-        title: {
-          title: [{ text: { content: title } }]
-        }
-      },
-      children: firstChunk
-    });
+    const createPage = async (children: BlockObjectRequest[]) =>
+      client.pages.create({
+        parent: parent as any,
+        properties: {
+          title: {
+            title: [{ text: { content: title } }]
+          }
+        },
+        children
+      });
+
+    let page: any;
+    try {
+      page = await createPage(firstChunk);
+    } catch (error) {
+      if (!isEquationValidationError(error)) {
+        throw error;
+      }
+      const fallbackChunk = sanitizeBlocksForEquationHandling(firstChunk, true);
+      page = await createPage(fallbackChunk);
+    }
 
     onProgress?.({ type: "chunk", index: 1, totalChunks });
 
     const pageId = page.id;
     let index = 100;
     let chunkIndex = 2;
-    while (index < safeBlocks.length) {
-      const chunk = safeBlocks.slice(index, index + 100) as BlockObjectRequest[];
-      await client.blocks.children.append({
-        block_id: pageId,
-        children: chunk
-      });
+    while (index < normalizedBlocks.length) {
+      const chunk = normalizedBlocks.slice(index, index + 100) as BlockObjectRequest[];
+      const appendChunk = async (children: BlockObjectRequest[]) =>
+        client.blocks.children.append({
+          block_id: pageId,
+          children
+        });
+
+      try {
+        await appendChunk(chunk);
+      } catch (error) {
+        if (!isEquationValidationError(error)) {
+          throw error;
+        }
+        const fallbackChunk = sanitizeBlocksForEquationHandling(chunk, true);
+        await appendChunk(fallbackChunk);
+      }
       onProgress?.({ type: "chunk", index: chunkIndex, totalChunks });
       index += 100;
       chunkIndex += 1;

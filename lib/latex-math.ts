@@ -17,6 +17,12 @@ export const isStandaloneLatexMathLine = (line: string): boolean => {
   const hasLatexCommand = /\\[a-zA-Z]{2,}/.test(line);
   if (!hasLatexCommand) return false;
 
+  // Avoid treating prose lines with embedded LaTeX as standalone formulas.
+  // Example: "where \(f:I\times D\to\mathbb{R}\) is continuous".
+  const plainWithoutCommands = line.replace(/\\[a-zA-Z]+/g, " ");
+  const naturalWordCount = (plainWithoutCommands.match(/\b[a-zA-Z]{3,}\b/g) ?? []).length;
+  if (naturalWordCount >= 2) return false;
+
   const latexPatterns = [
     /\\frac\s*[{(]/,
     /\\sum/,
@@ -45,4 +51,3 @@ export const isStandaloneLatexMathLine = (line: string): boolean => {
 
   return latexPatterns.some((pattern) => pattern.test(line));
 };
-

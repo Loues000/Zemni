@@ -36,6 +36,25 @@ const normalizeMathForPreview = (markdown: string): string => {
       continue;
     }
 
+    // Support \[ ... \] display math delimiters used by some model outputs.
+    const singleLineBracketMath = trimmed.match(/^\\\[(.+)\\\]$/);
+    if (singleLineBracketMath) {
+      out.push(`$$${singleLineBracketMath[1].trim()}$$`);
+      continue;
+    }
+    if (trimmed === "\\[") {
+      out.push("$$");
+      while (i + 1 < lines.length) {
+        const nextLine = lines[i + 1];
+        const nextTrimmed = nextLine.trim();
+        i += 1;
+        if (nextTrimmed === "\\]") break;
+        out.push(nextLine);
+      }
+      out.push("$$");
+      continue;
+    }
+
     if (trimmed && isStandaloneLatexMathLine(trimmed)) {
       out.push("$$");
       out.push(trimmed);
@@ -49,7 +68,12 @@ const normalizeMathForPreview = (markdown: string): string => {
       continue;
     }
 
-    out.push(line);
+    // Convert inline \( ... \) and \[ ... \] to remark-math-friendly delimiters.
+    const normalizedInline = line
+      .replace(/\\\((.+?)\\\)/g, (_match, expr: string) => `$${expr.trim()}$`)
+      .replace(/\\\[(.+?)\\\]/g, (_match, expr: string) => `$$${expr.trim()}$$`);
+
+    out.push(normalizedInline);
   }
 
   return out.join("\n");
