@@ -154,6 +154,20 @@
     }
   },
   {
+    "id": "google/gemini-3.1-flash-lite-preview",
+    "display_name": "Gemini 3.1 Flash Lite",
+    "subscription_tier": "basic",
+    "available": true,
+    "tokenizer": {
+      "tiktoken_encoding": "cl100k_base"
+    },
+    "pricing": {
+      "currency": "USD",
+      "input_per_1m": 0.25,
+      "output_per_1m": 1.5
+    }
+  },
+  {
     "id": "anthropic/claude-sonnet-4.5",
     "display_name": "Claude Sonnet 4.5",
     "subscription_tier": "plus",
@@ -263,6 +277,34 @@
       "currency": "USD",
       "input_per_1m": 0.28,
       "output_per_1m": 0.42
+    }
+  },
+  {
+    "id": "qwen/qwen3.5-35b-a3b",
+    "display_name": "Qwen 3.5 35B A3B",
+    "subscription_tier": "basic",
+    "available": true,
+    "tokenizer": {
+      "tiktoken_encoding": "cl100k_base"
+    },
+    "pricing": {
+      "currency": "USD",
+      "input_per_1m": 0.226,
+      "output_per_1m": 1.8
+    }
+  },
+  {
+    "id": "qwen/qwen3.5-397b-a17b",
+    "display_name": "Qwen 3.5 397B A17B",
+    "subscription_tier": "plus",
+    "available": true,
+    "tokenizer": {
+      "tiktoken_encoding": "cl100k_base"
+    },
+    "pricing": {
+      "currency": "USD",
+      "input_per_1m": 0.55,
+      "output_per_1m": 3.5
     }
   },
   {
