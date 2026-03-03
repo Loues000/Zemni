@@ -108,14 +108,14 @@ export default defineSchema({
       v.object({
         clerkUserId: v.string(), // Clerk user ID
         userId: v.optional(v.string()), // Legacy Clerk user ID (to be removed after migration)
-        type: v.union(v.literal("key_management"), v.literal("generation")),
+        type: v.union(v.literal("key_management"), v.literal("generation"), v.literal("generation_guest")),
         count: v.number(),
         resetTime: v.number(), // Timestamp when rate limit window resets
       }),
       v.object({
         clerkUserId: v.optional(v.string()), // Clerk user ID
         userId: v.string(), // Legacy Clerk user ID (to be removed after migration)
-        type: v.union(v.literal("key_management"), v.literal("generation")),
+        type: v.union(v.literal("key_management"), v.literal("generation"), v.literal("generation_guest")),
         count: v.number(),
         resetTime: v.number(), // Timestamp when rate limit window resets
       })

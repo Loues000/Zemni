@@ -7,12 +7,15 @@ import { v } from "convex/values";
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000; // 1 hour
 const MAX_REQUESTS_KEY_MANAGEMENT = 5; // 5 operations per hour for key management
 const MAX_REQUESTS_GENERATION = 30; // 30 operations per hour for generation endpoints
+const MAX_REQUESTS_GENERATION_GUEST = 6; // 6 operations per hour for guest generation endpoints
 
 /**
  * Get the maximum requests allowed for a rate limit type
  */
-function getMaxRequests(type: "key_management" | "generation"): number {
-  return type === "key_management" ? MAX_REQUESTS_KEY_MANAGEMENT : MAX_REQUESTS_GENERATION;
+function getMaxRequests(type: "key_management" | "generation" | "generation_guest"): number {
+  if (type === "key_management") return MAX_REQUESTS_KEY_MANAGEMENT;
+  if (type === "generation_guest") return MAX_REQUESTS_GENERATION_GUEST;
+  return MAX_REQUESTS_GENERATION;
 }
 
 /**
@@ -24,8 +27,8 @@ function getMaxRequests(type: "key_management" | "generation"): number {
  */
 export const checkRateLimit = mutation({
   args: {
-    clerkUserId: v.string(), // Clerk user ID
-    type: v.union(v.literal("key_management"), v.literal("generation")),
+    clerkUserId: v.string(), // Clerk user ID or guest fingerprint key
+    type: v.union(v.literal("key_management"), v.literal("generation"), v.literal("generation_guest")),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
@@ -96,8 +99,8 @@ export const checkRateLimit = mutation({
  */
 export const resetRateLimit = mutation({
   args: {
-    clerkUserId: v.string(), // Clerk user ID
-    type: v.optional(v.union(v.literal("key_management"), v.literal("generation"))),
+    clerkUserId: v.string(), // Clerk user ID or guest fingerprint key
+    type: v.optional(v.union(v.literal("key_management"), v.literal("generation"), v.literal("generation_guest"))),
   },
   handler: async (ctx, args) => {
     if (args.type) {
