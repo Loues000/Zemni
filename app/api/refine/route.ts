@@ -1,17 +1,14 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { StreamData, streamText } from "ai";
-import { openrouter } from "@/lib/openrouter";
 import { buildRefineSystemPrompt } from "@/lib/prompts";
 import { loadModels } from "@/lib/models";
 import { getUserContext, checkModelAvailability, getApiKeyToUse, getApiKeyForModel } from "@/lib/api-helpers";
 import { createOpenRouterClient } from "@/lib/openrouter";
-import { isModelAvailable } from "@/lib/models";
 import { buildUsageStats } from "@/lib/usage";
-import { api } from "@/convex/_generated/api";
 import { validateTextSize } from "@/lib/request-validation";
 import { validateSummaryText, validateMessagesArray, validateModelId } from "@/lib/utils/validation";
-import { getConvexClient } from "@/lib/convex-server";
+import { enforceGenerationRateLimit } from "@/lib/generation-rate-limit";
 
 export const runtime = "nodejs";
 
@@ -20,40 +17,17 @@ export const runtime = "nodejs";
  */
 export async function POST(request: Request) {
   const { userId: clerkUserId, getToken } = await auth();
-  const userContext = await getUserContext();
-  
-  // Check rate limit for authenticated users (using Convex for persistence)
-  if (userContext && clerkUserId) {
-    try {
-      const convex = getConvexClient();
-      const convexToken = await getToken({ template: "convex" });
-      if (!convexToken) {
-        console.warn("[refine] Missing Convex auth token; skipping rate limit check.");
-      } else {
-        convex.setAuth(convexToken);
-        const rateLimit = await convex.mutation(api.rateLimits.checkRateLimit, {
-          clerkUserId,
-          type: "generation",
-        });
-        if (!rateLimit.allowed) {
-          return NextResponse.json(
-            { error: "Too many requests. Please try again later.", retryAfter: rateLimit.retryAfter },
-            {
-              status: 429,
-              headers: {
-                "Retry-After": String(rateLimit.retryAfter || 3600),
-              },
-            }
-          );
-        }
-      }
-    } catch (error) {
-      // If Convex call fails, log but allow request (fail open for availability)
-      console.error("Rate limit check failed:", error);
-      // Continue with request - rate limiting is a protection, not a blocker
-    }
+  const rateLimitResponse = await enforceGenerationRateLimit(
+    request,
+    { userId: clerkUserId, getToken },
+    "refine"
+  );
+  if (rateLimitResponse) {
+    return rateLimitResponse;
   }
-  
+
+  const userContext = await getUserContext();
+
   const apiKey = getApiKeyToUse(userContext);
 
   if (!apiKey) {

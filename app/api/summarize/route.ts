@@ -14,42 +14,23 @@ import { api } from "@/convex/_generated/api";
 import { validateTextSize } from "@/lib/request-validation";
 import { validateTextLength, validateStructureHints, validateModelId } from "@/lib/utils/validation";
 import { getConvexClient } from "@/lib/convex-server";
+import { enforceGenerationRateLimit } from "@/lib/generation-rate-limit";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
 export async function POST(request: Request) {
   const { userId: clerkUserId, getToken } = await auth();
-  const userContext = await getUserContext();
-
-  if (userContext && clerkUserId) {
-    try {
-      const convex = getConvexClient();
-      const convexToken = await getToken({ template: "convex" });
-      if (!convexToken) {
-        console.warn("[summarize] Missing Convex auth token; skipping rate limit check.");
-      } else {
-        convex.setAuth(convexToken);
-        const rateLimit = await convex.mutation(api.rateLimits.checkRateLimit, {
-          clerkUserId,
-          type: "generation",
-        });
-        if (!rateLimit.allowed) {
-          return NextResponse.json(
-            { error: "Too many requests. Please try again later.", retryAfter: rateLimit.retryAfter },
-            {
-              status: 429,
-              headers: {
-                "Retry-After": String(rateLimit.retryAfter || 3600),
-              },
-            }
-          );
-        }
-      }
-    } catch (error) {
-      console.error("Rate limit check failed:", error);
-    }
+  const rateLimitResponse = await enforceGenerationRateLimit(
+    request,
+    { userId: clerkUserId, getToken },
+    "summarize"
+  );
+  if (rateLimitResponse) {
+    return rateLimitResponse;
   }
+
+  const userContext = await getUserContext();
 
   const apiKey = getApiKeyToUse(userContext);
 

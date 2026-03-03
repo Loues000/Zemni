@@ -14,6 +14,7 @@ import { generateText } from "ai";
 import type { DocumentSection, UsageStats } from "@/types";
 import type { LanguageModelUsage } from "ai";
 import { getConvexClient } from "@/lib/convex-server";
+import { enforceGenerationRateLimit } from "@/lib/generation-rate-limit";
 
 /**
  * Generate text with a timeout, supporting system and user-provided API keys.
@@ -125,7 +126,16 @@ const toSections = (value: unknown): DocumentSection[] => {
  * Generate a section summary, chunking when inputs are large.
  */
 export async function POST(request: Request) {
-  const { userId: clerkUserId } = await auth();
+  const { userId: clerkUserId, getToken } = await auth();
+  const rateLimitResponse = await enforceGenerationRateLimit(
+    request,
+    { userId: clerkUserId, getToken },
+    "section-summary"
+  );
+  if (rateLimitResponse) {
+    return rateLimitResponse;
+  }
+
   const userContext = await getUserContext();
   const apiKey = getApiKeyToUse(userContext);
 

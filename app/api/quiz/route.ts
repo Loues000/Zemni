@@ -15,6 +15,7 @@ import { api } from "@/convex/_generated/api";
 import { validateModelId, validateQuestionsCount } from "@/lib/utils/validation";
 import type { DocumentSection, QuizQuestion, UsageStats } from "@/types";
 import { getConvexClient } from "@/lib/convex-server";
+import { enforceGenerationRateLimit } from "@/lib/generation-rate-limit";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -46,33 +47,20 @@ type QuizResult = {
 };
 export async function POST(request: Request) {
   const { userId: clerkUserId, getToken } = await auth();
+  const rateLimitResponse = await enforceGenerationRateLimit(
+    request,
+    { userId: clerkUserId, getToken },
+    "quiz"
+  );
+  if (rateLimitResponse) {
+    return rateLimitResponse;
+  }
+
   const userContext = await getUserContext();
   const apiKey = getApiKeyToUse(userContext);
 
   if (!apiKey) {
     return NextResponse.json({ error: "Missing OpenRouter key" }, { status: 400 });
-  }
-
-  if (userContext && clerkUserId) {
-    try {
-      const convex = getConvexClient();
-      const convexToken = await getToken({ template: "convex" });
-      if (!convexToken) {
-        console.warn("[quiz] Missing Convex auth token; skipping rate limit check.");
-      } else {
-        convex.setAuth(convexToken);
-        const rateLimit = await convex.mutation(api.rateLimits.checkRateLimit, {
-          clerkUserId,
-          type: "generation",
-        });
-        if (!rateLimit.allowed) {
-          return NextResponse.json({ error: "Rate limit exceeded" }, { status: 429 });
-        }
-      }
-    } catch (error) {
-      // If Convex call fails, log but allow request (fail open for availability)
-      console.error("Rate limit check failed:", error);
-    }
   }
 
   const body = await request.json();
