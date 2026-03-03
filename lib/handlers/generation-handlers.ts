@@ -163,7 +163,7 @@ export const handleGenerate = async (context: GenerationHandlersContext): Promis
     if (outputKind === "summary") {
       const data = await retryWithBackoff(
         () => postJson<{ summary: string; usage?: UsageStats | null }>(
-          "/api/section-summary",
+          "/api/summary",
           {
             sections: [docSection],
             modelId: selectedModel,
