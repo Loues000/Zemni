@@ -4,6 +4,7 @@ import { ConvexHttpClient } from "convex/browser";
 import { decryptKey } from "./encryption";
 import { isModelAvailable } from "./models";
 import { isModelAvailableViaApiKey } from "./model-availability";
+import { getConvexClient } from "./convex-server";
 
 export type ApiProvider = "openrouter" | "openai" | "anthropic" | "google";
 
@@ -23,6 +24,54 @@ export interface UserContext {
   customGuidelines?: string;
 }
 
+const USER_CONTEXT_CACHE_TTL_MS = 15_000;
+const MAX_USER_CONTEXT_CACHE_ENTRIES = 200;
+
+type UserContextCacheEntry = {
+  expiresAt: number;
+  context: UserContext;
+};
+
+const userContextCache = new Map<string, UserContextCacheEntry>();
+const inFlightUserContext = new Map<string, Promise<UserContext | null>>();
+
+const cloneUserContext = (context: UserContext): UserContext => ({
+  ...context,
+  apiKeys: context.apiKeys.map((key) => ({ ...key })),
+});
+
+const pruneExpiredUserContextCache = () => {
+  if (userContextCache.size < MAX_USER_CONTEXT_CACHE_ENTRIES) {
+    return;
+  }
+
+  const now = Date.now();
+  for (const [cacheKey, entry] of userContextCache.entries()) {
+    if (entry.expiresAt <= now) {
+      userContextCache.delete(cacheKey);
+    }
+  }
+
+  while (userContextCache.size >= MAX_USER_CONTEXT_CACHE_ENTRIES) {
+    const oldestKey = userContextCache.keys().next().value;
+    if (!oldestKey) {
+      break;
+    }
+    userContextCache.delete(oldestKey);
+  }
+};
+
+export function invalidateUserContextCache(clerkUserId?: string): void {
+  if (clerkUserId) {
+    userContextCache.delete(clerkUserId);
+    inFlightUserContext.delete(clerkUserId);
+    return;
+  }
+
+  userContextCache.clear();
+  inFlightUserContext.clear();
+}
+
 export async function getUserContext(): Promise<UserContext | null> {
   const { userId, getToken } = await auth();
 
@@ -30,71 +79,105 @@ export async function getUserContext(): Promise<UserContext | null> {
     return null;
   }
 
-  const convexToken = await getToken({ template: "convex" });
-  if (!convexToken) {
-    return null;
+  const now = Date.now();
+  const cached = userContextCache.get(userId);
+  if (cached && cached.expiresAt > now) {
+    return cloneUserContext(cached.context);
   }
 
-  const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
-  convex.setAuth(convexToken);
-
-  const user = await convex.query(api.users.getCurrentUser, {});
-
-  if (!user) {
-    return null;
+  const inFlight = inFlightUserContext.get(userId);
+  if (inFlight) {
+    const sharedResult = await inFlight;
+    return sharedResult ? cloneUserContext(sharedResult) : null;
   }
 
-  const activeProviders = await convex.query(api.apiKeys.getActiveProviders, {});
-  
-  const apiKeys: ApiKeyInfo[] = [];
-  let apiKey: string | undefined;
+  const contextPromise = (async (): Promise<UserContext | null> => {
+    const convexToken = await getToken({ template: "convex" });
+    if (!convexToken) {
+      return null;
+    }
 
-  const decryptedKeys: string[] = [];
-  try {
-    for (const providerInfo of activeProviders) {
-      const userKey = await convex.query(api.apiKeys.getKeyForProvider, {
-        provider: providerInfo.provider,
-      });
+    const convex: ConvexHttpClient = getConvexClient();
+    convex.setAuth(convexToken);
 
-      if (userKey && userKey.keyHash) {
-        try {
-          const decryptedKey = decryptKey(userKey.keyHash);
-          decryptedKeys.push(decryptedKey);
-          
-          apiKeys.push({
-            provider: providerInfo.provider,
-            useOwnKey: providerInfo.useOwnKey,
-            key: decryptedKey,
-          });
+    const user = await convex.query(api.users.getCurrentUser, {});
 
-          if (providerInfo.provider === "openrouter" && providerInfo.useOwnKey) {
-            apiKey = decryptedKey;
+    if (!user) {
+      return null;
+    }
+
+    const activeProviders = await convex.query(api.apiKeys.getActiveProviders, {});
+
+    const apiKeys: ApiKeyInfo[] = [];
+    let apiKey: string | undefined;
+
+    const decryptedKeys: string[] = [];
+    try {
+      for (const providerInfo of activeProviders) {
+        const userKey = await convex.query(api.apiKeys.getKeyForProvider, {
+          provider: providerInfo.provider,
+        });
+
+        if (userKey && userKey.keyHash) {
+          try {
+            const decryptedKey = decryptKey(userKey.keyHash);
+            decryptedKeys.push(decryptedKey);
+
+            apiKeys.push({
+              provider: providerInfo.provider,
+              useOwnKey: providerInfo.useOwnKey,
+              key: decryptedKey,
+            });
+
+            if (providerInfo.provider === "openrouter" && providerInfo.useOwnKey) {
+              apiKey = decryptedKey;
+            }
+          } catch (decryptError) {
+            console.error(
+              `[getUserContext] Failed to decrypt ${providerInfo.provider} key:`,
+              decryptError instanceof Error ? decryptError.message : String(decryptError)
+            );
           }
-        } catch (decryptError) {
-          console.error(
-            `[getUserContext] Failed to decrypt ${providerInfo.provider} key:`,
-            decryptError instanceof Error ? decryptError.message : String(decryptError)
-          );
         }
       }
+    } finally {
+      for (let i = 0; i < decryptedKeys.length; i++) {
+        decryptedKeys[i] = "";
+      }
     }
+
+    const useOwnKeyPreference = apiKeys.some((k) => k.useOwnKey);
+
+    return {
+      userId: user._id,
+      userTier: user.subscriptionTier,
+      useOwnKey: useOwnKeyPreference,
+      apiKey,
+      apiKeys,
+      preferredLanguage: user.preferredLanguage,
+      customGuidelines: user.customGuidelines,
+    };
+  })();
+
+  inFlightUserContext.set(userId, contextPromise);
+
+  try {
+    const resolved = await contextPromise;
+
+    if (!resolved) {
+      return null;
+    }
+
+    pruneExpiredUserContextCache();
+    userContextCache.set(userId, {
+      expiresAt: Date.now() + USER_CONTEXT_CACHE_TTL_MS,
+      context: cloneUserContext(resolved),
+    });
+
+    return cloneUserContext(resolved);
   } finally {
-    for (let i = 0; i < decryptedKeys.length; i++) {
-      decryptedKeys[i] = "";
-    }
+    inFlightUserContext.delete(userId);
   }
-
-  const useOwnKeyPreference = apiKeys.some(k => k.useOwnKey);
-
-  return {
-    userId: user._id,
-    userTier: user.subscriptionTier,
-    useOwnKey: useOwnKeyPreference,
-    apiKey,
-    apiKeys,
-    preferredLanguage: user.preferredLanguage,
-    customGuidelines: user.customGuidelines,
-  };
 }
 
 /**

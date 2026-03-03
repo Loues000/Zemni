@@ -1,46 +1,108 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { ConvexHttpClient } from "convex/browser";
 import { loadModels } from "@/lib/models";
 import { getModelAvailability, type ApiProvider } from "@/lib/model-availability";
 import { api } from "@/convex/_generated/api";
+import { getConvexClient } from "@/lib/convex-server";
 
 
 export const runtime = "nodejs";
+
+const USER_MODEL_CONTEXT_CACHE_TTL_MS = 15_000;
+const MAX_USER_MODEL_CONTEXT_CACHE_ENTRIES = 200;
+
+type CurrentUserContext = {
+  userTier: string | null;
+  apiKeyProviders: ApiProvider[];
+};
+
+type CachedCurrentUserContext = {
+  expiresAt: number;
+  context: CurrentUserContext;
+};
+
+const userModelContextCache = new Map<string, CachedCurrentUserContext>();
+const inFlightUserModelContext = new Map<string, Promise<CurrentUserContext>>();
+
+const cloneCurrentUserContext = (context: CurrentUserContext): CurrentUserContext => ({
+  userTier: context.userTier,
+  apiKeyProviders: [...context.apiKeyProviders],
+});
+
+const pruneExpiredUserModelContextCache = () => {
+  if (userModelContextCache.size < MAX_USER_MODEL_CONTEXT_CACHE_ENTRIES) {
+    return;
+  }
+
+  const now = Date.now();
+  for (const [cacheKey, entry] of userModelContextCache.entries()) {
+    if (entry.expiresAt <= now) {
+      userModelContextCache.delete(cacheKey);
+    }
+  }
+
+  while (userModelContextCache.size >= MAX_USER_MODEL_CONTEXT_CACHE_ENTRIES) {
+    const oldestKey = userModelContextCache.keys().next().value;
+    if (!oldestKey) {
+      break;
+    }
+    userModelContextCache.delete(oldestKey);
+  }
+};
 
 /**
  * Gets the current user's subscription tier and API keys
  * 
  * @returns Object with user's subscription tier and API key providers
  */
-const getCurrentUserContext = async (): Promise<{ 
-  userTier: string | null; 
-  apiKeyProviders: ApiProvider[];
-}> => {
+const getCurrentUserContext = async (): Promise<CurrentUserContext> => {
   const { userId, getToken } = await auth();
   if (!userId) return { userTier: null, apiKeyProviders: [] }; // Not logged in
 
-  const convexToken = await getToken({ template: "convex" });
-  if (!convexToken) return { userTier: null, apiKeyProviders: [] };
-
-  const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
-  if (!convexUrl) {
-    throw new Error("NEXT_PUBLIC_CONVEX_URL is not set");
+  const now = Date.now();
+  const cached = userModelContextCache.get(userId);
+  if (cached && cached.expiresAt > now) {
+    return cloneCurrentUserContext(cached.context);
   }
 
-  const convex = new ConvexHttpClient(convexUrl);
-  convex.setAuth(convexToken);
+  const inFlight = inFlightUserModelContext.get(userId);
+  if (inFlight) {
+    return cloneCurrentUserContext(await inFlight);
+  }
 
-  const user = await convex.query(api.users.getCurrentUser, {});
-  
-  // Get user's active API key providers
-  const activeProviders = await convex.query(api.apiKeys.getActiveProviders, {});
-  const apiKeyProviders = activeProviders.map((p: { provider: ApiProvider }) => p.provider);
-  
-  return { 
-    userTier: user?.subscriptionTier || "free",
-    apiKeyProviders 
-  };
+  const contextPromise = (async (): Promise<CurrentUserContext> => {
+    const convexToken = await getToken({ template: "convex" });
+    if (!convexToken) return { userTier: null, apiKeyProviders: [] };
+
+    const convex = getConvexClient();
+    convex.setAuth(convexToken);
+
+    const user = await convex.query(api.users.getCurrentUser, {});
+
+    const activeProviders = await convex.query(api.apiKeys.getActiveProviders, {});
+    const apiKeyProviders = activeProviders.map((p: { provider: ApiProvider }) => p.provider);
+
+    return {
+      userTier: user?.subscriptionTier || "free",
+      apiKeyProviders,
+    };
+  })();
+
+  inFlightUserModelContext.set(userId, contextPromise);
+
+  try {
+    const context = await contextPromise;
+
+    pruneExpiredUserModelContextCache();
+    userModelContextCache.set(userId, {
+      expiresAt: Date.now() + USER_MODEL_CONTEXT_CACHE_TTL_MS,
+      context: cloneCurrentUserContext(context),
+    });
+
+    return cloneCurrentUserContext(context);
+  } finally {
+    inFlightUserModelContext.delete(userId);
+  }
 };
 
 /**

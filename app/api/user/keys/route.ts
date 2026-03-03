@@ -4,6 +4,7 @@ import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
 import { encryptKey } from "@/lib/encryption";
 import { validateApiKeyFormat, getValidationErrorMessage, type ApiProvider } from "@/lib/api-key-validation";
+import { invalidateUserContextCache } from "@/lib/api-helpers";
 
 /**
  * Return metadata for the current user's API keys.
@@ -130,6 +131,7 @@ export async function POST(request: Request) {
         provider: provider as ApiProvider,
         keyHash: encryptedKey,
       });
+      invalidateUserContextCache(userId);
     } catch (error) {
       console.error("Failed to save API key to database:", error);
       return NextResponse.json(
@@ -207,6 +209,7 @@ export async function DELETE(request: Request) {
       await convex.mutation(api.apiKeys.deleteKey, {
         keyId: keyId as any,
       });
+      invalidateUserContextCache(userId);
     } catch (error) {
       console.error("Failed to delete API key from database:", error);
       return NextResponse.json(
