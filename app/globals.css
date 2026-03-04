@@ -1069,6 +1069,12 @@ a {
 
 /* On mobile, open downwards */
 @media (max-width: 768px) {
+  .folder-menu-panel {
+    left: 0;
+    right: auto;
+    max-width: calc(100vw - 24px);
+  }
+
   .quick-menu-dropdown {
     top: calc(100% + 6px);
     bottom: auto;
@@ -1420,17 +1426,30 @@ a {
   .mobile-header {
     display: flex;
     flex-direction: column;
-    align-items: center;
+    align-items: stretch;
     padding: 12px;
     border-bottom: 1px solid var(--stroke);
     background: var(--surface);
+    gap: 10px;
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .mobile-header-top {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     gap: 12px;
+    min-width: 0;
   }
 
   .mobile-header-branding {
     display: flex;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
+    min-width: 0;
   }
 
   .mobile-header-logo {
@@ -1438,32 +1457,63 @@ a {
     font-weight: 700;
     color: var(--text-primary);
     letter-spacing: -0.02em;
+    padding-left: 2px;
+  }
+
+  .mobile-settings-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: 1px solid var(--stroke);
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--text-primary);
+    flex-shrink: 0;
+  }
+
+  .mobile-settings-btn:hover {
+    background: var(--surface-muted);
+  }
+
+  .mobile-settings-btn svg {
+    width: 16px;
+    height: 16px;
   }
 
   .mobile-header-controls {
     display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 16px;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 8px;
     width: 100%;
+    min-width: 0;
   }
 
   .mobile-header-controls .mode-switch {
-    display: inline-flex;
+    display: flex;
     gap: 4px;
     padding: 3px;
     border: 1px solid var(--stroke);
     border-radius: 999px;
     background: var(--bg);
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
   }
 
   .mobile-header-controls .mode-btn {
+    flex: 1 1 0;
+    min-width: 0;
     border: 1px solid transparent;
     background: transparent;
     color: var(--text-secondary);
     font-size: 12px;
     font-weight: 600;
-    padding: 6px 12px;
+    padding: 7px 8px;
     border-radius: 999px;
     cursor: pointer;
     transition: all 0.15s ease;
@@ -1473,6 +1523,20 @@ a {
     background: var(--accent);
     color: #fff;
     border-color: var(--accent);
+  }
+
+  .mobile-header-controls .view-toggle {
+    display: flex;
+    width: 100%;
+    max-width: 100%;
+    justify-content: space-between;
+    min-width: 0;
+  }
+
+  .mobile-header-controls .view-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    text-align: center;
   }
 }
 
@@ -4394,7 +4458,7 @@ body.flashcard-player-open {
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
     padding: 4px;
-    margin-bottom: 24px;
+    margin-bottom: 12px;
     display: flex;
     flex-wrap: nowrap;
     gap: 4px;
@@ -4882,7 +4946,7 @@ body.flashcard-player-open {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding-top: 8px;
+  padding-top: 0;
 }
 
 .settings-section-header h2 {
@@ -4901,7 +4965,7 @@ body.flashcard-player-open {
 
   .settings-section {
     gap: 12px;
-    padding-top: 12px;
+    padding-top: 0;
   }
 }
 
@@ -5080,8 +5144,26 @@ body.flashcard-player-open {
 }
 
 @media (max-width: 768px) {
+  html,
+  body {
+    overflow-x: hidden;
+  }
+
+  .app,
+  .main,
+  .content {
+    width: 100%;
+    max-width: 100%;
+  }
+
   .settings-page {
     padding: 12px 0 24px;
+  }
+
+  .settings-back-link {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-primary);
   }
 
   .settings-header {
@@ -5105,12 +5187,20 @@ body.flashcard-player-open {
     padding: 14px;
   }
 
+  .settings-sidebar {
+    padding: 0 16px;
+    border: none;
+    border-right: none;
+    border-bottom: none;
+  }
+
   .settings-section-header {
-    margin-bottom: 16px;
+    margin: 0;
   }
 
   .settings-section-header h2 {
     font-size: 18px;
+    margin: 0;
   }
 
   .settings-tabs-horizontal {
@@ -5133,6 +5223,18 @@ body.flashcard-player-open {
 
   .field {
     margin-bottom: 16px;
+  }
+
+  .input-panel .field-structure {
+    margin-bottom: 0;
+  }
+
+  .subscription-current-plan-field {
+    margin-bottom: 0;
+  }
+
+  .settings-tier-display {
+    margin: 0;
   }
 
   .field-label {
@@ -5194,7 +5296,8 @@ body.flashcard-player-open {
   .content.content-mobile {
     display: block;
     position: relative;
-    overflow: hidden;
+    overflow-x: hidden;
+    overflow-y: visible;
   }
 
   .content.content-mobile .input-panel,
@@ -5205,6 +5308,8 @@ body.flashcard-player-open {
     height: 100%;
     transition: transform 220ms ease, opacity 220ms ease;
     will-change: transform;
+    overflow-y: auto;
+    overflow-x: hidden;
   }
 
   .content.content-mobile.view-input .input-panel {
@@ -5235,6 +5340,11 @@ body.flashcard-player-open {
     border-right: none;
     border-bottom: 1px solid var(--stroke);
     height: 100%;
+  }
+
+  .input-panel-topbar {
+    margin-bottom: 0;
+    padding: 0;
   }
 
   .mobile-actions {
@@ -6343,7 +6453,7 @@ body.flashcard-player-open {
 .settings-divider {
   height: 1px;
   background: var(--stroke);
-  margin: 16px 0;
+  margin: 8px 0;
 }
 
 .settings-contact-form {
