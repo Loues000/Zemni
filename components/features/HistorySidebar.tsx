@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef, ReactNode } from "react";
+import { useState, useMemo, useEffect, useRef, ReactNode, TouchEvent as ReactTouchEvent } from "react";
 import { IconX } from "../ui/Icons";
 import type { HistoryEntry } from "@/types";
 import { ALL_FOLDERS, DEFAULT_FOLDER_LABEL, UNSORTED_FOLDER, normalizeFolder } from "@/lib/history-folders";
@@ -44,6 +44,10 @@ export function HistorySidebar({
   const [searchQuery, setSearchQuery] = useState("");
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const touchStartXRef = useRef<number | null>(null);
+  const touchStartYRef = useRef<number | null>(null);
+  const touchCurrentXRef = useRef<number | null>(null);
+  const touchCurrentYRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (selectedFolder === ALL_FOLDERS || selectedFolder === UNSORTED_FOLDER) return;
@@ -134,6 +138,54 @@ export function HistorySidebar({
     onMoveEntry(contextMenu.entry.id, trimmed);
     setContextMenu(null);
   };
+
+  const resetSwipeState = () => {
+    touchStartXRef.current = null;
+    touchStartYRef.current = null;
+    touchCurrentXRef.current = null;
+    touchCurrentYRef.current = null;
+  };
+
+  const handleSidebarTouchStart = (event: ReactTouchEvent<HTMLElement>) => {
+    if (!isOpen) return;
+    const touch = event.touches[0];
+    if (!touch) return;
+    touchStartXRef.current = touch.clientX;
+    touchStartYRef.current = touch.clientY;
+    touchCurrentXRef.current = touch.clientX;
+    touchCurrentYRef.current = touch.clientY;
+  };
+
+  const handleSidebarTouchMove = (event: ReactTouchEvent<HTMLElement>) => {
+    if (touchStartXRef.current === null || touchStartYRef.current === null) return;
+    const touch = event.touches[0];
+    if (!touch) return;
+    touchCurrentXRef.current = touch.clientX;
+    touchCurrentYRef.current = touch.clientY;
+  };
+
+  const handleSidebarTouchEnd = () => {
+    if (
+      touchStartXRef.current === null ||
+      touchStartYRef.current === null ||
+      touchCurrentXRef.current === null ||
+      touchCurrentYRef.current === null
+    ) {
+      resetSwipeState();
+      return;
+    }
+
+    const deltaX = touchCurrentXRef.current - touchStartXRef.current;
+    const deltaY = touchCurrentYRef.current - touchStartYRef.current;
+    const isHorizontalIntent = Math.abs(deltaX) > Math.abs(deltaY) * 1.2;
+    const shouldClose = isHorizontalIntent && deltaX <= -72;
+
+    if (shouldClose) {
+      onClose();
+    }
+
+    resetSwipeState();
+  };
   /**
    * Group history entries into time buckets for display.
    */
@@ -165,7 +217,13 @@ export function HistorySidebar({
   return (
     <>
       <div className={`sidebar-backdrop${isOpen ? " visible" : ""}`} onClick={onClose} />
-      <aside className={`sidebar${isOpen ? " open" : ""}`}>
+      <aside
+        className={`sidebar${isOpen ? " open" : ""}`}
+        onTouchStart={handleSidebarTouchStart}
+        onTouchMove={handleSidebarTouchMove}
+        onTouchEnd={handleSidebarTouchEnd}
+        onTouchCancel={resetSwipeState}
+      >
         <div className="sidebar-header">
           <div className="sidebar-header-left">
             <h1 className="sidebar-title">Zemni</h1>

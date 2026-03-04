@@ -5361,6 +5361,7 @@ body.flashcard-player-open {
 
   .sidebar {
     width: 100%;
+    touch-action: pan-y;
   }
 
   .header-title {
