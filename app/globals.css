@@ -1453,10 +1453,12 @@ a {
   }
 
   .mobile-header-logo {
-    font-size: 22px;
-    font-weight: 700;
+    font-family: var(--font-display), "Bricolage Grotesque", system-ui, sans-serif;
+    font-size: 25px;
+    font-weight: 800;
+    line-height: 1.1;
     color: var(--text-primary);
-    letter-spacing: -0.02em;
+    letter-spacing: -0.03em;
     padding-left: 2px;
   }
 
@@ -6538,6 +6540,15 @@ body.flashcard-player-open {
 .btn-text:hover {
   color: var(--text-primary);
   background: var(--surface-muted);
+}
+
+@media (min-width: 769px) {
+  .settings-header-bar .settings-back-link {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-primary);
+    border-color: var(--stroke-strong);
+  }
 }
 
 .settings-sidebar-section-title {
