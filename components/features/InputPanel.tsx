@@ -94,7 +94,7 @@ export function InputPanel({
       </div>
 
       {showStructureHints && (
-        <div className="field">
+        <div className="field field-structure">
           <label className="field-label">Structure (optional)</label>
           <textarea
             rows={2}

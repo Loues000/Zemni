@@ -105,7 +105,7 @@ export function SubscriptionTab() {
       )}
 
       <div className="settings-card">
-        <div className="field">
+        <div className="field subscription-current-plan-field">
           <label className="field-label">Current Plan</label>
           <div className="settings-tier-display" style={{ justifyContent: "center" }}>
             <span className="settings-tier-badge-large" data-tier={subscriptionTier}>
