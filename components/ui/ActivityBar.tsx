@@ -115,12 +115,13 @@ export function ActivityBar({
   const elapsed = startedAt ? formatElapsed(Math.max(0, now - startedAt)) : null;
   const stage = getStage(status);
   const modeLabel = modeLabels[outputKind];
+  const showModeLabel = stage.stage === "processing" || stage.stage === "output";
 
   return (
     <div className="activity-bar" role="status" aria-live="polite">
       <div className="activity-bar-row">
         <div className="activity-bar-left">
-          <span className="activity-bar-mode">{modeLabel}</span>
+          {showModeLabel && <span className="activity-bar-mode">{modeLabel}</span>}
           <span className="activity-bar-label">{statusLabels[status]}</span>
           {elapsed && <span className="activity-bar-elapsed">{elapsed}</span>}
           {estimatedTime && (

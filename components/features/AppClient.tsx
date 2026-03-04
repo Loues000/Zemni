@@ -835,6 +835,14 @@ export default function AppClient() {
   const isBusy = status === "parsing" || status === "summarizing" || status === "exporting";
   const headerCompact = !fileHandling.extractedText && outputsCount === 0 && !isBusy;
 
+  const activityBarOutputKind = useMemo<OutputKind>(() => {
+    const generatingKind = generatingTabId ? outputs[generatingTabId]?.kind : undefined;
+    if (generatingKind) return generatingKind;
+    const selectedKind = selectedTabId ? outputs[selectedTabId]?.kind : undefined;
+    if (selectedKind) return selectedKind;
+    return outputKind;
+  }, [generatingTabId, outputs, selectedTabId, outputKind]);
+
   return (
     <div className="app">
         <HistorySidebar
@@ -1212,7 +1220,7 @@ export default function AppClient() {
             <ActivityBar 
               status={status} 
               exportProgress={exportProgress} 
-              outputKind={outputKind}
+              outputKind={activityBarOutputKind}
               modelId={selectedModel}
               documentSize={fileHandling.extractedText?.length || 0} 
             />

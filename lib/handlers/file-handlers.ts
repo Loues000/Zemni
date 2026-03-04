@@ -1,5 +1,113 @@
 import type { Status } from "@/types";
 
+const CLIENT_PARSE_TIMEOUT_MS_MOBILE = 12_000;
+const CLIENT_PARSE_TIMEOUT_MS_DESKTOP = 30_000;
+const PARSE_API_TIMEOUT_MS = 30_000;
+const SERVER_PDF_PARSE_MAX_BYTES = 10 * 1024 * 1024;
+
+const isCoarsePointerDevice = (): boolean => {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    return false;
+  }
+  return window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+};
+
+const withTimeout = async <T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  timeoutMessage: string
+): Promise<T> => {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+      })
+    ]);
+  } finally {
+    if (timeoutId !== null) {
+      clearTimeout(timeoutId);
+    }
+  }
+};
+
+const fetchWithTimeout = async (
+  input: RequestInfo | URL,
+  init: RequestInit,
+  timeoutMs: number
+): Promise<Response> => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("Parsing request timed out.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+
+const getParseApiErrorMessage = async (res: Response): Promise<string> => {
+  try {
+    const payload = await res.json() as { error?: string };
+    if (payload?.error) return payload.error;
+  } catch {
+    // Ignore body parse errors and use status fallback
+  }
+  return `Request failed with status ${res.status}.`;
+};
+
+const parsePdfOnServer = async (file: File): Promise<string> => {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await fetchWithTimeout(
+    "/api/parse-pdf",
+    {
+      method: "POST",
+      body: formData
+    },
+    PARSE_API_TIMEOUT_MS
+  );
+  if (!res.ok) {
+    throw new Error(await getParseApiErrorMessage(res));
+  }
+  const data = await res.json() as { text: string };
+  return data.text ?? "";
+};
+
+const normalizeTextOnServer = async (text: string): Promise<string> => {
+  const res = await fetchWithTimeout(
+    "/api/parse-pdf",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text })
+    },
+    PARSE_API_TIMEOUT_MS
+  );
+  if (!res.ok) {
+    throw new Error(await getParseApiErrorMessage(res));
+  }
+  const data = await res.json() as { text: string };
+  return data.text ?? "";
+};
+
+const parsePdfOnClient = async (file: File): Promise<string> => {
+  const { extractTextFromPdf } = await import("@/lib/parse-pdf-client.ts");
+  const clientParseTimeoutMs = isCoarsePointerDevice()
+    ? CLIENT_PARSE_TIMEOUT_MS_MOBILE
+    : CLIENT_PARSE_TIMEOUT_MS_DESKTOP;
+  return withTimeout(
+    extractTextFromPdf(file),
+    clientParseTimeoutMs,
+    "Client PDF parsing timed out."
+  );
+};
+
 export interface FileHandlersContext {
   setError: (error: string) => void;
   setStatus: (status: Status) => void;
@@ -82,22 +190,31 @@ export const handleFile = async (
     let normalizedText: string | null = null;
 
     if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
-      try {
-        const { extractTextFromPdf } = await import("@/lib/parse-pdf-client.ts");
-        extractedText = await extractTextFromPdf(file);
-      } catch (parseError) {
-        const formData = new FormData();
-        formData.append("file", file);
-        const res = await fetch("/api/parse-pdf", {
-          method: "POST",
-          body: formData
-        });
-        if (!res.ok) {
-          const clientMessage = parseError instanceof Error ? parseError.message : "Unknown error";
-          throw new Error(`Client parsing failed. Server fallback failed. (${clientMessage})`);
+      const preferServerFirst = isCoarsePointerDevice() && file.size <= SERVER_PDF_PARSE_MAX_BYTES;
+      if (preferServerFirst) {
+        try {
+          normalizedText = await parsePdfOnServer(file);
+        } catch (serverFirstError) {
+          try {
+            extractedText = await parsePdfOnClient(file);
+          } catch (clientError) {
+            const serverMessage = serverFirstError instanceof Error ? serverFirstError.message : "Unknown server parse error";
+            const clientMessage = clientError instanceof Error ? clientError.message : "Unknown client parse error";
+            throw new Error(`Server-first parsing failed (${serverMessage}). Client fallback failed (${clientMessage}).`);
+          }
         }
-        const data = await res.json() as { text: string };
-        normalizedText = data.text ?? "";
+      } else {
+        try {
+          extractedText = await parsePdfOnClient(file);
+        } catch (parseError) {
+          try {
+            normalizedText = await parsePdfOnServer(file);
+          } catch (fallbackError) {
+            const clientMessage = parseError instanceof Error ? parseError.message : "Unknown client parse error";
+            const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : "Unknown server fallback error";
+            throw new Error(`Client parsing failed (${clientMessage}). Server fallback failed (${fallbackMessage}).`);
+          }
+        }
       }
     } else if (file.type === "text/markdown" || file.name.toLowerCase().endsWith(".md")) {
       extractedText = await file.text();
@@ -107,16 +224,7 @@ export const handleFile = async (
     }
 
     if (normalizedText === null) {
-      const res = await fetch("/api/parse-pdf", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: extractedText })
-      });
-
-      if (!res.ok) throw new Error("Could not normalize text.");
-
-      const data = await res.json() as { text: string };
-      normalizedText = data.text ?? "";
+      normalizedText = await normalizeTextOnServer(extractedText);
     }
 
     setExtractedText(normalizedText);
