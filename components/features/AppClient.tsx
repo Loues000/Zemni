@@ -881,8 +881,19 @@ export default function AppClient() {
 
         {isSmallScreen && (
           <div className="mobile-header" role="region" aria-label="Header">
-            <div className="mobile-header-branding">
-              <span className="mobile-header-logo">Zemni</span>
+            <div className="mobile-header-top">
+              <div className="mobile-header-branding">
+                <span className="mobile-header-logo">Zemni</span>
+              </div>
+              <button
+                type="button"
+                className="mobile-settings-btn"
+                onClick={() => navigateToSettings("/settings")}
+                aria-label="Open settings"
+                title="Settings"
+              >
+                <IconSettings />
+              </button>
             </div>
             <div className="mobile-header-controls">
               <ModeSwitch outputKind={outputKind} onModeChange={setOutputKind} />
@@ -1189,7 +1200,7 @@ export default function AppClient() {
                 })()}
                 <button
                   type="button"
-                  className="icon-btn"
+                  className="icon-btn desktop-only"
                   onClick={() => navigateToSettings("/settings")}
                   aria-label="Settings"
                   title="Settings"
