@@ -13,12 +13,8 @@ export async function extractPagesFromPdf(file: File): Promise<PdfPageText[]> {
     // Dynamically import the legacy build to avoid ESM/worker interop issues in Next.js
     const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
 
-    // Use a CDN worker to avoid bundling issues in Next.js production builds
-    if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
-      const version = pdfjsLib.version || "5.4.530";
-      pdfjsLib.GlobalWorkerOptions.workerSrc =
-        `https://cdn.jsdelivr.net/npm/pdfjs-dist@${version}/legacy/build/pdf.worker.min.mjs`;
-    }
+    // Always use same-origin worker delivery so strict CSP can remain locked down.
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "/api/pdf-worker";
 
     const arrayBuffer = await file.arrayBuffer();
     const loadingTask = pdfjsLib.getDocument({ 
