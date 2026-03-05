@@ -45,6 +45,7 @@ export function useHistory(): UseHistoryReturn {
   
   const failedSavesRef = useRef<HistoryEntry[]>([]);
   const historyRef = useRef<HistoryEntry[]>([]);
+  const localMigrationAttemptedForRef = useRef<string | null>(null);
 
   useEffect(() => {
     historyRef.current = history;
@@ -68,6 +69,64 @@ export function useHistory(): UseHistoryReturn {
       setHistory(loadHistoryFromStorage());
     }
   }, [currentUser, documents, historyFromConvex]);
+
+  useEffect(() => {
+    if (!currentUser || documents === undefined) {
+      return;
+    }
+
+    if (localMigrationAttemptedForRef.current === currentUser._id) {
+      return;
+    }
+
+    const localHistory = loadHistoryFromStorage();
+    if (localHistory.length === 0) {
+      localMigrationAttemptedForRef.current = currentUser._id;
+      return;
+    }
+
+    localMigrationAttemptedForRef.current = currentUser._id;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const response = await fetch("/api/migrate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ history: localHistory }),
+        });
+
+        if (!response.ok) {
+          const errorPayload = await response.json().catch(() => null) as { error?: string } | null;
+          throw new Error(errorPayload?.error || `Migration failed (${response.status})`);
+        }
+
+        const payload = await response.json() as { migrated?: number; total?: number };
+        if (cancelled) {
+          return;
+        }
+
+        const migrated = typeof payload.migrated === "number" ? payload.migrated : 0;
+        const total = typeof payload.total === "number" ? payload.total : localHistory.length;
+
+        if (migrated >= total) {
+          saveHistoryToStorage([]);
+        } else {
+          throw new Error(`Migration incomplete (${migrated}/${total})`);
+        }
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+        localMigrationAttemptedForRef.current = null;
+        console.error("[useHistory] Failed to migrate local history:", error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser, documents]);
 
   const saveEntryToConvex = useCallback(async (entry: HistoryEntry, retryCount = 0): Promise<string> => {
     if (!currentUser) {
@@ -156,6 +215,31 @@ export function useHistory(): UseHistoryReturn {
     }
   }, [currentUser, saveEntryToConvex]);
 
+  const removeEntryFromConvex = useCallback(async (entryId: string, retryCount = 0): Promise<void> => {
+    if (!currentUser) {
+      throw new Error("Not authenticated");
+    }
+
+    try {
+      await removeDocument({ documentId: entryId as any });
+      setLastSavedAt(new Date());
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to delete document";
+
+      if (retryCount < MAX_RETRIES) {
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY * (retryCount + 1)));
+        return removeEntryFromConvex(entryId, retryCount + 1);
+      }
+
+      setSaveError(errorMessage);
+      toast.error("Failed to delete document", {
+        description: errorMessage,
+        duration: 8000,
+      });
+      throw error;
+    }
+  }, [currentUser, removeDocument]);
+
   const updateHistoryState = useCallback((updater: (prev: HistoryEntry[]) => HistoryEntry[]): void => {
     if (!currentUser) {
       const current = loadHistoryFromStorage();
@@ -172,24 +256,39 @@ export function useHistory(): UseHistoryReturn {
       const existing = prev.find((p) => p.id === entry.id);
       return !existing || existing.updatedAt !== entry.updatedAt;
     });
+    const removedEntries = prev.filter((entry) => !next.some((n) => n.id === entry.id));
+    const serverDocumentIds = new Set((documents ?? []).map((doc) => doc._id));
+    const removedServerEntries = removedEntries.filter((entry) => serverDocumentIds.has(entry.id));
 
     historyRef.current = next;
     setHistory(next);
 
-    if (changedEntries.length > 0) {
+    const pendingOperations = changedEntries.length + removedServerEntries.length;
+    if (pendingOperations > 0) {
       setIsSaving(true);
-      setPendingSaves(changedEntries.length);
+      setPendingSaves(pendingOperations);
 
       Promise.all(
-        changedEntries.map(async (entry) => {
-          try {
-            await saveEntryToConvex(entry);
-          } catch (error) {
-            console.error(`[useHistory] Failed to save entry ${entry.id}:`, error);
-          } finally {
-            setPendingSaves((prevPending) => Math.max(0, prevPending - 1));
-          }
-        })
+        [
+          ...changedEntries.map(async (entry) => {
+            try {
+              await saveEntryToConvex(entry);
+            } catch (error) {
+              console.error(`[useHistory] Failed to save entry ${entry.id}:`, error);
+            } finally {
+              setPendingSaves((prevPending) => Math.max(0, prevPending - 1));
+            }
+          }),
+          ...removedServerEntries.map(async (entry) => {
+            try {
+              await removeEntryFromConvex(entry.id);
+            } catch (error) {
+              console.error(`[useHistory] Failed to delete entry ${entry.id}:`, error);
+            } finally {
+              setPendingSaves((prevPending) => Math.max(0, prevPending - 1));
+            }
+          }),
+        ]
       )
         .then(() => {
           setIsSaving(false);
@@ -198,7 +297,7 @@ export function useHistory(): UseHistoryReturn {
           setIsSaving(false);
         });
     }
-  }, [currentUser, saveEntryToConvex]);
+  }, [currentUser, documents, saveEntryToConvex, removeEntryFromConvex]);
 
   const clearSaveError = useCallback(() => {
     setSaveError(null);

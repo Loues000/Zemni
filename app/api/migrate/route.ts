@@ -9,10 +9,15 @@ import { getConvexClient } from "@/lib/convex-server";
  */
 export async function POST(request: Request) {
   try {
-    const { userId } = await auth();
+    const { userId, getToken } = await auth();
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const convexToken = await getToken({ template: "convex" });
+    if (!convexToken) {
+      return NextResponse.json({ error: "Missing Convex auth token" }, { status: 401 });
     }
 
     // Parse request body to get history data from client
@@ -24,13 +29,7 @@ export async function POST(request: Request) {
     }
 
     const convex = getConvexClient();
-
-    // Get user from Convex
-    const user = await convex.query(api.users.getCurrentUser as any, {});
-
-    if (!user) {
-      return NextResponse.json({ error: "User not found in Convex" }, { status: 404 });
-    }
+    convex.setAuth(convexToken);
 
     // Validate history entries
     const validEntries = localStorageHistory.filter(isHistoryEntry);
@@ -41,19 +40,34 @@ export async function POST(request: Request) {
 
     // Migrate each entry to Convex
     let migrated = 0;
+    let failed = 0;
     for (const entry of validEntries) {
       try {
-        const docData = historyEntryToDocument(entry, user._id);
+        const docData = historyEntryToDocument(entry, userId);
         await convex.mutation(api.documents.upsert, docData as any);
         migrated++;
       } catch (err) {
+        failed++;
         console.error(`Failed to migrate entry ${entry.id}:`, err);
       }
+    }
+
+    if (failed > 0) {
+      return NextResponse.json(
+        {
+          error: `Migrated ${migrated} of ${validEntries.length} entries`,
+          migrated,
+          failed,
+          total: validEntries.length,
+        },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({
       message: `Migrated ${migrated} of ${validEntries.length} entries`,
       migrated,
+      failed,
       total: validEntries.length,
     });
   } catch (error) {

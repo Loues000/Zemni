@@ -39,7 +39,7 @@ vi.mock("@/convex/_generated/api", () => ({
   api: {
     users: { getCurrentUser: "users.getCurrentUser" },
     documents: {
-      getAll: "documents.getAll",
+      getMetadataList: "documents.getMetadataList",
       upsert: "documents.upsert",
       remove: "documents.remove",
     },
@@ -112,7 +112,7 @@ describe("useHistory", () => {
     // Default: authenticated user with no documents
     mockUseQuery.mockImplementation((query: any) => {
       if (query === "users.getCurrentUser") return mockUser;
-      if (query === "documents.getAll") return mockDocuments;
+      if (query === "documents.getMetadataList") return mockDocuments;
       return undefined;
     });
     mockUpsertDocument.mockResolvedValue("k1234567890123456789012346");
@@ -138,7 +138,7 @@ describe("useHistory", () => {
     it("should initialize with localStorage fallback for unauthenticated user", async () => {
       mockUseQuery.mockImplementation((query: any) => {
         if (query === "users.getCurrentUser") return null;
-        if (query === "documents.getAll") return undefined;
+        if (query === "documents.getMetadataList") return undefined;
         return undefined;
       });
 
@@ -207,7 +207,7 @@ describe("useHistory", () => {
     it("should throw error when user is not authenticated", async () => {
       mockUseQuery.mockImplementation((query: any) => {
         if (query === "users.getCurrentUser") return null;
-        if (query === "documents.getAll") return undefined;
+        if (query === "documents.getMetadataList") return undefined;
         return undefined;
       });
 
@@ -426,6 +426,42 @@ describe("useHistory", () => {
       });
 
       expect(result.current.saveError).toBeNull();
+    });
+  });
+
+  describe("delete sync", () => {
+    it("should delete removed server history entries from Convex", async () => {
+      const now = Date.now();
+      mockDocuments = [
+        {
+          _id: "k1234567890123456789012400",
+          title: "Server Doc",
+          fileName: "server.pdf",
+          extractedText: "Server content",
+          outputs: {},
+          structureHints: "",
+          createdAt: now,
+          updatedAt: now,
+        },
+      ];
+
+      const { result } = renderHook(() => useHistory());
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(result.current.history).toHaveLength(1);
+
+      act(() => {
+        result.current.updateHistoryState(() => []);
+      });
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(mockRemoveDocument).toHaveBeenCalledWith({
+        documentId: "k1234567890123456789012400",
+      });
     });
   });
 });
