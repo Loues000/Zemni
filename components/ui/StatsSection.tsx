@@ -36,7 +36,7 @@ export function StatsSection({
         className="stats-toggle"
         onClick={onToggle}
       >
-        <span>OpenRouter Stats</span>
+        <span>Stats</span>
         <span className={`stats-toggle-icon${isOpen ? " open" : ""}`}>
           <IconChevron />
         </span>
