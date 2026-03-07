@@ -200,6 +200,8 @@ export async function POST(request: Request) {
   // Get user preferences for language and custom guidelines
   const userLanguage = userContext?.preferredLanguage || "en";
   const customGuidelines = userContext?.customGuidelines;
+  const summaryStyleFlags = userContext?.summaryStyleFlags;
+  const summaryStyleFlagsVersion = userContext?.summaryStyleFlagsVersion;
 
   const start = Date.now();
 
@@ -218,7 +220,14 @@ export async function POST(request: Request) {
    * Summarize sections directly in a single model call.
    */
   const summarizeDirect = async (): Promise<{ text: string; usage: LanguageModelUsage | undefined }> => {
-    const { systemPrompt, userPrompt } = await buildSectionSummaryPrompts(sections, structure, userLanguage, customGuidelines);
+    const { systemPrompt, userPrompt } = await buildSectionSummaryPrompts(
+      sections,
+      structure,
+      userLanguage,
+      customGuidelines,
+      summaryStyleFlags,
+      summaryStyleFlagsVersion
+    );
 
     // Dynamic maxTokens based on content length and number of sections
     // More realistic: ~3 characters per token (accounts for markdown overhead)
@@ -310,7 +319,14 @@ export async function POST(request: Request) {
       page: r.section.page
     }));
 
-    const { systemPrompt, userPrompt } = await buildSectionSummaryPrompts(notesAsSections, structure, userLanguage, customGuidelines);
+    const { systemPrompt, userPrompt } = await buildSectionSummaryPrompts(
+      notesAsSections,
+      structure,
+      userLanguage,
+      customGuidelines,
+      summaryStyleFlags,
+      summaryStyleFlagsVersion
+    );
 
     // Dynamic maxTokens for the final summary assembly
     const totalNoteChars = notesAsSections.reduce((acc, s) => acc + (s.text?.length ?? 0), 0);

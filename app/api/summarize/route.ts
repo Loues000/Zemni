@@ -127,7 +127,16 @@ export async function POST(request: Request) {
 
   const userLanguage = userContext?.preferredLanguage || "en";
   const customGuidelines = userContext?.customGuidelines;
-  const { systemPrompt, userPrompt } = await buildSummaryPrompts(text, structure, userLanguage, customGuidelines);
+  const summaryStyleFlags = userContext?.summaryStyleFlags;
+  const summaryStyleFlagsVersion = userContext?.summaryStyleFlagsVersion;
+  const { systemPrompt, userPrompt } = await buildSummaryPrompts(
+    text,
+    structure,
+    userLanguage,
+    customGuidelines,
+    summaryStyleFlags,
+    summaryStyleFlagsVersion
+  );
   const start = Date.now();
   const perfConfig = getModelPerformanceConfig(modelId, text.length);
 

@@ -115,11 +115,19 @@ export async function POST(request: Request) {
   // Get user preferences for language and custom guidelines
   const userLanguage = userContext?.preferredLanguage || "en";
   const customGuidelines = userContext?.customGuidelines;
+  const summaryStyleFlags = userContext?.summaryStyleFlags;
+  const summaryStyleFlagsVersion = userContext?.summaryStyleFlagsVersion;
 
   // For streaming, we use OpenRouter client (works for both system and user OpenRouter keys)
   // If user has own key with OpenRouter provider, use that; otherwise use system key
   const openrouterClient = createOpenRouterClient(openrouterKey);
-  const systemPrompt = await buildRefineSystemPrompt(summary, userLanguage, customGuidelines);
+  const systemPrompt = await buildRefineSystemPrompt(
+    summary,
+    userLanguage,
+    customGuidelines,
+    summaryStyleFlags,
+    summaryStyleFlagsVersion
+  );
   const data = new StreamData();
   const start = Date.now();
   const result = await streamText({

@@ -18,6 +18,8 @@ export default defineSchema({
     preferredLanguage: v.optional(v.string()),
     preferredName: v.optional(v.string()),
     customGuidelines: v.optional(v.string()),
+    summaryStyleFlags: v.optional(v.number()),
+    summaryStyleFlagsVersion: v.optional(v.number()),
     defaultStructureHints: v.optional(v.string()),
     historyFolders: v.optional(v.array(v.string())),
     notionToken: v.optional(v.string()),

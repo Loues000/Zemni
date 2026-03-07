@@ -22,6 +22,8 @@ export interface UserContext {
   apiKeys: ApiKeyInfo[];
   preferredLanguage?: string;
   customGuidelines?: string;
+  summaryStyleFlags?: number;
+  summaryStyleFlagsVersion?: number;
 }
 
 const USER_CONTEXT_CACHE_TTL_MS = 15_000;
@@ -156,6 +158,8 @@ export async function getUserContext(): Promise<UserContext | null> {
       apiKeys,
       preferredLanguage: user.preferredLanguage,
       customGuidelines: user.customGuidelines,
+      summaryStyleFlags: user.summaryStyleFlags,
+      summaryStyleFlagsVersion: user.summaryStyleFlagsVersion,
     };
   })();
 

@@ -2,6 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 import type { DocumentSection } from "@/types";
 import { countTokens } from "@/lib/token-cost";
+import { buildSummaryStyleOverridesFromMask } from "@/lib/summary-style-flags";
 
 // Base identity prompt - always in English for best AI consistency
 const getBaseIdentity = (outputLanguage: string = "en"): string => {
@@ -205,7 +206,9 @@ export const buildSectionSummaryPrompts = async (
   sections: DocumentSection[],
   structure?: string,
   language: string = "en",
-  customGuidelines?: string
+  customGuidelines?: string,
+  summaryStyleFlags?: number,
+  summaryStyleFlagsVersion?: number
 ): Promise<{ systemPrompt: string; userPrompt: string }> => {
   const guidelines = await loadGuidelines([GUIDELINES_GENERAL, GUIDELINES_SUMMARY]);
   let finalGuidelines = guidelines;
@@ -217,6 +220,7 @@ export const buildSectionSummaryPrompts = async (
 
   const baseIdentity = getBaseIdentity(language);
   const formatInstructions = getFormatInstructions("summary");
+  const summaryStyleOverrides = buildSummaryStyleOverridesFromMask(summaryStyleFlags, summaryStyleFlagsVersion);
 
   const systemPrompt = [
     baseIdentity,
@@ -224,7 +228,9 @@ export const buildSectionSummaryPrompts = async (
     "Guidelines (AI Rules):",
     finalGuidelines,
     "",
-    formatInstructions
+    formatInstructions,
+    "",
+    summaryStyleOverrides
   ].join("\n");
 
   const serializedSections = sections

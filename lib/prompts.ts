@@ -1,5 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
+import { buildSummaryStyleOverridesFromMask } from "@/lib/summary-style-flags";
 
 // Base identity prompt - always in English for best AI consistency
 const getBaseIdentity = (outputLanguage: string = "en"): string => {
@@ -95,7 +96,9 @@ export const buildSummaryPrompts = async (
   text: string,
   structure?: string,
   outputLanguage: string = "en",
-  customGuidelines?: string
+  customGuidelines?: string,
+  summaryStyleFlags?: number,
+  summaryStyleFlagsVersion?: number
 ) => {
   const guidelines = await loadGuidelines();
   let finalGuidelines = guidelines;
@@ -107,8 +110,9 @@ export const buildSummaryPrompts = async (
   
   const baseIdentity = getBaseIdentity(outputLanguage);
   const formatContract = getFormatContract();
+  const summaryStyleOverrides = buildSummaryStyleOverridesFromMask(summaryStyleFlags, summaryStyleFlagsVersion);
   
-  const systemPrompt = `${baseIdentity}\n\nGuidelines (AI Rules):\n${finalGuidelines}\n\nStrictly follow the guidelines.${formatContract}`;
+  const systemPrompt = `${baseIdentity}\n\nGuidelines (AI Rules):\n${finalGuidelines}\n\nStrictly follow the guidelines.${formatContract}\n\n${summaryStyleOverrides}`;
   const userPrompt = getSummaryUserPrompt(outputLanguage, text, structure);
 
   return { systemPrompt, userPrompt };
@@ -117,7 +121,9 @@ export const buildSummaryPrompts = async (
 export const buildRefineSystemPrompt = async (
   summary: string,
   outputLanguage: string = "en",
-  customGuidelines?: string
+  customGuidelines?: string,
+  summaryStyleFlags?: number,
+  summaryStyleFlagsVersion?: number
 ) => {
   const guidelines = await loadGuidelines();
   let finalGuidelines = guidelines;
@@ -129,6 +135,7 @@ export const buildRefineSystemPrompt = async (
   
   const baseIdentity = getBaseIdentity(outputLanguage);
   const formatContract = getFormatContract();
+  const summaryStyleOverrides = buildSummaryStyleOverridesFromMask(summaryStyleFlags, summaryStyleFlagsVersion);
   const userPrompt = getRefineUserPrompt(outputLanguage, summary);
   
   return [
@@ -137,6 +144,8 @@ export const buildRefineSystemPrompt = async (
     "Guidelines (AI Rules):",
     finalGuidelines,
     formatContract,
+    "",
+    summaryStyleOverrides,
     "",
     userPrompt
   ].join("\n");

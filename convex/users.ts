@@ -3,6 +3,8 @@ import { v } from "convex/values";
 
 const CONTACT_RETENTION_DAYS = 90;
 const CONTACT_RETENTION_MS = CONTACT_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+const SUMMARY_STYLE_FLAGS_VERSION = 1;
+const SUMMARY_STYLE_FLAGS_MASK_MAX = 0b111111;
 
 export const getOrCreateUser = mutation({
   args: {
@@ -361,6 +363,46 @@ export const updateDefaultStructureHints = mutation({
   },
 });
 
+export const updateSummaryStyleFlags = mutation({
+  args: {
+    flags: v.number(),
+    version: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    if (!Number.isInteger(args.flags) || args.flags < 0) {
+      throw new Error("Invalid flags: expected a non-negative integer bitmask");
+    }
+
+    if (args.version !== SUMMARY_STYLE_FLAGS_VERSION) {
+      throw new Error(`Unsupported summary style flag version: ${args.version}`);
+    }
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_user_id", (q: any) => q.eq("clerkUserId", identity.subject))
+      .first();
+
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    const normalizedFlags = args.flags & SUMMARY_STYLE_FLAGS_MASK_MAX;
+
+    await ctx.db.patch(user._id, {
+      summaryStyleFlags: normalizedFlags,
+      summaryStyleFlagsVersion: SUMMARY_STYLE_FLAGS_VERSION,
+      updatedAt: Date.now(),
+    });
+
+    return { flags: normalizedFlags, version: SUMMARY_STYLE_FLAGS_VERSION };
+  },
+});
+
 export const updateNotionConfig = mutation({
   args: {
     token: v.optional(v.string()),
@@ -476,6 +518,8 @@ export const anonymizeAccount = mutation({
       email: `${anonymousId}@anonymized.local`,
       preferredName: "Anonymous User",
       customGuidelines: undefined,
+      summaryStyleFlags: undefined,
+      summaryStyleFlagsVersion: undefined,
       defaultStructureHints: undefined,
       notionToken: undefined,
       notionDatabaseId: undefined,
