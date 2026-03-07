@@ -74,8 +74,9 @@ function ModelIcon({ modelId }: { modelId: string }) {
  */
 function getModelDescription(modelId: string): string {
   const descriptions: Record<string, string> = {
+    "openai/gpt-5.4": "Newest flagship GPT model with the strongest reasoning and highest-quality output",
     "openai/gpt-5.2-chat": "Fast responses with GPT-5.2 capabilities for rapid prototyping",
-    "openai/gpt-5.2": "Latest GPT model with exceptional reasoning and comprehensive knowledge",
+    "openai/gpt-5.2": "Previous flagship GPT model kept for compatibility",
     "openai/gpt-5.1": "Balanced performance and cost for most generation tasks",
     "openai/gpt-5-mini": "Efficient and cost-effective model for quick generations",
     "openai/gpt-5-nano": "Ultra-lightweight model optimized for speed and minimal cost",

@@ -175,7 +175,7 @@ export function SubscriptionTab() {
               <ul className="settings-tier-features">
                 <li><IconCheck /> 200 generations/month</li>
                 <li><IconCheck /> Access to ALL models</li>
-                <li><IconCheck /> GPT-5.2, Claude Opus 4.5</li>
+                <li><IconCheck /> GPT-5.4, Claude Opus 4.5</li>
                 <li><IconCheck /> Gemini 3 Pro, GPT OSS 120B</li>
               </ul>
               <button type="button" className="btn btn-secondary btn-small" disabled>
