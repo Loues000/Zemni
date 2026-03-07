@@ -8,13 +8,36 @@ export type PdfPageText = {
   text: string;
 };
 
+const PDF_WORKER_SRC = "/api/pdf-worker";
+let cachedWorkerPort: Worker | null = null;
+
+const configurePdfWorker = async (
+  pdfjsLib: typeof import("pdfjs-dist/legacy/build/pdf.mjs")
+): Promise<void> => {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = PDF_WORKER_SRC;
+
+  if (typeof Worker === "undefined") {
+    return;
+  }
+
+  if (!cachedWorkerPort) {
+    try {
+      cachedWorkerPort = new Worker(PDF_WORKER_SRC, { type: "module" });
+    } catch {
+      cachedWorkerPort = null;
+    }
+  }
+
+  pdfjsLib.GlobalWorkerOptions.workerPort = cachedWorkerPort;
+};
+
 export async function extractPagesFromPdf(file: File): Promise<PdfPageText[]> {
   try {
     // Dynamically import the legacy build to avoid ESM/worker interop issues in Next.js
     const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
 
-    // Always use same-origin worker delivery so strict CSP can remain locked down.
-    pdfjsLib.GlobalWorkerOptions.workerSrc = "/api/pdf-worker";
+    // Reuse a same-origin worker instance so PDF.js never falls back to a CDN URL.
+    await configurePdfWorker(pdfjsLib);
 
     const arrayBuffer = await file.arrayBuffer();
     const loadingTask = pdfjsLib.getDocument({ 
