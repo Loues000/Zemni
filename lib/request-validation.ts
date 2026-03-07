@@ -5,7 +5,7 @@
 
 // Size limits in bytes
 export const MAX_TEXT_SIZE = 1 * 1024 * 1024; // 1MB for text input
-export const MAX_PDF_SIZE = 10 * 1024 * 1024; // 10MB for PDF files
+export const MAX_PDF_SIZE = 4 * 1024 * 1024; // 4MB keeps PDF fallback under typical serverless upload limits
 
 /**
  * Calculate the size of a string in bytes (UTF-8 encoding)

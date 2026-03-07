@@ -1,9 +1,11 @@
 import type { Status } from "@/types";
+import { normalizePdfText } from "@/lib/normalize-pdf-text";
 
 const CLIENT_PARSE_TIMEOUT_MS_MOBILE = 12_000;
 const CLIENT_PARSE_TIMEOUT_MS_DESKTOP = 30_000;
 const PARSE_API_TIMEOUT_MS = 30_000;
-const SERVER_PDF_PARSE_MAX_BYTES = 10 * 1024 * 1024;
+// Keep comfortably below typical serverless request body limits to avoid platform-level 413s.
+const SERVER_PDF_PARSE_MAX_BYTES = 4 * 1024 * 1024;
 
 const isCoarsePointerDevice = (): boolean => {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
@@ -62,6 +64,10 @@ const getParseApiErrorMessage = async (res: Response): Promise<string> => {
 };
 
 const parsePdfOnServer = async (file: File): Promise<string> => {
+  if (file.size > SERVER_PDF_PARSE_MAX_BYTES) {
+    const maxMb = (SERVER_PDF_PARSE_MAX_BYTES / (1024 * 1024)).toFixed(0);
+    throw new Error(`PDF exceeds the ${maxMb}MB server upload limit.`);
+  }
   const formData = new FormData();
   formData.append("file", file);
   const res = await fetchWithTimeout(
@@ -69,23 +75,6 @@ const parsePdfOnServer = async (file: File): Promise<string> => {
     {
       method: "POST",
       body: formData
-    },
-    PARSE_API_TIMEOUT_MS
-  );
-  if (!res.ok) {
-    throw new Error(await getParseApiErrorMessage(res));
-  }
-  const data = await res.json() as { text: string };
-  return data.text ?? "";
-};
-
-const normalizeTextOnServer = async (text: string): Promise<string> => {
-  const res = await fetchWithTimeout(
-    "/api/parse-pdf",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text })
     },
     PARSE_API_TIMEOUT_MS
   );
@@ -188,9 +177,12 @@ export const handleFile = async (
   try {
     let extractedText = "";
     let normalizedText: string | null = null;
+    const isPdfFile = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+    const serverPdfFallbackAvailable = file.size <= SERVER_PDF_PARSE_MAX_BYTES;
+    const serverPdfFallbackLimitMb = (SERVER_PDF_PARSE_MAX_BYTES / (1024 * 1024)).toFixed(0);
 
-    if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
-      const preferServerFirst = isCoarsePointerDevice() && file.size <= SERVER_PDF_PARSE_MAX_BYTES;
+    if (isPdfFile) {
+      const preferServerFirst = isCoarsePointerDevice() && serverPdfFallbackAvailable;
       if (preferServerFirst) {
         try {
           normalizedText = await parsePdfOnServer(file);
@@ -207,6 +199,12 @@ export const handleFile = async (
         try {
           extractedText = await parsePdfOnClient(file);
         } catch (parseError) {
+          if (!serverPdfFallbackAvailable) {
+            const clientMessage = parseError instanceof Error ? parseError.message : "Unknown client parse error";
+            throw new Error(
+              `Client parsing failed (${clientMessage}). Server fallback unavailable because PDFs over ${serverPdfFallbackLimitMb}MB exceed the upload limit.`
+            );
+          }
           try {
             normalizedText = await parsePdfOnServer(file);
           } catch (fallbackError) {
@@ -224,7 +222,7 @@ export const handleFile = async (
     }
 
     if (normalizedText === null) {
-      normalizedText = await normalizeTextOnServer(extractedText);
+      normalizedText = normalizePdfText(extractedText);
     }
 
     setExtractedText(normalizedText);
