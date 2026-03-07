@@ -88,6 +88,7 @@ export const getEstimatedCompletionTime = (
     "openai/gpt-oss-20b": 60,
     "anthropic/claude-opus-4.5": 75,
     "anthropic/claude-sonnet-4.5": 45,
+    "openai/gpt-5.4": 35,
     "openai/gpt-5.2": 30,
     "openai/gpt-5.1": 25,
     "openai/gpt-5-mini": 15,
