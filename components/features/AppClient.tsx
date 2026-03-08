@@ -830,6 +830,7 @@ export default function AppClient() {
     chatConfig,
     selectedModel
   });
+  const dropzoneProcessLabel = status === "parsing" ? "Parsing PDF..." : null;
 
   const outputsCount = Object.keys(outputs).length;
   const isBusy = status === "parsing" || status === "summarizing" || status === "exporting";
@@ -1004,6 +1005,7 @@ export default function AppClient() {
                 onModelChange={handleModelChange}
                 onStructureChange={setStructureHints}
                 userTier={subscriptionTier}
+                processStatusLabel={dropzoneProcessLabel}
               >
                 {outputKind === "flashcards" && (
                   <div className="field">
@@ -1074,6 +1076,7 @@ export default function AppClient() {
               onModelChange={handleModelChange}
               onStructureChange={setStructureHints}
               userTier={subscriptionTier}
+              processStatusLabel={dropzoneProcessLabel}
             >
               {outputKind === "flashcards" && (
                 <div className="field">

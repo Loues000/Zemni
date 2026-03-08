@@ -6,6 +6,7 @@ interface InputPanelProps {
   selectedModel: string;
   models: Model[];
   structureHints: string;
+  processStatusLabel?: string | null;
   showStructureHints?: boolean;
   dragActive: boolean;
   dropzoneCorner?: React.ReactNode;
@@ -29,6 +30,7 @@ export function InputPanel({
   selectedModel,
   models,
   structureHints,
+  processStatusLabel,
   showStructureHints = true,
   dragActive,
   dropzoneCorner,
@@ -74,6 +76,11 @@ export function InputPanel({
         <div className="dropzone-hint">
           {fileName ? "Click to upload a new file" : "Drop PDF or Markdown here, or click to browse"}
         </div>
+        {processStatusLabel ? (
+          <div className="dropzone-status" aria-live="polite">
+            {processStatusLabel}
+          </div>
+        ) : null}
         <input
           type="file"
           accept="application/pdf,text/markdown,.md"

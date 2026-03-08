@@ -17,7 +17,8 @@ export const handleRetryGeneration = async (
   // Clear the error and retry
   const retryContext: GenerationHandlersContext = {
     ...context,
-    selectedTabId: tabId
+    selectedTabId: tabId,
+    reuseTabId: tabId
   };
 
   // Clear error state before retrying

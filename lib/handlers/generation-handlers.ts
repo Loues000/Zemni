@@ -33,6 +33,7 @@ export interface GenerationHandlersContext {
   setData: (data: any[]) => void;
   setMessages: (messages: any[]) => void;
   setInput: (input: string) => void;
+  reuseTabId?: string | null;
   onCacheHit?: (cached: boolean) => void; // Callback to notify UI of cache status
 }
 
@@ -76,8 +77,7 @@ export const handleGenerate = async (context: GenerationHandlersContext): Promis
     return;
   }
 
-  const previousTabId = selectedTabId;
-  const tabId = selectedModel + "-" + Date.now();
+  const tabId = context.reuseTabId ?? (selectedModel + "-" + Date.now());
   const modelLabel = models.find((m) => m.id === selectedModel)?.displayName || selectedModel;
   const { timeoutMs } = getModelPerformanceConfig(selectedModel, extractedText.length);
 
