@@ -294,6 +294,20 @@
     }
   },
   {
+    "id": "minimax/minimax-m2.5",
+    "display_name": "Minimax M2.5",
+    "subscription_tier": "basic",
+    "available": true,
+    "tokenizer": {
+      "tiktoken_encoding": "cl100k_base"
+    },
+    "pricing": {
+      "currency": "USD",
+      "input_per_1m": 0.29,
+      "output_per_1m": 1.25
+    }
+  },
+  {
     "id": "qwen/qwen3.5-35b-a3b",
     "display_name": "Qwen 3.5 35B A3B",
     "subscription_tier": "basic",
@@ -417,6 +431,20 @@
       "currency": "USD",
       "input_per_1m": 0,
       "output_per_1m": 0
+    }
+  },
+  {
+    "id": "inception/mercury-2:nitro",
+    "display_name": "Mercury 2",
+    "subscription_tier": "basic",
+    "available": true,
+    "tokenizer": {
+      "tiktoken_encoding": "cl100k_base"
+    },
+    "pricing": {
+      "currency": "USD",
+      "input_per_1m": 0.25,
+      "output_per_1m": 0.75
     }
   },
   {
