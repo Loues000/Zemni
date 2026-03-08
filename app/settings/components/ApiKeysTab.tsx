@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useToastContext } from "./ToastProvider";
@@ -17,28 +17,37 @@ const PROVIDERS = [
  */
 export function ApiKeysTab() {
   const [keyValues, setKeyValues] = useState<Record<string, string>>({});
-  const [useOwnKey, setUseOwnKey] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [pendingAction, setPendingAction] = useState<{ type: "toggle" | "save" | "delete"; target?: string } | null>(null);
+  const [optimisticUseOwnKey, setOptimisticUseOwnKey] = useState<boolean | null>(null);
   const toast = useToastContext();
 
   const userKeys = useQuery(api.apiKeys.getUserKeys, {});
   const useOwnKeyPreference = useQuery(api.apiKeys.getUseOwnKeyPreference);
   const setUseOwnKeyPref = useMutation(api.apiKeys.setUseOwnKeyPreference);
+  const loading = pendingAction !== null;
+  const effectiveUseOwnKey = optimisticUseOwnKey ?? useOwnKeyPreference ?? false;
+
+  useEffect(() => {
+    if (useOwnKeyPreference !== undefined && pendingAction?.type !== "toggle") {
+      setOptimisticUseOwnKey(useOwnKeyPreference);
+    }
+  }, [useOwnKeyPreference, pendingAction]);
 
   /**
    * Persist the preference for using user-provided keys.
    */
   const handleToggleUseOwnKey = async (value: boolean) => {
-    setLoading(true);
+    setPendingAction({ type: "toggle", target: value ? "enabled" : "disabled" });
+    setOptimisticUseOwnKey(value);
     try {
       await setUseOwnKeyPref({ useOwnKey: value });
-      setUseOwnKey(value);
       toast.success(value ? "Using your own API keys enabled" : "Using system API keys");
     } catch (error) {
       console.error("Failed to update preference:", error);
+      setOptimisticUseOwnKey(useOwnKeyPreference ?? false);
       toast.error("Failed to update preference");
     } finally {
-      setLoading(false);
+      setPendingAction(null);
     }
   };
 
@@ -51,7 +60,7 @@ export function ApiKeysTab() {
       return;
     }
 
-    setLoading(true);
+    setPendingAction({ type: "save", target: provider });
     try {
       const response = await fetch("/api/user/keys", {
         method: "POST",
@@ -71,7 +80,7 @@ export function ApiKeysTab() {
       const errorMessage = error instanceof Error ? error.message : "Failed to save API key";
       toast.error(errorMessage);
     } finally {
-      setLoading(false);
+      setPendingAction(null);
     }
   };
 
@@ -83,7 +92,7 @@ export function ApiKeysTab() {
       return;
     }
 
-    setLoading(true);
+    setPendingAction({ type: "delete", target: keyId });
     try {
       const response = await fetch(`/api/user/keys?keyId=${encodeURIComponent(keyId)}`, {
         method: "DELETE",
@@ -99,7 +108,7 @@ export function ApiKeysTab() {
       const errorMessage = error instanceof Error ? error.message : "Failed to delete API key";
       toast.error(errorMessage);
     } finally {
-      setLoading(false);
+      setPendingAction(null);
     }
   };
 
@@ -109,6 +118,11 @@ export function ApiKeysTab() {
   const getKeyForProvider = (provider: string) => {
     return userKeys?.find((k: any) => k.provider === provider && k.isActive);
   };
+
+  const toggleStatusLabel = useMemo(() => {
+    if (pendingAction?.type !== "toggle") return null;
+    return effectiveUseOwnKey ? "Saving preference: use my keys..." : "Saving preference: use system keys...";
+  }, [effectiveUseOwnKey, pendingAction]);
 
   return (
     <section className="settings-section">
@@ -123,7 +137,7 @@ export function ApiKeysTab() {
             <input
               type="checkbox"
               id="use-own-keys"
-              checked={useOwnKeyPreference ?? false}
+              checked={effectiveUseOwnKey}
               onChange={(e) => handleToggleUseOwnKey(e.target.checked)}
               disabled={loading}
             />
@@ -131,6 +145,7 @@ export function ApiKeysTab() {
               When enabled, your API keys will be used instead of system keys
             </label>
           </div>
+          {toggleStatusLabel ? <p className="field-hint">{toggleStatusLabel}</p> : null}
           <p className="field-hint">
             Your keys are encrypted and stored securely. You will be charged by the provider directly.
           </p>
@@ -140,6 +155,8 @@ export function ApiKeysTab() {
 
         {PROVIDERS.map((provider) => {
           const existingKey = getKeyForProvider(provider.id);
+          const isSavingProvider = pendingAction?.type === "save" && pendingAction.target === provider.id;
+          const isDeletingProvider = pendingAction?.type === "delete" && pendingAction.target === existingKey?._id;
 
           return (
             <div key={provider.id} className="field">
@@ -162,7 +179,7 @@ export function ApiKeysTab() {
                       onClick={() => handleDeleteKey(existingKey._id)}
                       disabled={loading}
                     >
-                      Delete
+                      {isDeletingProvider ? "Deleting..." : "Delete"}
                     </button>
                   </div>
                 </div>
@@ -185,7 +202,7 @@ export function ApiKeysTab() {
                       onClick={() => handleSaveKey(provider.id)}
                       disabled={loading || !keyValues[provider.id]}
                     >
-                      Add Key
+                      {isSavingProvider ? "Saving..." : "Add Key"}
                     </button>
                   </div>
                 </div>

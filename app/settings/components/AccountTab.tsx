@@ -6,6 +6,8 @@ import { api } from "@/convex/_generated/api";
 import { useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 
+type Notice = { type: "success" | "error"; text: string } | null;
+
 /**
  * AccountTab displays the current user's account information from Clerk and Convex.
  * Assumes it's rendered within a ClerkProvider and that the user is signed in.
@@ -23,11 +25,17 @@ export function AccountTab() {
   const [language, setLanguage] = useState<string>("en");
   const [preferredName, setPreferredName] = useState<string>("");
   const [customGuidelines, setCustomGuidelines] = useState<string>("");
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [profilePending, setProfilePending] = useState<"name" | "language" | null>(null);
+  const [profileNotice, setProfileNotice] = useState<Record<"name" | "language", Notice>>({
+    name: null,
+    language: null,
+  });
+  const [guidelinesPending, setGuidelinesPending] = useState<"save" | "revert" | null>(null);
+  const [guidelinesNotice, setGuidelinesNotice] = useState<Notice>(null);
+  const [accountPending, setAccountPending] = useState<"delete" | null>(null);
+  const [accountNotice, setAccountNotice] = useState<Notice>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
-  // Load user preferences
   useEffect(() => {
     if (currentUser && user) {
       setLanguage(currentUser.preferredLanguage || "en");
@@ -40,35 +48,65 @@ export function AccountTab() {
    * Persist a new preferred output language.
    */
   const handleLanguageChange = async (newLanguage: string) => {
+    const previousLanguage = currentUser?.preferredLanguage || "en";
     setLanguage(newLanguage);
-    setSaving(true);
-    setMessage(null);
+    setProfilePending("language");
+    setProfileNotice((prev) => ({
+      ...prev,
+      language: { type: "success", text: "Saving language..." },
+    }));
+
     try {
       await updateLanguage({ language: newLanguage });
-      setMessage({ type: "success", text: "Language preference saved." });
-    } catch (error) {
-      setMessage({ type: "error", text: "Failed to save language preference." });
-      setLanguage(currentUser?.preferredLanguage || "en");
+      setProfileNotice((prev) => ({
+        ...prev,
+        language: { type: "success", text: "Language preference saved." },
+      }));
+    } catch {
+      setLanguage(previousLanguage);
+      setProfileNotice((prev) => ({
+        ...prev,
+        language: { type: "error", text: "Failed to save language preference." },
+      }));
     } finally {
-      setSaving(false);
+      setProfilePending(null);
     }
   };
 
   /**
-   * Persist a new preferred name.
+   * Persist a new preferred name on blur when it changed.
    */
   const handleNameChange = async (newName: string) => {
+    const fallbackName = currentUser?.preferredName || user?.fullName || "";
+    const trimmedNewName = newName.trim();
+    const trimmedFallbackName = fallbackName.trim();
+
+    if (trimmedNewName === trimmedFallbackName) {
+      setPreferredName(fallbackName);
+      return;
+    }
+
     setPreferredName(newName);
-    setSaving(true);
-    setMessage(null);
+    setProfilePending("name");
+    setProfileNotice((prev) => ({
+      ...prev,
+      name: { type: "success", text: "Saving name..." },
+    }));
+
     try {
       await updateName({ name: newName });
-      setMessage({ type: "success", text: "Name saved." });
-    } catch (error) {
-      setMessage({ type: "error", text: "Failed to save name." });
-      setPreferredName(currentUser?.preferredName || user?.fullName || "");
+      setProfileNotice((prev) => ({
+        ...prev,
+        name: { type: "success", text: "Name saved." },
+      }));
+    } catch {
+      setPreferredName(fallbackName);
+      setProfileNotice((prev) => ({
+        ...prev,
+        name: { type: "error", text: "Failed to save name." },
+      }));
     } finally {
-      setSaving(false);
+      setProfilePending(null);
     }
   };
 
@@ -83,15 +121,15 @@ export function AccountTab() {
    * Save custom guidelines to the user profile.
    */
   const handleSaveGuidelines = async () => {
-    setSaving(true);
-    setMessage(null);
+    setGuidelinesPending("save");
+    setGuidelinesNotice(null);
     try {
       await updateGuidelines({ guidelines: customGuidelines });
-      setMessage({ type: "success", text: "Custom guidelines saved." });
-    } catch (error) {
-      setMessage({ type: "error", text: "Failed to save guidelines." });
+      setGuidelinesNotice({ type: "success", text: "Custom guidelines saved." });
+    } catch {
+      setGuidelinesNotice({ type: "error", text: "Failed to save guidelines." });
     } finally {
-      setSaving(false);
+      setGuidelinesPending(null);
     }
   };
 
@@ -102,16 +140,17 @@ export function AccountTab() {
     if (!confirm("Are you sure you want to revert to default guidelines? Your custom guidelines will be lost.")) {
       return;
     }
-    setSaving(true);
-    setMessage(null);
+
+    setGuidelinesPending("revert");
+    setGuidelinesNotice({ type: "success", text: "Reverting to default guidelines..." });
     try {
       await clearGuidelines({});
       setCustomGuidelines("");
-      setMessage({ type: "success", text: "Reverted to default guidelines." });
-    } catch (error) {
-      setMessage({ type: "error", text: "Failed to revert guidelines." });
+      setGuidelinesNotice({ type: "success", text: "Reverted to default guidelines." });
+    } catch {
+      setGuidelinesNotice({ type: "error", text: "Failed to revert guidelines." });
     } finally {
-      setSaving(false);
+      setGuidelinesPending(null);
     }
   };
 
@@ -119,19 +158,19 @@ export function AccountTab() {
    * Anonymize the account and redirect after completion.
    */
   const handleDeleteAccount = async () => {
-    setSaving(true);
-    setMessage(null);
+    setAccountPending("delete");
+    setAccountNotice({ type: "success", text: "Anonymizing account..." });
     try {
       await anonymizeAccount({});
-      setMessage({ type: "success", text: "Account anonymized successfully. Redirecting..." });
+      setAccountNotice({ type: "success", text: "Account anonymized successfully. Redirecting..." });
       setTimeout(() => {
         router.push("/");
       }, 2000);
-    } catch (error) {
-      setMessage({ type: "error", text: "Failed to anonymize account. Please try again." });
+    } catch {
+      setAccountNotice({ type: "error", text: "Failed to anonymize account. Please try again." });
       setShowDeleteConfirm(false);
     } finally {
-      setSaving(false);
+      setAccountPending(null);
     }
   };
 
@@ -146,14 +185,9 @@ export function AccountTab() {
     );
   }
 
-  const subscriptionTier = currentUser?.subscriptionTier || "free";
-  const tierLabels: Record<string, string> = {
-    free: "Free",
-    basic: "Basic",
-    plus: "Plus",
-    pro: "Pro",
-  };
-
+  const profileBusy = profilePending !== null;
+  const guidelinesBusy = guidelinesPending !== null;
+  const accountBusy = accountPending !== null;
   const hasCustomGuidelines = currentUser?.customGuidelines && currentUser.customGuidelines.trim().length > 0;
 
   return (
@@ -171,11 +205,16 @@ export function AccountTab() {
               type="text"
               value={preferredName}
               onChange={(e) => setPreferredName(e.target.value)}
-              onBlur={() => handleNameChange(preferredName)}
+              onBlur={() => void handleNameChange(preferredName)}
               placeholder="How should we call you?"
               className="input-text field-value-input"
-              disabled={saving}
+              disabled={profileBusy}
             />
+            {profileNotice.name && (
+              <div className={`settings-notice ${profileNotice.name.type}`} style={{ marginTop: "8px" }}>
+                {profileNotice.name.text}
+              </div>
+            )}
           </div>
 
           <div className="field">
@@ -194,8 +233,8 @@ export function AccountTab() {
             id="language-select"
             className="field-input"
             value={language}
-            onChange={(e) => handleLanguageChange(e.target.value)}
-            disabled={saving}
+            onChange={(e) => void handleLanguageChange(e.target.value)}
+            disabled={profileBusy}
           >
             <option value="en">English</option>
             <option value="de">German (Deutsch)</option>
@@ -206,6 +245,11 @@ export function AccountTab() {
           <p className="field-hint">
             The language of your generated summaries, flashcards, and quizzes. Input language doesn't matter - upload content in any language and get output in your preferred language.
           </p>
+          {profileNotice.language && (
+            <div className={`settings-notice ${profileNotice.language.type}`} style={{ marginTop: "8px" }}>
+              {profileNotice.language.text}
+            </div>
+          )}
         </div>
       </div>
 
@@ -222,10 +266,10 @@ export function AccountTab() {
               <button
                 type="button"
                 className="btn btn-secondary btn-small"
-                onClick={handleRevertGuidelines}
-                disabled={saving}
+                onClick={() => void handleRevertGuidelines()}
+                disabled={guidelinesBusy}
               >
-                Revert to Default
+                {guidelinesPending === "revert" ? "Reverting..." : "Revert to Default"}
               </button>
             )}
           </div>
@@ -234,26 +278,26 @@ export function AccountTab() {
             className="settings-textarea"
             value={customGuidelines}
             onChange={(e) => handleGuidelinesChange(e.target.value)}
-            disabled={saving}
+            disabled={guidelinesBusy}
           />
           <p className="field-hint field-hint-spaced">
             {hasCustomGuidelines
               ? "Custom guidelines are active. These will be appended to the default guidelines for all your generations."
               : "These guidelines are automatically appended to every prompt sent to the model. Leave empty to use default guidelines only."}
           </p>
-          {message && (
-            <div className={`settings-notice ${message.type}`} style={{ marginTop: "8px" }}>
-              {message.text}
+          {guidelinesNotice && (
+            <div className={`settings-notice ${guidelinesNotice.type}`} style={{ marginTop: "8px" }}>
+              {guidelinesNotice.text}
             </div>
           )}
           <div className="settings-row" style={{ marginTop: "12px" }}>
             <button
               type="button"
               className="btn btn-primary"
-              onClick={handleSaveGuidelines}
-              disabled={saving}
+              onClick={() => void handleSaveGuidelines()}
+              disabled={guidelinesBusy}
             >
-              {saving ? "Saving..." : "Save Guidelines"}
+              {guidelinesPending === "save" ? "Saving..." : "Save Guidelines"}
             </button>
           </div>
         </div>
@@ -270,12 +314,17 @@ export function AccountTab() {
             Delete your account and anonymize your data. This action cannot be undone.
             Your personal information (email, name, guidelines) will be permanently removed.
           </p>
+          {accountNotice && (
+            <div className={`settings-notice ${accountNotice.type}`} style={{ marginBottom: "12px" }}>
+              {accountNotice.text}
+            </div>
+          )}
           {!showDeleteConfirm ? (
             <button
               type="button"
               className="btn btn-danger"
               onClick={() => setShowDeleteConfirm(true)}
-              disabled={saving}
+              disabled={accountBusy}
             >
               Delete Account
             </button>
@@ -289,17 +338,17 @@ export function AccountTab() {
                   type="button"
                   className="btn btn-secondary"
                   onClick={() => setShowDeleteConfirm(false)}
-                  disabled={saving}
+                  disabled={accountBusy}
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
                   className="btn btn-danger"
-                  onClick={handleDeleteAccount}
-                  disabled={saving}
+                  onClick={() => void handleDeleteAccount()}
+                  disabled={accountBusy}
                 >
-                  {saving ? "Processing..." : "Yes, Delete My Account"}
+                  {accountBusy ? "Processing..." : "Yes, Delete My Account"}
                 </button>
               </div>
             </div>

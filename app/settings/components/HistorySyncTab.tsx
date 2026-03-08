@@ -4,19 +4,24 @@ import { useState, useRef, useCallback } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { exportHistoryAsZip } from "@/lib/export-history-zip";
+
 export function HistorySyncTab() {
   const [selectedDocs, setSelectedDocs] = useState<Set<string>>(new Set());
-  const [loading, setLoading] = useState(false);
+  const [busyAction, setBusyAction] = useState<"export-json" | "export-zip" | "import" | "delete" | null>(null);
+  const [message, setMessage] = useState<{ type: "success" | "error" | "info"; text: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const documents = useQuery(api.documents.list, { limit: 100 });
   const deleteDoc = useMutation(api.documents.remove);
   const upsertDoc = useMutation(api.documents.upsert);
+  const loading = busyAction !== null;
 
   const handleExportJson = useCallback(() => {
     if (!documents?.documents) return;
 
     try {
+      setBusyAction("export-json");
+      setMessage({ type: "info", text: "Preparing JSON export..." });
       const payload = {
         exportedAt: new Date().toISOString(),
         entries: documents.documents.map((doc: any) => ({
@@ -41,8 +46,12 @@ export function HistorySyncTab() {
       link.click();
       link.remove();
       setTimeout(() => URL.revokeObjectURL(url), 0);
+      setMessage({ type: "success", text: `JSON export ready with ${documents.documents.length} document(s).` });
     } catch (err) {
       console.error("Failed to export:", err);
+      setMessage({ type: "error", text: "Failed to export JSON history." });
+    } finally {
+      setBusyAction(null);
     }
   }, [documents]);
 
@@ -50,6 +59,8 @@ export function HistorySyncTab() {
     if (!documents?.documents) return;
 
     try {
+      setBusyAction("export-zip");
+      setMessage({ type: "info", text: "Preparing ZIP export..." });
       const historyEntries = documents.documents.map((doc: any) => ({
         id: doc._id,
         title: doc.title,
@@ -63,20 +74,26 @@ export function HistorySyncTab() {
         notionPageId: doc.notionPageId,
       }));
       await exportHistoryAsZip(historyEntries as any);
+      setMessage({ type: "success", text: `ZIP export ready with ${historyEntries.length} document(s).` });
     } catch (err) {
       console.error("Failed to export ZIP:", err);
+      setMessage({ type: "error", text: "Failed to export ZIP history." });
+    } finally {
+      setBusyAction(null);
     }
   }, [documents]);
 
   const handleImport = useCallback(async (file: File) => {
-    setLoading(true);
+    setBusyAction("import");
+    setMessage({ type: "info", text: `Importing ${file.name}...` });
+
     try {
       const text = await file.text();
       const parsed = JSON.parse(text) as { entries?: unknown[] } | unknown[];
       const entries = Array.isArray(parsed) ? parsed : parsed.entries;
 
       if (!entries || !Array.isArray(entries)) {
-        alert("Invalid file format");
+        setMessage({ type: "error", text: "Invalid import file format." });
         return;
       }
 
@@ -124,13 +141,15 @@ export function HistorySyncTab() {
         }
       }
 
-      const message = `Imported ${imported} document(s)${skipped > 0 ? `, skipped ${skipped}` : ""}${errors > 0 ? `, ${errors} errors` : ""}`;
-      alert(message);
+      const summary = `Imported ${imported} document(s)${
+        skipped > 0 ? `, skipped ${skipped}` : ""
+      }${errors > 0 ? `, ${errors} errors` : ""}`;
+      setMessage({ type: errors > 0 ? "error" : "success", text: summary });
     } catch (err) {
       console.error("Failed to import:", err);
-      alert("Failed to import history. Please check the file format.");
+      setMessage({ type: "error", text: "Failed to import history. Please check the file format." });
     } finally {
-      setLoading(false);
+      setBusyAction(null);
     }
   }, [upsertDoc]);
 
@@ -138,16 +157,20 @@ export function HistorySyncTab() {
     if (selectedDocs.size === 0) return;
     if (!confirm(`Delete ${selectedDocs.size} document(s)?`)) return;
 
-    setLoading(true);
+    setBusyAction("delete");
+    setMessage({ type: "info", text: `Deleting ${selectedDocs.size} document(s)...` });
+
     try {
       for (const docId of selectedDocs) {
         await deleteDoc({ documentId: docId as any });
       }
       setSelectedDocs(new Set());
+      setMessage({ type: "success", text: `Deleted ${selectedDocs.size} document(s).` });
     } catch (err) {
       console.error("Failed to delete:", err);
+      setMessage({ type: "error", text: "Failed to delete selected history entries." });
     } finally {
-      setLoading(false);
+      setBusyAction(null);
     }
   }, [selectedDocs, deleteDoc]);
 
@@ -170,6 +193,11 @@ export function HistorySyncTab() {
       </div>
 
       <div className="settings-card">
+        {message && (
+          <div className={`settings-notice ${message.type}`} style={{ marginBottom: "12px" }}>
+            {message.text}
+          </div>
+        )}
         <div className="settings-card-split">
           <div className="settings-card-block">
             <div className="settings-card-title">Export</div>
@@ -181,17 +209,17 @@ export function HistorySyncTab() {
                 type="button"
                 className="btn btn-secondary"
                 onClick={handleExportJson}
-                disabled={!documents?.documents || documents.documents.length === 0}
+                disabled={loading || !documents?.documents || documents.documents.length === 0}
               >
-                ↑ Export all (JSON)
+                {busyAction === "export-json" ? "Preparing JSON..." : "Export all (JSON)"}
               </button>
               <button
                 type="button"
                 className="btn btn-primary"
                 onClick={handleExportZip}
-                disabled={!documents?.documents || documents.documents.length === 0}
+                disabled={loading || !documents?.documents || documents.documents.length === 0}
               >
-                ↑ Export all (ZIP)
+                {busyAction === "export-zip" ? "Preparing ZIP..." : "Export all (ZIP)"}
               </button>
             </div>
           </div>
@@ -208,7 +236,7 @@ export function HistorySyncTab() {
                 onClick={() => fileInputRef.current?.click()}
                 disabled={loading}
               >
-                ↓ Import
+                {busyAction === "import" ? "Importing..." : "Import"}
               </button>
             </div>
             <input
@@ -236,7 +264,7 @@ export function HistorySyncTab() {
               onClick={handleDeleteSelected}
               disabled={loading}
             >
-              Delete Selected ({selectedDocs.size})
+              {busyAction === "delete" ? `Deleting (${selectedDocs.size})...` : `Delete Selected (${selectedDocs.size})`}
             </button>
           )}
         </div>
@@ -249,6 +277,7 @@ export function HistorySyncTab() {
                   type="checkbox"
                   checked={selectedDocs.has(doc._id)}
                   onChange={() => toggleSelect(doc._id)}
+                  disabled={loading}
                 />
                 <div className="settings-history-item-content">
                   <div className="settings-history-item-title">{doc.title}</div>

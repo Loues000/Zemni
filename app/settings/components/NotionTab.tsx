@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 
+type Notice = { type: "success" | "error"; text: string } | null;
+
 /**
  * Configure Notion integration settings for exports.
  */
@@ -11,21 +13,19 @@ export function NotionTab() {
   const currentUser = useQuery(api.users.getCurrentUser);
   const clearNotionConfig = useMutation(api.users.clearNotionConfig);
   const updateAutoCreateFolders = useMutation(api.users.updateAutoCreateFoldersFromNotionSubjects);
-  
+
   const [notionToken, setNotionToken] = useState("");
   const [databaseId, setDatabaseId] = useState("");
   const [exportMethod, setExportMethod] = useState<"database" | "page">("database");
   const [autoCreateFolders, setAutoCreateFolders] = useState(false);
   const [loading, setLoading] = useState(false);
   const [folderSettingLoading, setFolderSettingLoading] = useState(false);
-  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [message, setMessage] = useState<Notice>(null);
+  const [folderNotice, setFolderNotice] = useState<Notice>(null);
   const [hasStoredToken, setHasStoredToken] = useState(false);
 
-  // Load existing values from Convex
   useEffect(() => {
     if (currentUser) {
-      // Don't decrypt token on client side (security best practice)
-      // User can re-enter if they want to change it
       setNotionToken("");
       setHasStoredToken(!!currentUser.notionToken);
       setDatabaseId(currentUser.notionDatabaseId || "");
@@ -39,19 +39,26 @@ export function NotionTab() {
    */
   const handleAutoCreateFoldersToggle = async (enabled: boolean) => {
     if (!currentUser) return;
-    
+
+    const previousValue = autoCreateFolders;
     setFolderSettingLoading(true);
+    setFolderNotice({
+      type: "success",
+      text: enabled ? "Enabling automatic folder creation..." : "Disabling automatic folder creation...",
+    });
+    setAutoCreateFolders(enabled);
+
     try {
       await updateAutoCreateFolders({ enabled });
-      setAutoCreateFolders(enabled);
-      setMessage({ 
-        type: "success", 
-        text: enabled 
+      setFolderNotice({
+        type: "success",
+        text: enabled
           ? "Auto-create folders enabled. New folders will be created from Notion subjects when exporting."
-          : "Auto-create folders disabled."
+          : "Auto-create folders disabled.",
       });
     } catch (error) {
-      setMessage({
+      setAutoCreateFolders(previousValue);
+      setFolderNotice({
         type: "error",
         text: error instanceof Error ? error.message : "Failed to update setting",
       });
@@ -70,7 +77,6 @@ export function NotionTab() {
     try {
       const cleanedDatabaseId = databaseId.trim();
 
-      // If no token entered and no stored token exists, show error
       if (!notionToken && !hasStoredToken) {
         setMessage({
           type: "error",
@@ -89,15 +95,13 @@ export function NotionTab() {
         return;
       }
 
-      // Save to API endpoint (encrypts server-side)
-      // Token is optional - if not provided, existing token is kept
       const response = await fetch("/api/user/notion", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          token: notionToken || undefined, // Only send if provided
+          token: notionToken || undefined,
           databaseId: exportMethod === "database" && cleanedDatabaseId ? cleanedDatabaseId : undefined,
-          exportMethod: exportMethod,
+          exportMethod,
         }),
       });
 
@@ -119,7 +123,6 @@ export function NotionTab() {
         throw new Error(errorMessage);
       }
 
-      // If a new token was entered, test the connection
       if (notionToken) {
         if (exportMethod === "database" && cleanedDatabaseId) {
           const url = new URL("/api/notion/subjects", window.location.origin);
@@ -129,26 +132,26 @@ export function NotionTab() {
               "x-notion-token": notionToken,
             },
           });
+
           if (testRes.ok) {
             const data = await testRes.json();
             if (data.subjects && Array.isArray(data.subjects)) {
-              setMessage({ type: "success", text: `Notion configuration saved and verified! Found ${data.subjects.length} subject(s).` });
+              setMessage({ type: "success", text: `Notion configuration saved and verified. Found ${data.subjects.length} subject(s).` });
             } else {
-              setMessage({ type: "success", text: "Notion configuration saved and verified!" });
+              setMessage({ type: "success", text: "Notion configuration saved and verified." });
             }
           } else {
             setMessage({ type: "error", text: "Configuration saved but connection test failed. Please check your credentials." });
           }
         } else if (exportMethod === "page") {
-          setMessage({ type: "success", text: "Notion configuration saved! You can now export directly to pages." });
+          setMessage({ type: "success", text: "Notion configuration saved. You can now export directly to pages." });
         } else {
           setMessage({ type: "success", text: "Configuration saved. Token only - you can export to new pages." });
         }
-        // Clear the token input after successful save
+
         setNotionToken("");
         setHasStoredToken(true);
       } else {
-        // Just updated other fields, token remains unchanged
         setMessage({ type: "success", text: "Configuration updated successfully." });
       }
     } catch (error) {
@@ -174,6 +177,8 @@ export function NotionTab() {
         setHasStoredToken(false);
         setDatabaseId("");
         setExportMethod("database");
+        setAutoCreateFolders(false);
+        setFolderNotice(null);
         setMessage({ type: "success", text: "Configuration cleared." });
       } catch (error) {
         setMessage({
@@ -288,16 +293,24 @@ export function NotionTab() {
               <input
                 type="checkbox"
                 checked={autoCreateFolders}
-                onChange={(e) => handleAutoCreateFoldersToggle(e.target.checked)}
-                disabled={folderSettingLoading || !currentUser?.notionDatabaseId}
+                onChange={(e) => void handleAutoCreateFoldersToggle(e.target.checked)}
+                disabled={loading || folderSettingLoading || !currentUser?.notionDatabaseId}
               />
-              <span>Automatically create folders from Notion subjects</span>
+              <span>
+                Automatically create folders from Notion subjects
+                {folderSettingLoading ? " (saving...)" : ""}
+              </span>
             </label>
           </div>
           <p className="field-hint">
-            When enabled, exporting to a Notion subject will automatically create a folder with the subject name 
+            When enabled, exporting to a Notion subject will automatically create a folder with the subject name
             (if it doesn&apos;t exist) and organize your document there.
           </p>
+          {folderNotice && (
+            <div className={`settings-notice ${folderNotice.type}`} style={{ marginTop: "8px" }}>
+              {folderNotice.text}
+            </div>
+          )}
           {!currentUser?.notionDatabaseId && (
             <p className="field-hint" style={{ color: "var(--warning)" }}>
               Configure a Notion database above to enable this feature.
@@ -315,7 +328,7 @@ export function NotionTab() {
           <button
             type="button"
             className="btn btn-primary"
-            onClick={handleSave}
+            onClick={() => void handleSave()}
             disabled={loading}
           >
             {loading ? "Saving..." : "Save Configuration"}
@@ -323,7 +336,7 @@ export function NotionTab() {
           <button
             type="button"
             className="btn btn-secondary"
-            onClick={handleClear}
+            onClick={() => void handleClear()}
             disabled={loading}
           >
             Clear
@@ -348,7 +361,7 @@ export function NotionTab() {
             <li>Copy the integration token and paste it above</li>
             {exportMethod === "database" && (
               <>
-                <li>Open your database in Notion → "..." → "Add connections" → Select your integration</li>
+                <li>Open your database in Notion {"->"} "..." {"->"} "Add connections" {"->"} Select your integration</li>
                 <li>Copy the database ID from the URL and paste it above</li>
               </>
             )}
