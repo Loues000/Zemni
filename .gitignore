@@ -37,6 +37,8 @@ out/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+__pycache__/
+__tests__/
 
 # Local model config overrides (commit `openrouter-models.example.json`)
 config/openrouter-models.json
