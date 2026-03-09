@@ -1,7 +1,8 @@
 [
+  
   {
-    "id": "openai/gpt-5.2-chat",
-    "display_name": "GPT-5.2 Instant",
+    "id": "openai/gpt-5.3-chat",
+    "display_name": "GPT-5.3 Instant",
     "subscription_tier": "pro",
     "available": true,
     "tokenizer": {
@@ -42,10 +43,24 @@
     }
   },
   {
+    "id": "openai/gpt-5.2-chat",
+    "display_name": "GPT-5.2 Instant",
+    "subscription_tier": "pro",
+    "available": false,
+    "tokenizer": {
+      "tiktoken_encoding": "o200k_base"
+    },
+    "pricing": {
+      "currency": "USD",
+      "input_per_1m": 1.75,
+      "output_per_1m": 14
+    }
+  },
+  {
     "id": "openai/gpt-5.1",
     "display_name": "GPT-5.1",
     "subscription_tier": "plus",
-    "available": true,
+    "available": false,
     "tokenizer": {
       "tiktoken_encoding": "o200k_base"
     },

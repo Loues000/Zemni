@@ -21,6 +21,14 @@ BASE_IDENTITY_STUDY = [
     "Ausgabe ist auf Deutsch (englische Fachbegriffe aus dem Skript beibehalten)."
 ]
 
+NON_CONTENT_EXCLUSION_RULES = [
+    "Nicht-Inhalts-Regeln (kritisch):",
+    "- Behandle strukturelles, organisatorisches oder navigatives Material nicht als Lerninhalt.",
+    "- Schließe Agenda, Kapiteluebersichten, Lernziele, Recap/Uebergangsfolien, Klausur-/Organisationshinweise, Deadlines, Abgaben, Literatur-/Kontakt-/Referenzfolien, Setup-Hinweise und aehnliches Meta/Admin-Material aus.",
+    "- Erzeuge keine Zusammenfassungsabschnitte, Flashcards oder Quizfragen zu Ueberschriften wie \"Agenda\", \"Overview\", \"Recap\", \"Organizational\", \"Learning Goals\", \"Next Time\" oder \"Questions?\", sofern der eigentliche Text darunter kein fachliches Wissen enthaelt.",
+    "- Wenn eine Section Fachinhalt und Meta/Admin-Text mischt, uebernimm nur den Fachinhalt und ignoriere den Rest."
+]
+
 FORMAT_CONTRACT = [
     "",
     "WICHTIG - Formatvertrag:",
@@ -67,6 +75,8 @@ def build_summary_prompts(text: str, structure: Optional[str] = None) -> Dict[st
     system_prompt = "\n".join([
         "\n".join(BASE_IDENTITY),
         "",
+        "\n".join(NON_CONTENT_EXCLUSION_RULES),
+        "",
         "Regelwerk (KI-Vorgaben):",
         guidelines,
         "",
@@ -80,6 +90,8 @@ def build_summary_prompts(text: str, structure: Optional[str] = None) -> Dict[st
         "",
         "Optionale Strukturvorgaben (Ueberschriften):",
         structure.strip() if structure and structure.strip() else "Keine",
+        "",
+        "Ignoriere strukturelle, organisatorische, navigative und sonstige Nicht-Inhalts-Teile wie Agenda, Recap, Lernziele, Klausurhinweise, Deadlines, Literatur/Kontakt und aehnliche Meta-Folien.",
         "",
         "Gib ausschliesslich die fertige Zusammenfassung in Markdown aus. Beginne direkt mit # Titel."
     ])
@@ -96,6 +108,8 @@ def build_section_summary_prompts(
     
     system_prompt = "\n".join([
         "\n".join(BASE_IDENTITY_STUDY),
+        "",
+        "\n".join(NON_CONTENT_EXCLUSION_RULES),
         "",
         "Regelwerk (KI-Vorgaben):",
         guidelines,
@@ -137,6 +151,7 @@ def build_section_summary_prompts(
         "- Erstelle eine kompakte, pruefungsorientierte Zusammenfassung mit klarer Gliederung (H2/H3).",
         "- Pro Unterkapitel: 5-10 Bulletpoints (kurz, dicht).",
         "- Key Definitions (wenn sinnvoll): `**Key Definitions**` + Bullets `- **Term**: Definition` am Ende des Unterkapitels.",
+        "- Ignoriere strukturelle, organisatorische, navigative und sonstige Nicht-Inhalts-Teile wie Agenda, Recap, Lernziele, Klausurhinweise, Deadlines, Literatur/Kontakt und aehnliche Meta-Folien.",
         "- Keine Metadaten, keine Einleitung, kein Frontmatter.",
         "- Ueberschriften nicht nummerieren.",
         "- VERBOTEN: Abschluss-/Meta-Saetze (z.B. 'Damit kann man sich gut vorbereiten', 'Alles kommt aus den Vorlesungsfolien').",
@@ -156,6 +171,8 @@ def build_flashcards_prompts(
     
     system_prompt = "\n".join([
         "\n".join(BASE_IDENTITY_STUDY),
+        "",
+        "\n".join(NON_CONTENT_EXCLUSION_RULES),
         "",
         "Regelwerk (KI-Vorgaben):",
         guidelines,
@@ -204,6 +221,7 @@ def build_flashcards_prompts(
         "WICHTIG:",
         "- sourceSnippet muss ein woertliches Zitat aus dem jeweiligen Section-Text sein.",
         "- Keine doppelten Karten pro Section.",
+        "- Erzeuge keine Karten aus strukturellem, organisatorischem, navigativem oder sonstigem Nicht-Inhalts-Material wie Agenda, Recap, Lernzielen, Klausurhinweisen, Deadlines, Literatur/Kontakt oder aehnlichen Meta-Folien.",
         "",
         "Gib nur das JSON aus."
     ])
@@ -221,6 +239,8 @@ def build_quiz_prompts(
     
     system_prompt = "\n".join([
         "\n".join(BASE_IDENTITY_STUDY),
+        "",
+        "\n".join(NON_CONTENT_EXCLUSION_RULES),
         "",
         "Regelwerk (KI-Vorgaben):",
         guidelines,
@@ -261,6 +281,7 @@ def build_quiz_prompts(
         "WICHTIG:",
         "- sourceSnippet muss ein woertliches Zitat aus dem Section-Text sein.",
         "- correctIndex muss zur richtigen Option passen.",
+        "- Erzeuge keine Fragen aus strukturellem, organisatorischem, navigativem oder sonstigem Nicht-Inhalts-Material wie Agenda, Recap, Lernzielen, Klausurhinweisen, Deadlines, Literatur/Kontakt oder aehnlichen Meta-Folien.",
         "",
         "Gib nur das JSON aus."
     ])

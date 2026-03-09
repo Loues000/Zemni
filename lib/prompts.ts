@@ -31,6 +31,14 @@ function getLanguageName(code: string): string {
   return names[code] || "English";
 }
 
+const NON_CONTENT_EXCLUSION_RULES = [
+  "Non-content exclusion rules (critical):",
+  "- Do not treat structural, organizational, or navigational material as learning content.",
+  "- Exclude agendas, chapter overviews, learning goals, recap/transition slides, exam logistics, deadlines, submissions, literature/contact/reference slides, setup notes, and similar meta/admin material.",
+  "- Do not create summary content about headings such as \"Agenda\", \"Overview\", \"Recap\", \"Organizational\", \"Learning Goals\", \"Next Time\", or \"Questions?\" unless the body contains real domain knowledge.",
+  "- If a section mixes admin/meta text with subject matter, keep only the subject matter and ignore the rest."
+].join("\n");
+
 // Format contract - always in English
 // Note: This is for legacy summary generation. For section-based summaries, see getFormatInstructions("summary") in study-prompts.ts
 const getFormatContract = (): string => {
@@ -73,6 +81,7 @@ const getSummaryUserPrompt = (outputLanguage: string, text: string, structure?: 
     structure?.trim() ? structure.trim() : "None",
     "",
     `Generate the summary in ${langName} language.`,
+    "Ignore structural, organizational, navigational, and admin/meta content such as agenda, recap, learning goals, exam info, deadlines, literature/contact slides, and similar non-content material.",
     `Output ONLY the finished summary in Markdown starting with # Title.`,
     `All content must be in ${langName}.`
   ].join("\n");
@@ -112,7 +121,7 @@ export const buildSummaryPrompts = async (
   const formatContract = getFormatContract();
   const summaryStyleOverrides = buildSummaryStyleOverridesFromMask(summaryStyleFlags, summaryStyleFlagsVersion);
   
-  const systemPrompt = `${baseIdentity}\n\nGuidelines (AI Rules):\n${finalGuidelines}\n\nStrictly follow the guidelines.${formatContract}\n\n${summaryStyleOverrides}`;
+  const systemPrompt = `${baseIdentity}\n\n${NON_CONTENT_EXCLUSION_RULES}\n\nGuidelines (AI Rules):\n${finalGuidelines}\n\nStrictly follow the guidelines.${formatContract}\n\n${summaryStyleOverrides}`;
   const userPrompt = getSummaryUserPrompt(outputLanguage, text, structure);
 
   return { systemPrompt, userPrompt };
@@ -140,6 +149,8 @@ export const buildRefineSystemPrompt = async (
   
   return [
     baseIdentity,
+    "",
+    NON_CONTENT_EXCLUSION_RULES,
     "",
     "Guidelines (AI Rules):",
     finalGuidelines,

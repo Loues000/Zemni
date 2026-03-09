@@ -11,6 +11,9 @@ Mode-specific add-ons may add further constraints, but may not weaken the core "
 - The only source of truth is the user-provided lecture material (PDF/slides/markdown).
 - Do not use external sources and do not add outside knowledge.
 - Ignore organizational slides, repetition/recap slides, meta slides, and non-content material.
+- Treat structural or navigational items as non-content by default: agendas, chapter overviews, learning goals, transition slides, "next time", "questions?", contact/literature/reference slides, deadlines, submission notes, grading/exam logistics, tool/setup notes, and similar admin/meta material.
+- Do not turn headings like `Agenda`, `Overview`, `Recap`, `Organizational`, `Learning Goals`, or `Exam Info` into learning content unless the surrounding body text contains substantive domain knowledge.
+- If a section mixes subject matter with organizational/meta text, keep only the subject matter and discard the rest.
 - Interpret the content meaningfully; **do not copy-paste** large text blocks.
 
 ## Style

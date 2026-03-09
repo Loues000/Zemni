@@ -29,6 +29,14 @@ function getLanguageName(code: string): string {
   return names[code] || "English";
 }
 
+const NON_CONTENT_EXCLUSION_RULES = [
+  "Non-content exclusion rules (critical):",
+  "- Do not treat structural, organizational, or navigational material as learning content.",
+  "- Exclude agendas, chapter overviews, learning goals, recap/transition slides, exam logistics, deadlines, submissions, literature/contact/reference slides, setup notes, and similar meta/admin material.",
+  "- Do not create summary sections, flashcards, or quiz questions about headings such as \"Agenda\", \"Overview\", \"Recap\", \"Organizational\", \"Learning Goals\", \"Next Time\", or \"Questions?\" unless the body contains real domain knowledge.",
+  "- If a section mixes admin/meta text with subject matter, keep only the subject matter and ignore the rest."
+].join("\n");
+
 // Format instructions - always in English
 const getFormatInstructions = (mode: "summary" | "flashcards" | "quiz" | "notes"): string => {
   if (mode === "summary") {
@@ -116,6 +124,7 @@ const getSectionSummaryUserPrompt = (outputLanguage: string, serializedSections:
     "- Include ALL important concepts, mechanisms, definitions, and details - do not skip anything.",
     "- Per subsection: Include all relevant points (typically 8-20 bullet points, more if the content requires it).",
     "- The summary must be complete - continue generating until all content is covered, even if it requires more space.",
+    "- Ignore structural, organizational, navigational, and admin/meta content such as agenda, recap, learning goals, exam info, deadlines, literature/contact slides, and similar non-content material.",
     "- Use tables extensively for structured data (comparisons, features, specifications, attributes).",
     "- No metadata, no introduction, no frontmatter.",
     "",
@@ -147,6 +156,7 @@ const getFlashcardsUserPrompt = (
     "",
     "IMPORTANT:",
     "- No duplicate cards per section.",
+    "- Do not create flashcards from structural, organizational, navigational, or admin/meta material such as agenda, recap, learning goals, exam info, deadlines, literature/contact slides, or similar non-content text.",
     `- All flashcard content (front, back, sourceSnippet) must be in ${langName} language.`,
     "",
     "CRITICAL JSON FORMAT:",
@@ -173,6 +183,7 @@ const getChunkNotesUserPrompt = (outputLanguage: string, maxBullets: number, met
     "Task:",
     `- Extract the most important learning points as a maximum of ${Math.max(10, Math.floor(maxBullets))} bullet points.`,
     "- Focus: definitions, distinctions, mechanisms, conditions, trade-offs, formulas + variables.",
+    "- Ignore structural, organizational, navigational, and admin/meta text such as agenda, recap, learning goals, exam info, deadlines, literature/contact slides, and similar non-content material.",
     "- Only content from the text, do not invent anything.",
     "- All output must be in " + langName + "."
   ].join("\n");
@@ -196,6 +207,7 @@ const getQuizUserPrompt = (outputLanguage: string, questionsCount: number, avoid
     "",
     "IMPORTANT:",
     "- correctIndex must match the correct option.",
+    "- Do not create quiz questions from structural, organizational, navigational, or admin/meta material such as agenda, recap, learning goals, exam info, deadlines, literature/contact slides, or similar non-content text.",
     `- All content (question, options, explanation) must be in ${langName} language.`,
     "",
     "Output only the JSON."
@@ -224,6 +236,8 @@ export const buildSectionSummaryPrompts = async (
 
   const systemPrompt = [
     baseIdentity,
+    "",
+    NON_CONTENT_EXCLUSION_RULES,
     "",
     "Guidelines (AI Rules):",
     finalGuidelines,
@@ -270,6 +284,8 @@ export const buildFlashcardsPrompts = async (
 
   const systemPrompt = [
     baseIdentity,
+    "",
+    NON_CONTENT_EXCLUSION_RULES,
     "",
     "Guidelines (AI Rules):",
     finalGuidelines,
@@ -342,6 +358,8 @@ export const buildChunkNotesPrompts = async (
   const systemPrompt = [
     baseIdentity,
     "",
+    NON_CONTENT_EXCLUSION_RULES,
+    "",
     "Guidelines (AI Rules):",
     finalGuidelines,
     "",
@@ -377,6 +395,8 @@ export const buildQuizPrompts = async (
 
   const systemPrompt = [
     baseIdentity,
+    "",
+    NON_CONTENT_EXCLUSION_RULES,
     "",
     "Guidelines (AI Rules):",
     finalGuidelines,
