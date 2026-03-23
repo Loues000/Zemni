@@ -37,6 +37,32 @@ type UserContextCacheEntry = {
 const userContextCache = new Map<string, UserContextCacheEntry>();
 const inFlightUserContext = new Map<string, Promise<UserContext | null>>();
 
+const OPENROUTER_ONLY_MODEL_IDS = new Set([
+  "openai/gpt-5.4-mini",
+  "openai/gpt-5.4-nano",
+]);
+
+const OPENROUTER_ROUTED_PROVIDERS = new Set([
+  "openrouter",
+  "x-ai",
+  "mistral",
+  "mistralai",
+  "meta",
+  "nvidia",
+  "microsoft",
+  "amazon",
+  "cohere",
+  "moonshotai",
+  "deepseek",
+  "minimax",
+  "qwen",
+  "z-ai",
+  "stepfun",
+  "arcee-ai",
+  "inception",
+  "bytedance-seed",
+]);
+
 const cloneUserContext = (context: UserContext): UserContext => ({
   ...context,
   apiKeys: context.apiKeys.map((key) => ({ ...key })),
@@ -249,6 +275,10 @@ export function getApiKeyForModel(
  * Extract provider from model ID
  */
 function getProviderFromModelId(modelId: string): ApiProvider | null {
+  if (OPENROUTER_ONLY_MODEL_IDS.has(modelId)) {
+    return "openrouter";
+  }
+
   const parts = modelId.split("/");
   if (parts.length < 2) return null;
   
@@ -257,9 +287,7 @@ function getProviderFromModelId(modelId: string): ApiProvider | null {
   if (provider === "openai") return "openai";
   if (provider === "anthropic") return "anthropic";
   if (provider === "google") return "google";
-  if (provider === "openrouter" || provider === "x-ai" || provider === "mistral" || 
-      provider === "meta" || provider === "nvidia" || provider === "microsoft" ||
-      provider === "amazon" || provider === "cohere") {
+  if (OPENROUTER_ROUTED_PROVIDERS.has(provider)) {
     return "openrouter";
   }
   

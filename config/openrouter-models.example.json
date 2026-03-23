@@ -29,6 +29,34 @@
     }
   },
   {
+    "id": "openai/gpt-5.4-mini",
+    "display_name": "GPT-5.4 Mini",
+    "subscription_tier": "basic",
+    "available": true,
+    "tokenizer": {
+      "tiktoken_encoding": "o200k_base"
+    },
+    "pricing": {
+      "currency": "USD",
+      "input_per_1m": 0.75,
+      "output_per_1m": 4.5
+    }
+  },
+  {
+    "id": "openai/gpt-5.4-nano",
+    "display_name": "GPT-5.4 Nano",
+    "subscription_tier": "free",
+    "available": true,
+    "tokenizer": {
+      "tiktoken_encoding": "o200k_base"
+    },
+    "pricing": {
+      "currency": "USD",
+      "input_per_1m": 0.2,
+      "output_per_1m": 1.25
+    }
+  },
+  {
     "id": "openai/gpt-5.2",
     "display_name": "GPT-5.2",
     "subscription_tier": "pro",
@@ -253,6 +281,20 @@
     }
   },
   {
+    "id": "mistralai/mistral-small-2603",
+    "display_name": "Mistral Small 4",
+    "subscription_tier": "basic",
+    "available": true,
+    "tokenizer": {
+      "tiktoken_encoding": "cl100k_base"
+    },
+    "pricing": {
+      "currency": "USD",
+      "input_per_1m": 0.15,
+      "output_per_1m": 0.6
+    }
+  },
+  {
     "id": "x-ai/grok-4.1-fast",
     "display_name": "Grok 4.1 Fast",
     "subscription_tier": "free",
@@ -264,6 +306,20 @@
       "currency": "USD",
       "input_per_1m": 0.2,
       "output_per_1m": 0.5
+    }
+  },
+  {
+    "id": "nvidia/nemotron-3-super-120b-a12b:free",
+    "display_name": "Nemotron 3 Super (Free)",
+    "subscription_tier": "free",
+    "available": true,
+    "tokenizer": {
+      "tiktoken_encoding": "cl100k_base"
+    },
+    "pricing": {
+      "currency": "USD",
+      "input_per_1m": 0,
+      "output_per_1m": 0
     }
   },
   {
@@ -320,6 +376,20 @@
       "currency": "USD",
       "input_per_1m": 0.29,
       "output_per_1m": 1.25
+    }
+  },
+  {
+    "id": "minimax/minimax-m2.7",
+    "display_name": "Minimax M2.7",
+    "subscription_tier": "basic",
+    "available": true,
+    "tokenizer": {
+      "tiktoken_encoding": "cl100k_base"
+    },
+    "pricing": {
+      "currency": "USD",
+      "input_per_1m": 0.3,
+      "output_per_1m": 1.2
     }
   },
   {
@@ -390,20 +460,6 @@
       "currency": "USD",
       "input_per_1m": 0.07,
       "output_per_1m": 0.4
-    }
-  },
-  {
-    "id": "minimax/minimax-m2.5",
-    "display_name": "Minimax M2.5",
-    "subscription_tier": "basic",
-    "available": false,
-    "tokenizer": {
-      "tiktoken_encoding": "cl100k_base"
-    },
-    "pricing": {
-      "currency": "USD",
-      "input_per_1m": 0.3,
-      "output_per_1m": 1.2
     }
   },
   {

@@ -89,9 +89,14 @@ export const getEstimatedCompletionTime = (
     "anthropic/claude-opus-4.5": 75,
     "anthropic/claude-sonnet-4.5": 45,
     "openai/gpt-5.4": 35,
+    "openai/gpt-5.4-mini": 18,
+    "openai/gpt-5.4-nano": 10,
     "openai/gpt-5.2": 30,
     "openai/gpt-5.1": 25,
     "openai/gpt-5-mini": 15,
+    "mistralai/mistral-small-2603": 14,
+    "minimax/minimax-m2.7": 20,
+    "nvidia/nemotron-3-super-120b-a12b:free": 95,
     "deepseek/deepseek-v3.2": 20,
   };
 
@@ -146,6 +151,7 @@ export const getModelPerformanceConfig = (
     "gpt-oss-120b",
     "gpt-oss-20b",
     "anthropic/claude-opus",
+    "nemotron-3-super",
     "grok-4.1-fast", // Grok models can sometimes be verbose
     "gemini-3",      // Gemini preview models might need more buffer
   ];
